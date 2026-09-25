@@ -1,0 +1,8 @@
+# Xcode (project.yml → xcodegen 으로 생성)
+CoNo.xcodeproj/
+build/
+DerivedData/
+xcuserdata/
+*.xcuserstate
+.DS_Store
+.env*.local
