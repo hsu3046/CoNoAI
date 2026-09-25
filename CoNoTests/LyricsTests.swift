@@ -100,3 +100,14 @@ struct SongClockTests {
         #expect(clock.anchors.first?.captureTime == 20)
     }
 }
+
+struct AppleMusicScriptTests {
+    /// 앱에서는 실행 순간에야 컴파일되므로, 구문 오류(예약어 변수 등)를 여기서 먼저 잡는다.
+    /// 컴파일만 하고 실행하지 않으므로 음악 앱을 제어하지 않는다 (자동화 권한 불필요).
+    @Test func compiles() {
+        let script = NSAppleScript(source: AppleMusicScript.source)
+        var error: NSDictionary?
+        let compiled = script?.compileAndReturnError(&error) ?? false
+        #expect(compiled, "AppleScript 컴파일 실패: \(error ?? [:])")
+    }
+}

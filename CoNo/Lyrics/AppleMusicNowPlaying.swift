@@ -52,19 +52,6 @@ final class AppleMusicNowPlaying: @unchecked Sendable {
     /// NSAppleScript 는 스레드 안전하지 않으므로 이 큐에서만 만들고 쓴다
     private var script: NSAppleScript?
 
-    private static let source = """
-    if application "Music" is running then
-        tell application "Music"
-            set st to player state as string
-            if st is "stopped" then return {st}
-            set t to current track
-            return {st, player position, persistent ID of t, name of t, artist of t, album of t, duration of t}
-        end tell
-    else
-        return {"notRunning"}
-    end if
-    """
-
     func poll() async -> Result<NowPlayingSample, NowPlayingError> {
         await withCheckedContinuation { continuation in
             queue.async { [self] in
@@ -75,7 +62,7 @@ final class AppleMusicNowPlaying: @unchecked Sendable {
 
     private func pollSync() -> Result<NowPlayingSample, NowPlayingError> {
         if script == nil {
-            script = NSAppleScript(source: Self.source)
+            script = NSAppleScript(source: AppleMusicScript.source)
         }
         guard let script else { return .failure(.script("스크립트 생성 실패")) }
 
