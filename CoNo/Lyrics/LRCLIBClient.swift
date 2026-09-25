@@ -33,8 +33,8 @@ enum LRCLIBError: LocalizedError {
 actor LRCLIBClient {
     private let session: URLSession
     private let cacheDirectory: URL?
-    /// 못 찾은 결과를 다시 묻기까지의 시간 (새 가사가 등록될 수 있으므로)
-    private let notFoundTTL: TimeInterval = 24 * 60 * 60
+    /// 못 찾았거나 일반 가사만 있던 결과를 다시 묻기까지의 시간 (싱크 가사가 새로 등록될 수 있으므로)
+    private let incompleteResultTTL: TimeInterval = 24 * 60 * 60
     private static let baseURL = URL(string: "https://lrclib.net/api")!
     private static let userAgent = "CoNo/0.1 (https://knowai.space)"
 
@@ -54,7 +54,7 @@ actor LRCLIBClient {
         if let cached = readCache(for: track) {
             // 옛 캐시에 섞인 다른 곡 후보도 거른다 (제목 필터 도입 전 캐시)
             if case let .synced(list) = cached {
-                let filtered = LyricsSelector.rankedSynced(list, targetDuration: track.duration, targetTitle: track.title)
+                let filtered = LyricsSelector.rankedSynced(list, targetDuration: track.duration, targetTitle: track.title, targetArtist: track.artist)
                 if !filtered.isEmpty { return .synced(filtered) }
             } else {
                 return cached
@@ -67,13 +67,13 @@ actor LRCLIBClient {
         candidates += try await search(["track_name": track.title, "artist_name": track.artist])
         // 2) 싱크 후보가 모자라면 표기를 바꿔 더 찾는다 ("아이유" 0건 / "IU" 있음)
         for query in [["q": "\(track.artist) \(track.title)"], ["track_name": track.title]] {
-            if LyricsSelector.rankedSynced(candidates, targetDuration: track.duration, targetTitle: track.title).count >= 2 { break }
+            if LyricsSelector.rankedSynced(candidates, targetDuration: track.duration, targetTitle: track.title, targetArtist: track.artist).count >= 2 { break }
             candidates += try await search(query)
         }
 
-        let synced = LyricsSelector.rankedSynced(candidates, targetDuration: track.duration, targetTitle: track.title)
+        let synced = LyricsSelector.rankedSynced(candidates, targetDuration: track.duration, targetTitle: track.title, targetArtist: track.artist)
         if !synced.isEmpty { return store(.synced(synced), for: track) }
-        if let plain = LyricsSelector.best(candidates, targetDuration: track.duration) {
+        if let plain = LyricsSelector.best(candidates, targetDuration: track.duration, targetArtist: track.artist) {
             return store(.plainOnly(plain), for: track)
         }
         return store(.notFound, for: track)
@@ -83,20 +83,22 @@ actor LRCLIBClient {
 
     private func getExact(_ track: TrackInfo) async throws -> LyricsCandidate? {
         var components = URLComponents(url: Self.baseURL.appendingPathComponent("get"), resolvingAgainstBaseURL: false)!
-        components.queryItems = [
+        var items = [
             URLQueryItem(name: "track_name", value: track.title),
             URLQueryItem(name: "artist_name", value: track.artist),
             URLQueryItem(name: "album_name", value: track.album),
-            URLQueryItem(name: "duration", value: String(Int(track.duration.rounded()))),
         ]
-        guard let data = try await fetch(components.url!, allowNotFound: true) else { return nil }
+        // 길이를 모르면(0) 보내지 않는다 — 0초로는 정확 조회가 맞을 리 없다
+        if track.duration > 0 { items.append(URLQueryItem(name: "duration", value: String(Int(track.duration.rounded())))) }
+        components.queryItems = items
+        guard let data = try await fetch(components.urlEncodingPlus, allowNotFound: true) else { return nil }
         return try? JSONDecoder().decode(LyricsCandidate.self, from: data)
     }
 
     private func search(_ query: [String: String]) async throws -> [LyricsCandidate] {
         var components = URLComponents(url: Self.baseURL.appendingPathComponent("search"), resolvingAgainstBaseURL: false)!
         components.queryItems = query.map { URLQueryItem(name: $0.key, value: $0.value) }
-        guard let data = try await fetch(components.url!, allowNotFound: true) else { return [] }
+        guard let data = try await fetch(components.urlEncodingPlus, allowNotFound: true) else { return [] }
         return (try? JSONDecoder().decode([LyricsCandidate].self, from: data)) ?? []
     }
 
@@ -142,7 +144,12 @@ actor LRCLIBClient {
               let data = try? Data(contentsOf: url),
               let entry = try? JSONDecoder().decode(CacheEntry.self, from: data)
         else { return nil }
-        if case .notFound = entry.result, Date().timeIntervalSince(entry.fetchedAt) > notFoundTTL { return nil }
+        switch entry.result {
+        case .notFound, .plainOnly:
+            if Date().timeIntervalSince(entry.fetchedAt) > incompleteResultTTL { return nil }
+        case .synced:
+            break
+        }
         return entry.result
     }
 

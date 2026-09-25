@@ -346,6 +346,7 @@ struct ContentView: View {
                             in: -300...500,
                             step: 10
                         )
+                        .accessibilityLabel("화면 싱크")
                         Text(String(format: "%+.0f ms", engine.displayLatencyMilliseconds))
                             .monospacedDigit()
                             .frame(width: 64, alignment: .trailing)
@@ -361,6 +362,7 @@ struct ContentView: View {
                             in: -1...1,
                             step: 0.05
                         )
+                        .accessibilityLabel("가사 미세조정")
                         Text(String(format: "%+.2f초", engine.lyrics.offsetSeconds))
                             .monospacedDigit()
                             .frame(width: 64, alignment: .trailing)

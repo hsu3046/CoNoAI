@@ -78,6 +78,8 @@ final class LyricsController {
     /// 곡 하나의 가사 후보와 자동 싱크 상태
     private struct TrackLyrics {
         var candidates: [TimedLyrics]
+        /// candidates 와 같은 순서의 LRCLIB id (학습값은 순번이 아니라 id 로 기억한다 — 캐시를 다시 받으면 순서가 바뀔 수 있다)
+        var candidateIDs: [Int]
         var chosen = 0
         /// 적용 중인 가사 지연 (초)
         var appliedDelay = 0.0
@@ -104,6 +106,9 @@ final class LyricsController {
     private let learnedDelays = LearnedLyricsDelays()
     private var tracks: [String: TrackInfo] = [:]
     private var loadingTrackIDs: Set<String> = []
+    /// 곡별 로드 실패 (횟수, 다시 시도할 시각). 실패를 기억하지 않으면 0.5초 폴링마다 다시 요청해
+    /// 오프라인·레이트 리밋(429)에서 요청이 끝없이 나간다.
+    @ObservationIgnored private var loadFailures: [String: (count: Int, retryAt: ContinuousClock.Instant)] = [:]
     /// 곡별 마지막 상태 (일시 오류에서 회복하거나 곡을 오갈 때 되돌리기 위해)
     private var statusByTrack: [String: Status] = [:]
     private var currentTrackID: String?
@@ -182,8 +187,13 @@ final class LyricsController {
                 return
             }
             tracks[track.id] = track
+            if currentTrackID != track.id {
+                // 음절 정렬 캐시는 지금 곡 것만 남긴다 (줄마다 쌓여 오래 쓰면 수십 MB)
+                wipeCache = wipeCache.filter { $0.key.hasPrefix("\(track.id)#") }
+            }
             currentTrackID = track.id
-            if lyricsByTrack[track.id] == nil, !loadingTrackIDs.contains(track.id) {
+            let backingOff = loadFailures[track.id].map { ContinuousClock.now < $0.retryAt } ?? false
+            if lyricsByTrack[track.id] == nil, !loadingTrackIDs.contains(track.id), !backingOff {
                 load(track)
             } else if let known = statusByTrack[track.id] {
                 status = known
@@ -254,8 +264,8 @@ final class LyricsController {
         }
 
         lyricsByTrack[position.trackID] = .some(trackLyrics)
-        if trackLyrics.hasDelay, let track = tracks[position.trackID] {
-            learnedDelays.store(delay: trackLyrics.appliedDelay, candidate: trackLyrics.chosen, for: track)
+        if trackLyrics.hasDelay, let track = tracks[position.trackID], trackLyrics.candidateIDs.indices.contains(trackLyrics.chosen) {
+            learnedDelays.store(delay: trackLyrics.appliedDelay, candidateID: trackLyrics.candidateIDs[trackLyrics.chosen], for: track)
         }
         autoSync = AutoSyncInfo(
             appliedDelay: trackLyrics.appliedDelay,
@@ -293,10 +303,14 @@ final class LyricsController {
             do {
                 switch try await client.lyrics(for: track) {
                 case let .synced(candidates):
-                    let parsed = candidates.compactMap(\.syncedLyrics).map(LRCParser.parse).filter { !$0.lines.isEmpty }
-                    var trackLyrics = TrackLyrics(candidates: parsed)
-                    if let learned = learnedDelays.load(for: track), parsed.indices.contains(learned.candidate) {
-                        trackLyrics.chosen = learned.candidate
+                    let usable = candidates
+                        .compactMap { candidate in candidate.syncedLyrics.map { (id: candidate.id, lyrics: LRCParser.parse($0)) } }
+                        .filter { !$0.lyrics.lines.isEmpty }
+                    let parsed = usable.map(\.lyrics)
+                    var trackLyrics = TrackLyrics(candidates: parsed, candidateIDs: usable.map(\.id))
+                    if let learned = learnedDelays.load(for: track),
+                       let index = learned.candidateIndex(in: trackLyrics.candidateIDs) {
+                        trackLyrics.chosen = index
                         trackLyrics.appliedDelay = learned.delay
                         trackLyrics.hasDelay = true
                     }
@@ -310,9 +324,14 @@ final class LyricsController {
                     outcome = .notFound(track)
                 }
                 statusByTrack[track.id] = outcome
+                loadFailures[track.id] = nil
             } catch {
-                // 실패는 기억하지 않는다 → 다음 폴링 때 다시 시도
-                outcome = .failed(error.localizedDescription)
+                // 5초 → 10 → 20 → 40 → 60초 간격으로 다시 시도 (그동안은 실패 상태를 유지)
+                let count = (loadFailures[track.id]?.count ?? 0) + 1
+                let wait = min(5 * pow(2, Double(count - 1)), 60)
+                loadFailures[track.id] = (count, ContinuousClock.now + .seconds(wait))
+                outcome = .failed("\(error.localizedDescription) — \(Int(wait))초 뒤 다시 시도합니다")
+                statusByTrack[track.id] = outcome
             }
             loadingTrackIDs.remove(track.id)
             if currentTrackID == track.id { status = outcome }
@@ -378,12 +397,13 @@ final class LyricsController {
         let key = "\(trackID)#\(candidate)#\(lineIndex)#\(Int((songStart * 20).rounded()))"
         let streamStart = captureStart + source.streamOffset
         let streamEnd = captureEnd + source.streamOffset
-        let snapshot = source.timeline.snapshot(from: streamStart, to: streamEnd)
 
-        // 줄 전체가 분석됐으면 캐시 고정, 아니면 분석이 0.1초 이상 진행됐을 때만 다시 계산
-        if let cached = wipeCache[key], cached.complete || snapshot.knownUntil - cached.knownUntil < 0.1 {
+        // 줄 전체가 분석됐으면 캐시 고정, 아니면 분석이 0.1초 이상 진행됐을 때만 다시 계산.
+        // 매 프레임 불리므로 프레임 배열을 복사하기 전에 분석 전선만 보고 판단한다.
+        if let cached = wipeCache[key], cached.complete || source.timeline.knownUntil - cached.knownUntil < 0.1 {
             return cached.wipe
         }
+        let snapshot = source.timeline.snapshot(from: streamStart, to: streamEnd)
         let period = source.timeline.framePeriod
         let frames = snapshot.frames.map { frame in
             let streamTime = Double(frame.index) * period
@@ -400,26 +420,5 @@ final class LyricsController {
                                          lineStart: songStart, lineEnd: songEnd, analyzedUntil: analyzedSong)
         wipeCache[key] = WipeCacheEntry(wipe: wipe, knownUntil: snapshot.knownUntil, complete: snapshot.knownUntil >= streamEnd)
         return wipe
-    }
-}
-
-/// 곡별 가사 지연·후보 기억 (UserDefaults). 키는 제목·아티스트·길이 — LRCLIB 캐시 키와 같은 기준.
-struct LearnedLyricsDelays {
-    private let defaults = UserDefaults.standard
-    private static let prefix = "space.knowai.cono.lyricsDelay."
-
-    private func key(for track: TrackInfo) -> String {
-        "\(Self.prefix)\(track.title)|\(track.artist)|\(Int(track.duration.rounded()))"
-    }
-
-    func load(for track: TrackInfo) -> (delay: Double, candidate: Int)? {
-        guard let value = defaults.dictionary(forKey: key(for: track)),
-              let delay = value["delay"] as? Double, let candidate = value["candidate"] as? Int
-        else { return nil }
-        return (delay, candidate)
-    }
-
-    func store(delay: Double, candidate: Int, for track: TrackInfo) {
-        defaults.set(["delay": delay, "candidate": candidate], forKey: key(for: track))
     }
 }

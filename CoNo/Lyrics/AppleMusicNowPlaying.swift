@@ -8,16 +8,6 @@
 
 import Foundation
 
-struct TrackInfo: Hashable, Sendable {
-    /// 음악 앱의 persistent ID (곡 변경 감지·가사 캐시 키)
-    let id: String
-    let title: String
-    let artist: String
-    let album: String
-    /// 초
-    let duration: Double
-}
-
 enum PlayerState: String, Sendable {
     case playing, paused, stopped, notRunning
 }

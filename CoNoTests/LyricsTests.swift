@@ -163,3 +163,87 @@ struct SongClockSmoothingTests {
         #expect(maxError <= 0.015, "중앙값으로 흔들림이 줄어야 한다 (최대 오차 \(maxError))")
     }
 }
+
+// MARK: - 코드 리뷰 반영 (가사 묶음)
+
+struct LyricsReviewFixTests {
+    private func synced(_ id: Int, title: String = "Love", artist: String, lrc: String, duration: Double = 200) -> LyricsCandidate {
+        LyricsCandidate(id: id, trackName: title, artistName: artist, albumName: nil, duration: duration,
+                        instrumental: false, plainLyrics: nil, syncedLyrics: lrc)
+    }
+
+    @Test func sameTimestampKeepsFirstLineOnly() {
+        // 원문 줄 + 번역 줄이 같은 시각 → 첫 줄만 (앞 줄이 길이 0 으로 사라지지 않게)
+        let lyrics = LRCParser.parse("""
+        [00:10.00]창문을 열면 바람이
+        [00:10.00]When I open the window
+        [00:14.00]
+        [00:14.00]하늘을 보는 daydream
+        """)
+        #expect(lyrics.lines.map(\.text) == ["창문을 열면 바람이", "하늘을 보는 daydream"])
+        #expect(LRCParser.parse("[00:01.00]a\r\n[00:02.00]b\r\n").lines.map(\.text) == ["a", "b"], "CRLF")
+    }
+
+    @Test func bilingualLyricsRankBelowOriginal() {
+        let original = synced(1, artist: "Band", lrc: "[00:10.00]When I open the window\n[00:14.00]the wind comes in\n[00:18.00]and I look up")
+        let bilingual = synced(2, artist: "Band", lrc: """
+        [00:10.00]When I open the window
+        [00:10.00]창문을 열면
+        [00:14.00]the wind comes in
+        [00:14.00]바람이 들어와
+        [00:18.00]and I look up
+        [00:18.00]하늘을 봐
+        """)
+        #expect(LRCParser.sharedTimestampRatio(bilingual.syncedLyrics!) == 1)
+        #expect(LRCParser.sharedTimestampRatio(original.syncedLyrics!) == 0)
+        let ranked = LyricsSelector.rankedSynced([bilingual, original], targetDuration: 200, targetTitle: "Love", targetArtist: "Band")
+        #expect(ranked.first?.id == 1)
+        // 원문 문자 가점(로마자 표기보다 원문 우선)은 그대로
+        let romanized = synced(3, artist: "Band", lrc: "[00:10.00]Haneureul boneun daydream")
+        let hangul = synced(4, artist: "Band", lrc: "[00:10.00]하늘을 보는 daydream")
+        #expect(LyricsSelector.rankedSynced([romanized, hangul], targetDuration: 200, targetTitle: "Love", targetArtist: "Band").first?.id == 4)
+    }
+
+    @Test func matchingArtistWinsOverSameTitleFromOtherArtist() {
+        let other = synced(1, artist: "Someone Else", lrc: "[00:10.00]다른 노래의 가사", duration: 200)
+        let right = synced(2, artist: "IU", lrc: "[00:10.00]맞는 노래의 가사", duration: 201)
+        let ranked = LyricsSelector.rankedSynced([other, right], targetDuration: 200, targetTitle: "Love", targetArtist: "IU")
+        #expect(ranked.first?.id == 2, "길이가 1초 더 어긋나도 가수가 맞는 쪽")
+        #expect(LyricsSelector.artistsMatch("IU, SUGA", "iu"))
+        #expect(!LyricsSelector.artistsMatch("아이유", "IU"), "표기가 다르면 가점만 없다 (거르지 않음)")
+        #expect(ranked.count == 2)
+    }
+
+    @Test func unknownDurationDoesNotFilterEverything() {
+        let candidate = synced(1, artist: "A", lrc: "[00:10.00]가사", duration: 200)
+        #expect(LyricsSelector.rankedSynced([candidate], targetDuration: 0, targetTitle: "Love").count == 1)
+        #expect(LyricsSelector.best([candidate], targetDuration: 0)?.id == 1)
+    }
+
+    @Test func learnedDelayFollowsCandidateIDNotPosition() throws {
+        let suite = "space.knowai.cono.tests.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let store = LearnedLyricsDelays(defaults: defaults)
+        let track = TrackInfo(id: "p1", title: "Love", artist: "IU", album: "", duration: 200)
+
+        store.store(delay: 0.8, candidateID: 42, for: track)
+        let learned = try #require(store.load(for: track))
+        #expect(learned.delay == 0.8)
+        // 캐시를 다시 받아 순서가 바뀌어도 같은 가사를 가리킨다
+        #expect(learned.candidateIndex(in: [7, 42, 9]) == 1)
+        // 기억한 가사가 목록에 없으면 적용하지 않는다 (다른 가사에 지연을 얹지 않게)
+        #expect(learned.candidateIndex(in: [7, 9]) == nil)
+        // 옛 형식(순번만)도 읽는다
+        let legacy = LearnedLyricsDelays.Learned(delay: 0.5, candidateID: nil, legacyIndex: 1)
+        #expect(legacy.candidateIndex(in: [7, 9]) == 1)
+        #expect(legacy.candidateIndex(in: [7]) == nil)
+    }
+
+    @Test func plusSignIsPercentEncoded() throws {
+        var components = try #require(URLComponents(string: "https://lrclib.net/api/search"))
+        components.queryItems = [URLQueryItem(name: "q", value: "Florence + the Machine")]
+        let query = try #require(components.urlEncodingPlus.query(percentEncoded: true))
+        #expect(query == "q=Florence%20%2B%20the%20Machine")
+    }
+}

@@ -56,6 +56,31 @@ struct TimedLyrics: Equatable, Sendable {
 
 enum LRCParser {
     static func parse(_ lrc: String) -> TimedLyrics {
+        // 같은 시각의 줄이 여럿이면 첫 줄만 남긴다 (병기 가사의 번역 줄).
+        // 그대로 두면 앞 줄은 길이 0 이라 영원히 안 보이고, 어느 줄이 보일지가 정렬 순서에 달린다.
+        var lines: [LyricLine] = []
+        for line in timedLines(lrc) {
+            if let last = lines.last, last.start == line.start {
+                if last.isInterlude, !line.isInterlude { lines[lines.count - 1] = line }
+                continue
+            }
+            lines.append(line)
+        }
+        return TimedLyrics(lines: lines)
+    }
+
+    /// 가사 줄 중 다른 가사 줄과 시각이 똑같은 줄의 비율. 원문·번역을 같은 시각에 겹쳐 둔 병기 가사를 알아보는 데 쓴다.
+    static func sharedTimestampRatio(_ lrc: String) -> Double {
+        let starts = timedLines(lrc).filter { !$0.isInterlude }.map(\.start)
+        guard !starts.isEmpty else { return 0 }
+        var counts: [Double: Int] = [:]
+        for start in starts { counts[start, default: 0] += 1 }
+        let shared = starts.filter { (counts[$0] ?? 0) > 1 }.count
+        return Double(shared) / Double(starts.count)
+    }
+
+    /// 시각순(같은 시각은 원래 순서) 줄 목록. offset 적용.
+    private static func timedLines(_ lrc: String) -> [LyricLine] {
         var offsetSeconds = 0.0
         var lines: [LyricLine] = []
 
@@ -82,11 +107,11 @@ enum LRCParser {
             }
         }
 
-        // offset 은 양수면 가사를 앞당긴다 (start − offset)
-        let adjusted = lines
-            .map { LyricLine(start: max(0, $0.start - offsetSeconds), text: $0.text) }
-            .sorted { $0.start < $1.start }
-        return TimedLyrics(lines: adjusted)
+        // offset 은 양수면 가사를 앞당긴다 (start − offset). 같은 시각은 원래 순서를 지킨다 (sorted 는 안정 정렬 보장이 없다).
+        return lines.enumerated()
+            .map { (order: $0.offset, line: LyricLine(start: max(0, $0.element.start - offsetSeconds), text: $0.element.text)) }
+            .sorted { ($0.line.start, $0.order) < ($1.line.start, $1.order) }
+            .map(\.line)
     }
 
     /// "mm:ss", "mm:ss.xx", "mm:ss.xxx", "mm:ss:xx"

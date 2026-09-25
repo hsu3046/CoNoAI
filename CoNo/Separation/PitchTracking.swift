@@ -38,6 +38,11 @@ final class PitchTimeline: @unchecked Sendable {
 
     var error: String? { lastError.withLock { $0 } }
 
+    /// 분석이 끝난 시각 (마지막 프레임 끝). 프레임을 복사하지 않고 캐시 유효성만 볼 때.
+    var knownUntil: Double {
+        frames.withLock { stored in stored.last.map { Double($0.index + 1) * framePeriod } ?? 0 }
+    }
+
     /// [from, to) 초 구간의 연속 프레임과, 분석이 끝난 시각(마지막 프레임 끝).
     func snapshot(from: Double, to: Double) -> (frames: [PitchFrame], knownUntil: Double) {
         // 무한대·NaN 을 프레임 번호로 바꾸면 정수 변환에서 크래시한다
@@ -45,6 +50,10 @@ final class PitchTimeline: @unchecked Sendable {
         return frames.withLock { stored in
             guard let first = stored.first, let last = stored.last else { return ([], 0) }
             let knownUntil = Double(last.index + 1) * framePeriod
+            // 아주 큰 유한값도 Int 변환에서 트랩하므로, 프레임 번호로 바꾸기 전에 보관 범위로 자른다
+            let lower = Double(first.index) * framePeriod
+            let from = min(max(from, lower), knownUntil)
+            let to = min(max(to, lower), knownUntil)
             let fromIndex = max(first.index, Int((from / framePeriod).rounded(.down)))
             let toIndex = min(last.index + 1, Int((to / framePeriod).rounded(.up)))
             guard toIndex > fromIndex else { return ([], knownUntil) }

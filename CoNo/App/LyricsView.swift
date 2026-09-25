@@ -122,6 +122,7 @@ private struct KaraokeLine: View {
                         Rectangle().frame(width: proxy.size.width * progress)
                     }
                 }
+                .accessibilityHidden(true) // 색칠용 겹친 글자 — VoiceOver 가 같은 줄을 두 번 읽지 않게
         }
         .font(.system(size: Self.fontSize, weight: .bold))
         .lineLimit(1)
