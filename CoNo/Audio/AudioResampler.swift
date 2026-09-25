@@ -1,10 +1,11 @@
 // CoNo — Copyright (C) 2026 KnowAI (https://knowai.space) — GPL-3.0-or-later
 //
-// 스트리밍 스테레오 샘플레이트 변환 (AVAudioConverter). 워커 스레드 전용 — IO 스레드에서 쓰지 말 것.
+// 스트리밍 샘플레이트 변환 (AVAudioConverter, 플래너 1~2채널). 워커 스레드 전용 — IO 스레드에서 쓰지 말 것.
 
 import AVFoundation
 
-final class StereoResampler {
+final class AudioResampler {
+    let channelCount: Int
     let inputRate: Double
     let outputRate: Double
 
@@ -13,10 +14,12 @@ final class StereoResampler {
     private let outputBuffer: AVAudioPCMBuffer
     private let maxInputFrames: Int
 
-    init(inputRate: Double, outputRate: Double, maxInputFrames: Int) throws {
+    init(inputRate: Double, outputRate: Double, channelCount: Int = 2, maxInputFrames: Int) throws {
+        precondition(channelCount == 1 || channelCount == 2)
+        let channels = AVAudioChannelCount(channelCount)
         guard
-            let inFormat = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: inputRate, channels: 2, interleaved: false),
-            let outFormat = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: outputRate, channels: 2, interleaved: false),
+            let inFormat = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: inputRate, channels: channels, interleaved: false),
+            let outFormat = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: outputRate, channels: channels, interleaved: false),
             let converter = AVAudioConverter(from: inFormat, to: outFormat)
         else {
             throw CoreAudioError("샘플레이트 변환기 생성 실패 (\(Int(inputRate)) → \(Int(outputRate)) Hz)")
@@ -31,6 +34,7 @@ final class StereoResampler {
             throw CoreAudioError("샘플레이트 변환 버퍼 할당 실패")
         }
 
+        self.channelCount = channelCount
         self.inputRate = inputRate
         self.outputRate = outputRate
         self.converter = converter
@@ -45,12 +49,28 @@ final class StereoResampler {
         right: UnsafeBufferPointer<Float>,
         emit: (UnsafeBufferPointer<Float>, UnsafeBufferPointer<Float>) throws -> Void
     ) throws {
+        precondition(channelCount == 2)
+        try convert([left, right]) { try emit($0[0], $0[1]) }
+    }
+
+    /// 모노 입력을 변환해 `emit` 으로 넘긴다.
+    func process(mono: UnsafeBufferPointer<Float>, emit: (UnsafeBufferPointer<Float>) throws -> Void) throws {
+        precondition(channelCount == 1)
+        try convert([mono]) { try emit($0[0]) }
+    }
+
+    private func convert(
+        _ inputs: [UnsafeBufferPointer<Float>],
+        emit: ([UnsafeBufferPointer<Float>]) throws -> Void
+    ) throws {
+        let total = inputs[0].count
         var offset = 0
-        while offset < left.count {
-            let n = min(maxInputFrames, left.count - offset)
+        while offset < total {
+            let n = min(maxInputFrames, total - offset)
             guard let inChannels = inputBuffer.floatChannelData else { return }
-            inChannels[0].update(from: left.baseAddress! + offset, count: n)
-            inChannels[1].update(from: right.baseAddress! + offset, count: n)
+            for channel in 0..<channelCount {
+                inChannels[channel].update(from: inputs[channel].baseAddress! + offset, count: n)
+            }
             inputBuffer.frameLength = AVAudioFrameCount(n)
             offset += n
 
@@ -73,10 +93,7 @@ final class StereoResampler {
 
             let produced = Int(outputBuffer.frameLength)
             guard produced > 0, let outChannels = outputBuffer.floatChannelData else { continue }
-            try emit(
-                UnsafeBufferPointer(start: outChannels[0], count: produced),
-                UnsafeBufferPointer(start: outChannels[1], count: produced)
-            )
+            try emit((0..<channelCount).map { UnsafeBufferPointer(start: outChannels[$0], count: produced) })
         }
     }
 }

@@ -97,9 +97,7 @@ final class MDXSeparator: ChunkSeparating, @unchecked Sendable {
         inputData = NSMutableData(length: 4 * config.dimF * config.dimT * MemoryLayout<Float>.size)!
 
         do {
-            // CONO_ORT_VERBOSE=1 이면 CoreML 이 가져간 노드 수 등 진단 로그를 stderr 로 낸다
-            let verbose = ProcessInfo.processInfo.environment["CONO_ORT_VERBOSE"] == "1"
-            env = try ORTEnv(loggingLevel: verbose ? .verbose : .warning)
+            env = try OnnxRuntimeEnvironment.env()
             let options = try ORTSessionOptions()
             try options.setGraphOptimizationLevel(.all)
             try Self.appendExecutionProvider(backend, to: options, cacheDirectory: cacheDirectory)

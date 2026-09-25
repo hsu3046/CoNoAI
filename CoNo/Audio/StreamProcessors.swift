@@ -59,8 +59,8 @@ final class SeparationProcessor: StreamProcessor, @unchecked Sendable {
     private let streaming: StreamingSeparator
     private let timedSeparator: TimedSeparator
     /// 장치 레이트 ≠ 모델 레이트일 때만 존재
-    private let downsampler: StereoResampler?
-    private let upsampler: StereoResampler?
+    private let downsampler: AudioResampler?
+    private let upsampler: AudioResampler?
 
     private let outputSelection = Atomic<Int>(SeparationOutput.accompaniment.rawValue)
 
@@ -69,19 +69,30 @@ final class SeparationProcessor: StreamProcessor, @unchecked Sendable {
     private var planarRight: [Float] = []
     private var selectedLeft: [Float] = []
     private var selectedRight: [Float] = []
+    private var vocalLeft: [Float] = []
+    private var vocalRight: [Float] = []
     private var interleaved: [Float] = []
 
-    init(separator: MDXSeparator, settings: StreamingSeparatorSettings, deviceSampleRate: Double) throws {
+    /// 분리된 보컬의 음정을 추적 (없으면 음정 바 없이 분리만)
+    private let pitchTracker: PitchTracker?
+
+    init(
+        separator: MDXSeparator,
+        settings: StreamingSeparatorSettings,
+        deviceSampleRate: Double,
+        pitchDetector: SwiftF0Detector?
+    ) throws {
         let modelRate = separator.config.sampleRate
         timedSeparator = TimedSeparator(separator)
         streaming = try StreamingSeparator(separator: timedSeparator, settings: settings)
         compensate = separator.config.compensate
+        pitchTracker = try pitchDetector.map { try PitchTracker(detector: $0, inputSampleRate: modelRate) }
         streamOffsetSeconds = Double(streaming.streamOffsetSamples) / modelRate
         maxWaitSeconds = Double(streaming.maxWaitSamples) / modelRate
 
         if abs(deviceSampleRate - modelRate) > 0.5 {
-            downsampler = try StereoResampler(inputRate: deviceSampleRate, outputRate: modelRate, maxInputFrames: 4_096)
-            upsampler = try StereoResampler(inputRate: modelRate, outputRate: deviceSampleRate, maxInputFrames: 4_096)
+            downsampler = try AudioResampler(inputRate: deviceSampleRate, outputRate: modelRate, maxInputFrames: 4_096)
+            upsampler = try AudioResampler(inputRate: modelRate, outputRate: deviceSampleRate, maxInputFrames: 4_096)
         } else {
             downsampler = nil
             upsampler = nil
@@ -94,6 +105,8 @@ final class SeparationProcessor: StreamProcessor, @unchecked Sendable {
     }
 
     var inferenceStats: InferenceStats { timedSeparator.stats }
+
+    var pitchTimeline: PitchTimeline? { pitchTracker?.timeline }
 
     func process(_ input: UnsafeBufferPointer<Float>, emit: (UnsafeBufferPointer<Float>) -> Void) throws {
         let frames = input.count / 2
@@ -133,7 +146,25 @@ final class SeparationProcessor: StreamProcessor, @unchecked Sendable {
             if selectedLeft.count < n {
                 selectedLeft = [Float](repeating: 0, count: n)
                 selectedRight = selectedLeft
+                vocalLeft = selectedLeft
+                vocalRight = selectedLeft
             }
+            // 보컬 = 원곡 − 반주 × 보정계수 (들려줄 출력과 무관하게 음정 추적용으로 항상 계산)
+            for i in 0..<n {
+                vocalLeft[i] = out.mixLeft[i] - out.accompanimentLeft[i] * compensate
+                vocalRight[i] = out.mixRight[i] - out.accompanimentRight[i] * compensate
+            }
+            if let pitchTracker {
+                vocalLeft.withUnsafeBufferPointer { l in
+                    vocalRight.withUnsafeBufferPointer { r in
+                        pitchTracker.push(
+                            vocalLeft: UnsafeBufferPointer(rebasing: l[0..<n]),
+                            vocalRight: UnsafeBufferPointer(rebasing: r[0..<n])
+                        )
+                    }
+                }
+            }
+
             let selection = output
             for i in 0..<n {
                 switch selection {
@@ -141,8 +172,8 @@ final class SeparationProcessor: StreamProcessor, @unchecked Sendable {
                     selectedLeft[i] = out.accompanimentLeft[i]
                     selectedRight[i] = out.accompanimentRight[i]
                 case .vocals:
-                    selectedLeft[i] = out.mixLeft[i] - out.accompanimentLeft[i] * compensate
-                    selectedRight[i] = out.mixRight[i] - out.accompanimentRight[i] * compensate
+                    selectedLeft[i] = vocalLeft[i]
+                    selectedRight[i] = vocalRight[i]
                 case .original:
                     selectedLeft[i] = out.mixLeft[i]
                     selectedRight[i] = out.mixRight[i]

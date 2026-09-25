@@ -40,3 +40,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ## UVR-MDX-NET Karaoke 2 (모델 가중치)
 - Source: https://github.com/TRvlvr/model_repo (Ultimate Vocal Remover 공개 모델)
 - 저장소에 포함하지 않으며 `scripts/fetch-models.sh` 로 받는다. **가중치 라이선스가 명시돼 있지 않아 재배포 전 확인 필요.**
+
+## SwiftF0
+- Source: https://github.com/lars76/swift-f0 (commit 2ed0c83), MIT License, Copyright (c) 2025-2026 Lars Nieradzik
+- Used in: `CoNo/Resources/swift_f0.onnx` — 원본 `swift_f0/model.onnx` 의 pitch 출력에 Cast(float) 노드를 붙인 **수정본** (`scripts/convert_swiftf0.py`). 스트리밍 규칙(`CoNo/DSP/PitchFrameStream.swift`)은 원본 `PitchStream` 을 참고해 재구현.

@@ -76,6 +76,20 @@ final class DelayPipeline: @unchecked Sendable {
     private let receivedSignal = Atomic<Bool>(false)
     private let processingError = Mutex<String?>(nil)
 
+    // 재생 시계 (seqlock): IO 스레드가 쓰고 UI 가 읽는다. 버전이 홀수면 쓰는 중.
+    // playedFrames = 이번 출력 버퍼 앞까지 재생 링에서 실제로 꺼낸 프레임 수 = 출력 스트림 위치
+    // clockHostTime = 그 버퍼 첫 샘플의 출력 호스트 시각 (mach_absolute_time 단위)
+    private let clockVersion = Atomic<Int>(0)
+    private let clockFrames = Atomic<Int>(0)
+    private let clockHostTime = Atomic<UInt64>(0)
+    /// IO 스레드 전용 누적 재생 프레임
+    private var ioPlayedFrames = 0
+    private static let hostTicksToSeconds: Double = {
+        var info = mach_timebase_info_data_t()
+        mach_timebase_info(&info)
+        return Double(info.numer) / Double(info.denom) / 1e9
+    }()
+
     /// - Parameter burstSeconds: 처리기가 한 번에 몰아서 내는 최대 길이 (분리기의 step). 버퍼 여유 계산에 쓴다.
     init(sampleRate: Double, delaySeconds: Double, processor: StreamProcessor, burstSeconds: Double = 0) {
         self.sampleRate = sampleRate
@@ -167,9 +181,15 @@ final class DelayPipeline: @unchecked Sendable {
     /// - Parameters:
     ///   - input: 입력 버퍼 목록. 탭 스트림은 서브디바이스 입력 스트림 **뒤에** 붙으므로 끝에서부터 찾는다.
     ///   - tapChannelCount: 탭 스트림 채널 수 (스테레오 믹스다운 = 2)
-    func renderIO(input: UnsafePointer<AudioBufferList>, output: UnsafeMutablePointer<AudioBufferList>, tapChannelCount: Int) {
+    ///   - outputTime: 출력 버퍼가 재생될 시각 (재생 시계용)
+    func renderIO(
+        input: UnsafePointer<AudioBufferList>,
+        output: UnsafeMutablePointer<AudioBufferList>,
+        outputTime: UnsafePointer<AudioTimeStamp>,
+        tapChannelCount: Int
+    ) {
         captureTap(from: input, tapChannelCount: tapChannelCount)
-        renderPlayback(into: output)
+        renderPlayback(into: output, outputTime: outputTime)
     }
 
     private func captureTap(from input: UnsafePointer<AudioBufferList>, tapChannelCount: Int) {
@@ -226,7 +246,7 @@ final class DelayPipeline: @unchecked Sendable {
         Self.raisePeak(inputPeakBits, to: peak)
     }
 
-    private func renderPlayback(into output: UnsafeMutablePointer<AudioBufferList>) {
+    private func renderPlayback(into output: UnsafeMutablePointer<AudioBufferList>, outputTime: UnsafePointer<AudioTimeStamp>) {
         let buffers = UnsafeMutableAudioBufferListPointer(output)
         guard let first = buffers.first, first.mNumberChannels > 0 else { return }
         let frames = min(Int(first.mDataByteSize) / (MemoryLayout<Float>.size * Int(first.mNumberChannels)), Self.maxIOFrames)
@@ -252,6 +272,15 @@ final class DelayPipeline: @unchecked Sendable {
             (ioPlayScratch + got).update(repeating: 0, count: samples - got)
         }
 
+        // 재생 시계 갱신: 이 버퍼 첫 샘플 = 출력 스트림의 ioPlayedFrames 번째
+        if outputTime.pointee.mFlags.contains(.hostTimeValid) {
+            clockVersion.add(1, ordering: .acquiringAndReleasing)
+            clockFrames.store(ioPlayedFrames, ordering: .relaxed)
+            clockHostTime.store(outputTime.pointee.mHostTime, ordering: .relaxed)
+            clockVersion.add(1, ordering: .acquiringAndReleasing)
+        }
+        ioPlayedFrames += got / Self.channels
+
         // 출력 디바이스 채널 중 앞의 두 채널에 좌/우를 쓰고 나머지는 0
         var peak: Float = 0
         var globalChannel = 0
@@ -276,6 +305,27 @@ final class DelayPipeline: @unchecked Sendable {
         if peak > Float(bitPattern: atomic.load(ordering: .relaxed)) {
             atomic.store(peak.bitPattern, ordering: .relaxed)
         }
+    }
+
+    // MARK: - Playback clock (UI 스레드)
+
+    /// 지금 스피커로 나가고 있는 출력 스트림 위치 (초). 아직 재생 전이면 nil.
+    /// 마지막 IO 콜백의 (위치, 출력 시각) 에서 경과 시간으로 보간하되, 끊김(언더런) 중에 앞으로 달려가지 않도록 +50 ms 로 제한.
+    func playbackPosition() -> Double? {
+        for _ in 0..<4 {
+            let before = clockVersion.load(ordering: .acquiring)
+            guard before % 2 == 0 else { continue }
+            let frames = clockFrames.load(ordering: .relaxed)
+            let hostTime = clockHostTime.load(ordering: .relaxed)
+            let after = clockVersion.load(ordering: .acquiring)
+            guard before == after else { continue }
+            guard hostTime != 0 else { return nil }
+            // 출력 시각은 보통 "곧 재생될" 미래라 경과 시간이 음수일 수 있다 (그만큼 아직 앞 버퍼가 나가는 중)
+            let now = mach_absolute_time()
+            let elapsed = (Double(now) - Double(hostTime)) * Self.hostTicksToSeconds
+            return Double(frames) / sampleRate + min(max(elapsed, -0.1), 0.05)
+        }
+        return nil
     }
 
     // MARK: - Stats (UI 스레드)

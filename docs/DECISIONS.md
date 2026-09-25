@@ -45,3 +45,12 @@
 
 ## 2026-09-25 — 검증: AI 분리 실사용 품질 확인
 - Apple Music 곡으로 실시간 분리 재생 — 사용자 평가 "거의 완벽하게 분리". 기본값(step 1.0초, rightContext 1.0초, CoreML 자동)으로 충분.
+
+## 2026-09-25 — 음정 검출: SwiftF0 (모델 변환본 커밋)
+- 후보: A) SwiftF0 ONNX / B) YIN 직접 구현 → **A**. 벤치마크 1위, 135 KB, MIT, 기존 ONNX Runtime 재사용, 마이크 채점에도 재사용 예정.
+- ORT ObjC API 에 double 텐서 타입이 없어 원본 pitch(double) 출력을 못 읽음 → `scripts/convert_swiftf0.py` 로 Cast(float) 를 붙인 변환본을 `CoNo/Resources/swift_f0.onnx` 에 커밋 (원본 md5 검증).
+- 모델 준비 시 220 Hz 사인파 자가진단 → 220.0 Hz 확인.
+
+## 2026-09-25 — 음정 바 시간축 = 출력 스트림 초
+- 보컬과 반주가 같은 출력 스트림에서 나오므로, 음정 프레임과 재생 위치를 둘 다 출력 스트림 기준으로 세면 rightContext·프리롤 오프셋 계산이 필요 없다.
+- 캡처 시각이 필요한 가사 싱크에서만 스트림 오프셋(rightContext)을 쓴다.

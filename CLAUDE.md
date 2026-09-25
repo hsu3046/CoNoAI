@@ -18,3 +18,6 @@
 - **STFT 는 torch 규칙 그대로**: reflect 패딩·periodic Hann·정규화 없음. 바꾸면 `forwardMatchesTorchDefinition` 이 잡는다 (왕복 테스트는 패딩 오류를 못 잡는다).
 - **스트림 오프셋 ≠ 대기 시간**: 분리 출력의 위치 오프셋은 rightContext, step 은 대기 시간일 뿐. 싱크 계산에 섞지 말 것.
 - **분리 모델 객체는 한 스레드만**: `DelayPipeline.stopWorker` 가 워커 종료를 기다린 뒤에야 같은 `MDXSeparator` 를 재사용한다.
+- **ORT ObjC API 는 double 텐서를 못 읽는다** (`ORTTensorElementDataType` 에 Double 없음): 출력이 double 인 모델은 Cast(float) 변환본을 만든다 (`scripts/convert_swiftf0.py`).
+- **음정 바 시간축**: 음정 프레임과 재생 위치는 둘 다 "출력 스트림 초". 여기에 rightContext 를 더하거나 빼지 말 것 (가사처럼 캡처 시각이 필요할 때만 사용).
+- **자가진단 실패가 핵심 기능을 막지 않게**: 음정 검출기 실패 시에도 분리는 계속 돈다.

@@ -22,7 +22,12 @@ struct ContentView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             header
-            sourceList
+            if let timeline = engine.pitchTimeline {
+                PitchBarView(timeline: timeline, position: { engine.displayPosition() })
+                    .frame(minHeight: 240)
+            } else {
+                sourceList
+            }
             settings
             controls
             if engine.isRunning { monitor }
@@ -43,7 +48,7 @@ struct ContentView: View {
     private var header: some View {
         VStack(alignment: .leading, spacing: 4) {
             Text("CoNo").font(.largeTitle.bold())
-            Text("PoC ② — AI 보컬 분리 (UVR MDX-Net Karaoke 2)")
+            Text("PoC ③ — AI 보컬 분리 + 음정 바 (SwiftF0)")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
         }
@@ -196,6 +201,15 @@ struct ContentView: View {
                 ))
                 Text(String(format: "갱신 간격 대비 %.0f%% %@", ratio * 100, ratio < 0.7 ? "— 여유 있음" : ratio < 1 ? "— 빠듯함" : "— 실시간 불가, 간격을 늘리세요"))
                     .foregroundStyle(ratio < 0.7 ? .green : ratio < 1 ? .orange : .red)
+                if let hz = benchmark.pitchSelfTestHz {
+                    let ok = abs(hz - 220) < 3
+                    Text(String(format: "음정 검출 자가진단: 220 Hz → %.1f Hz %@", hz, ok ? "✓" : "✗ 이상"))
+                        .foregroundStyle(ok ? .green : .red)
+                } else {
+                    Text("음정 검출기(SwiftF0) 실패 — 음정 바 없이 분리만 동작: \(benchmark.pitchSelfTestError ?? "")")
+                        .foregroundStyle(.orange)
+                        .textSelection(.enabled)
+                }
             }
             .font(.caption)
             .monospacedDigit()
@@ -297,6 +311,25 @@ struct ContentView: View {
                     }
                     .font(.callout)
                     .monospacedDigit()
+                }
+
+                if engine.pitchTimeline != nil {
+                    HStack {
+                        Text("화면 싱크").foregroundStyle(.secondary)
+                        Slider(
+                            value: Binding(get: { engine.displayLatencyMilliseconds }, set: { engine.displayLatencyMilliseconds = $0 }),
+                            in: -300...500,
+                            step: 10
+                        )
+                        Text(String(format: "%+.0f ms", engine.displayLatencyMilliseconds))
+                            .monospacedDigit()
+                            .frame(width: 64, alignment: .trailing)
+                    }
+                    .font(.callout)
+                    .help("음정 바가 소리보다 빠르면 +로 늦춥니다. 블루투스 이어폰은 보통 +150~250 ms.")
+                }
+                if let error = engine.pitchError ?? engine.pitchTimeline?.error {
+                    Text("음정 추적 오류: \(error)").font(.caption).foregroundStyle(.orange).textSelection(.enabled)
                 }
 
                 if let error = stats.processingError {

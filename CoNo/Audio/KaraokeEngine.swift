@@ -35,6 +35,9 @@ struct ModelBenchmark: Sendable, Equatable {
     var steadyInferenceMilliseconds: Double
     /// 워밍업 뒤 평균 중 모델 실행만
     var steadyModelMilliseconds: Double
+    /// SwiftF0 자가진단: 220 Hz 사인파에서 검출한 음정 (nil = 실패, 사유는 pitchSelfTestError)
+    var pitchSelfTestHz: Double?
+    var pitchSelfTestError: String?
 }
 
 @MainActor
@@ -66,6 +69,13 @@ final class KaraokeEngine {
     /// AI 모드일 때 출력 스트림 오프셋과 최대 대기 (초)
     private(set) var separationTiming: (streamOffset: Double, maxWait: Double)?
 
+    /// 음정 바용 타임라인 (AI 모드 실행 중에만)
+    private(set) var pitchTimeline: PitchTimeline?
+    /// 음정 검출기를 못 만들었을 때 사유 (분리는 계속 동작)
+    private(set) var pitchError: String?
+    /// 화면을 소리보다 늦출 시간 (ms). 블루투스 출력은 장치 지연이 커서 150~250 ms 정도 필요하다.
+    var displayLatencyMilliseconds: Double = 0
+
     /// AI 모드에서 들려줄 출력 — 실행 중에도 바꿀 수 있다
     var separationOutput: SeparationOutput = .accompaniment {
         didSet { separationProcessor?.output = separationOutput }
@@ -73,6 +83,7 @@ final class KaraokeEngine {
 
     private let modelConfig = MDXModelConfig.karaoke2
     private var separator: MDXSeparator?
+    private var pitchDetector: SwiftF0Detector?
     private var separationProcessor: SeparationProcessor?
     private var session: ProcessTapSession?
     private var pipeline: DelayPipeline?
@@ -108,7 +119,7 @@ final class KaraokeEngine {
         let config = modelConfig
         let cacheDirectory = Self.coreMLCacheDirectory
 
-        let result = await Task.detached(priority: .userInitiated) { () -> Result<(MDXSeparator, ModelBenchmark), Error> in
+        let result = await Task.detached(priority: .userInitiated) { () -> Result<(MDXSeparator, ModelBenchmark, SwiftF0Detector?), Error> in
             do {
                 let clock = ContinuousClock()
                 let loadStart = clock.now
@@ -140,22 +151,40 @@ final class KaraokeEngine {
                 }
                 let steady = timings.dropFirst().reduce(0, +) / Double(timings.count - 1)
                 let steadyModel = modelTimings.dropFirst().reduce(0, +) / Double(modelTimings.count - 1)
+                // SwiftF0 자가진단: 1초짜리 220 Hz 사인파 → 유성 프레임 음정의 중앙값
+                // 실패해도 분리 모델 준비는 성공으로 둔다 (음정 바만 빠짐)
+                var detector: SwiftF0Detector?
+                var selfTestHz: Double?
+                var selfTestError: String?
+                do {
+                    let created = try SwiftF0Detector()
+                    let sine = (0..<16_000).map { Float(0.5 * sin(2 * Double.pi * 220 * Double($0) / 16_000)) }
+                    let (pitch, confidence) = try sine.withUnsafeBufferPointer { try created.estimate($0) }
+                    let voiced = zip(pitch, confidence).filter { $0.1 >= 0.5 }.map(\.0).sorted()
+                    selfTestHz = voiced.isEmpty ? 0 : voiced[voiced.count / 2]
+                    detector = created
+                } catch {
+                    selfTestError = error.localizedDescription
+                }
                 let benchmark = ModelBenchmark(
                     backend: backend,
                     loadSeconds: loadSeconds,
                     firstInferenceMilliseconds: timings[0],
                     steadyInferenceMilliseconds: steady,
-                    steadyModelMilliseconds: steadyModel
+                    steadyModelMilliseconds: steadyModel,
+                    pitchSelfTestHz: selfTestHz,
+                    pitchSelfTestError: selfTestError
                 )
-                return .success((separator, benchmark))
+                return .success((separator, benchmark, detector))
             } catch {
                 return .failure(error)
             }
         }.value
 
         switch result {
-        case let .success((loaded, benchmark)):
+        case let .success((loaded, benchmark, detector)):
             separator = loaded
+            if let detector { pitchDetector = detector }
             modelState = .ready(benchmark)
             return true
         case let .failure(error):
@@ -203,6 +232,7 @@ final class KaraokeEngine {
             var burstSeconds = 0.0
             separationProcessor = nil
             separationTiming = nil
+            pitchTimeline = nil
             switch mode {
             case .passthrough:
                 processor = PassthroughProcessor()
@@ -210,13 +240,24 @@ final class KaraokeEngine {
                 processor = CenterCancelProcessor()
             case .aiSeparation:
                 guard let separator else { throw CoreAudioError("분리 모델이 준비되지 않았습니다") }
+                // 음정 검출기는 없어도 분리는 돌린다 (음정 바만 빠짐)
+                if pitchDetector == nil {
+                    do {
+                        pitchDetector = try SwiftF0Detector()
+                        pitchError = nil
+                    } catch {
+                        pitchError = error.localizedDescription
+                    }
+                }
                 let separation = try SeparationProcessor(
                     separator: separator,
                     settings: separation.streamingSettings(for: modelConfig),
-                    deviceSampleRate: outputRate
+                    deviceSampleRate: outputRate,
+                    pitchDetector: pitchDetector
                 )
                 separation.output = separationOutput
                 separationProcessor = separation
+                pitchTimeline = separation.pitchTimeline
                 separationTiming = (separation.streamOffsetSeconds, separation.maxWaitSeconds)
                 burstSeconds = separation.maxWaitSeconds
                 processor = separation
@@ -228,8 +269,8 @@ final class KaraokeEngine {
             pipeline.startWorker()
 
             let tapChannels = max(1, Int(session.tapFormat.mChannelsPerFrame))
-            try session.start { [pipeline] _, inputData, _, outputData, _ in
-                pipeline.renderIO(input: inputData, output: outputData, tapChannelCount: tapChannels)
+            try session.start { [pipeline] _, inputData, _, outputData, outputTime in
+                pipeline.renderIO(input: inputData, output: outputData, outputTime: outputTime, tapChannelCount: tapChannels)
             }
 
             self.session = session
@@ -245,6 +286,7 @@ final class KaraokeEngine {
             session.teardown()
             createdPipeline?.stopWorker()
             separationProcessor = nil
+            pitchTimeline = nil
             status = .failed(error.localizedDescription)
         }
     }
@@ -258,8 +300,14 @@ final class KaraokeEngine {
         pipeline?.stopWorker()
         pipeline = nil
         separationProcessor = nil
+        pitchTimeline = nil
         runningMode = nil
         if isRunning { status = .idle }
+    }
+
+    /// 지금 들리는 출력 스트림 위치 (초, 화면 싱크 보정 반영). 음정 타임라인과 같은 시간축.
+    func displayPosition() -> Double? {
+        pipeline?.playbackPosition().map { $0 - displayLatencyMilliseconds / 1000 }
     }
 
     private func startStatsPolling() {
