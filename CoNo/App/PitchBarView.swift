@@ -8,6 +8,8 @@ import SwiftUI
 struct PitchBarView: View {
     let timeline: PitchTimeline
     let position: () -> Double?
+    /// 키 조절 반음 — 원곡 음정에 더해 "지금 들리는 키" 로 그린다
+    var keyShift: Int = 0
 
     /// 재생선 왼쪽(지나간 부분)과 오른쪽(앞으로 부를 부분)에 보여줄 초
     private let pastSeconds = 1.5
@@ -48,7 +50,9 @@ struct PitchBarView: View {
         let period = timeline.framePeriod
         // 음표 경계가 창 가장자리에서 흔들리지 않도록 1초 앞부터 잘라 묶는다
         let snapshot = timeline.snapshot(from: t0 - 1, to: t1)
-        let notes = segmenter.segment(snapshot.frames)
+        let notes = segmenter.segment(snapshot.frames).map {
+            SungNote(startFrame: $0.startFrame, endFrame: $0.endFrame, midi: $0.midi + keyShift)
+        }
         range.update(with: notes.filter { Double($0.endFrame) * period > t0 })
 
         let low = range.low
@@ -110,7 +114,7 @@ struct PitchBarView: View {
         for frame in snapshot.frames where frame.confidence >= segmenter.voicedThreshold && frame.pitchHz > 0 {
             let t = Double(frame.index) * period
             guard t >= t0 else { continue }
-            let point = CGPoint(x: x(t), y: y(NoteSegmenter.midi(fromHz: frame.pitchHz)))
+            let point = CGPoint(x: x(t), y: y(NoteSegmenter.midi(fromHz: frame.pitchHz) + Double(keyShift)))
             if let previousIndex, frame.index - previousIndex <= 2 {
                 contour.addLine(to: point)
             } else {

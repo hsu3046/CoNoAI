@@ -78,6 +78,14 @@ final class KaraokeEngine {
     /// 화면을 소리보다 늦출 시간 (ms). 블루투스 출력은 장치 지연이 커서 150~250 ms 정도 필요하다.
     var displayLatencyMilliseconds: Double = 0
 
+    /// 키 조절 (반음). 실행 전에도 정할 수 있고 실행 중에 바로 반영된다. 음정 바도 같은 만큼 옮겨 그린다.
+    var keyShift: Int = 0 {
+        didSet {
+            keyShift = min(max(keyShift, PlaybackOutput.keyShiftRange.lowerBound), PlaybackOutput.keyShiftRange.upperBound)
+            output?.setKeyShift(keyShift)
+        }
+    }
+
     /// AI 모드에서 들려줄 출력 — 실행 중에도 바꿀 수 있다
     var separationOutput: SeparationOutput = .accompaniment {
         didSet { separationProcessor?.output = separationOutput }
@@ -295,6 +303,7 @@ final class KaraokeEngine {
             pipeline.startWorker()
 
             // 3) 재생 (출력 장치가 바뀌면 엔진이 멈추므로 안전하게 정지하고 안내)
+            playback.setKeyShift(keyShift)
             try playback.start(
                 render: { [pipeline] frames, buffers, timestamp in
                     pipeline.renderPlayback(frameCount: frames, output: buffers, timestamp: timestamp)
@@ -362,8 +371,10 @@ final class KaraokeEngine {
     }
 
     /// 지금 들리는 출력 스트림 위치 (초, 화면 싱크 보정 반영). 음정 타임라인과 같은 시간축.
+    /// 키 조절 단계의 지연도 빼서, 지금 "귀에 들리는" 위치를 돌려준다.
     func displayPosition() -> Double? {
-        pipeline?.playbackPosition().map { $0 - displayLatencyMilliseconds / 1000 }
+        let extraLatency = (output?.processingLatencySeconds ?? 0) + displayLatencyMilliseconds / 1000
+        return pipeline?.playbackPosition().map { $0 - extraLatency }
     }
 
     private func startStatsPolling() {

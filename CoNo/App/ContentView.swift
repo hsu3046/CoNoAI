@@ -23,7 +23,7 @@ struct ContentView: View {
         VStack(alignment: .leading, spacing: 16) {
             header
             if let timeline = engine.pitchTimeline {
-                PitchBarView(timeline: timeline, position: { engine.displayPosition() })
+                PitchBarView(timeline: timeline, position: { engine.displayPosition() }, keyShift: engine.keyShift)
                     .frame(minHeight: 240)
             } else {
                 sourceList
@@ -249,6 +249,8 @@ struct ContentView: View {
             }
             .controlSize(.large)
 
+            keyControl
+
             if case let .failed(message) = engine.status {
                 Text(message).font(.callout).foregroundStyle(.red).textSelection(.enabled)
             }
@@ -356,6 +358,39 @@ struct ContentView: View {
 }
 
 private extension ContentView {
+    /// 노래방 기계식 키 조절: ♭ / 원키 / ♯ (반음 단위, 실행 중에도 즉시 반영)
+    var keyControl: some View {
+        HStack(spacing: 8) {
+            Text("키").foregroundStyle(.secondary)
+            Button {
+                engine.keyShift -= 1
+            } label: {
+                Label("내리기", systemImage: "minus").labelStyle(.iconOnly)
+            }
+            .disabled(engine.keyShift <= PlaybackOutput.keyShiftRange.lowerBound)
+            .keyboardShortcut(.downArrow, modifiers: .command)
+            .help("반음 내리기 (⌘↓)")
+
+            Text(engine.keyShift == 0 ? "원키" : String(format: "%@%d", engine.keyShift > 0 ? "♯ +" : "♭ ", engine.keyShift))
+                .monospacedDigit()
+                .frame(width: 56)
+
+            Button {
+                engine.keyShift += 1
+            } label: {
+                Label("올리기", systemImage: "plus").labelStyle(.iconOnly)
+            }
+            .disabled(engine.keyShift >= PlaybackOutput.keyShiftRange.upperBound)
+            .keyboardShortcut(.upArrow, modifiers: .command)
+            .help("반음 올리기 (⌘↑)")
+
+            Button("원키로") { engine.keyShift = 0 }
+                .disabled(engine.keyShift == 0)
+                .keyboardShortcut("0", modifiers: .command)
+        }
+        .controlSize(.regular)
+    }
+
     /// 오디오 콜백 진단: 건너뜀이 늘면 시스템이 제때 IO 를 못 돌린 것 (틱 소리)
     func diagnosticsRow(_ label: String, _ diagnostics: CallbackDiagnostics) -> some View {
         GridRow {
