@@ -1,0 +1,153 @@
+// CoNo — Copyright (C) 2026 KnowAI (https://knowai.space) — GPL-3.0-or-later
+//
+// LRCLIB (https://lrclib.net, 무료·API 키 없음) 싱크 가사 조회.
+// 실측(2026-09-25, 12곡)에서 본 성질:
+//   - 한국어·일본어 인기곡도 싱크 가사가 대부분 있다
+//   - 아티스트 표기에 민감 ("아이유" 0건, "IU" 있음) → 표기를 바꿔 여러 번 검색 + 곡 길이로 거른다
+//   - 같은 곡에 로마자 표기 항목이 섞임 → LyricsSelector 가 원문 문자를 우선
+//   - 간헐적 503 → 재시도 1회, 결과(없음 포함)는 디스크에 캐시
+
+import CryptoKit
+import Foundation
+
+enum LyricsLookupResult: Codable, Sendable {
+    case found(LyricsCandidate)
+    case notFound
+}
+
+enum LRCLIBError: LocalizedError {
+    case http(Int)
+    case network(String)
+
+    var errorDescription: String? {
+        switch self {
+        case let .http(code): "가사 서버 응답 오류 (HTTP \(code))"
+        case let .network(message): "가사 서버에 연결하지 못했습니다: \(message)"
+        }
+    }
+}
+
+actor LRCLIBClient {
+    private let session: URLSession
+    private let cacheDirectory: URL?
+    /// 못 찾은 결과를 다시 묻기까지의 시간 (새 가사가 등록될 수 있으므로)
+    private let notFoundTTL: TimeInterval = 24 * 60 * 60
+    private static let baseURL = URL(string: "https://lrclib.net/api")!
+    private static let userAgent = "CoNo/0.1 (https://knowai.space)"
+
+    init() {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.timeoutIntervalForRequest = 10
+        configuration.httpAdditionalHeaders = ["User-Agent": Self.userAgent]
+        session = URLSession(configuration: configuration)
+        cacheDirectory = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first?
+            .appendingPathComponent("space.knowai.cono/lyrics", isDirectory: true)
+        if let cacheDirectory {
+            try? FileManager.default.createDirectory(at: cacheDirectory, withIntermediateDirectories: true)
+        }
+    }
+
+    func lyrics(for track: TrackInfo) async throws -> LyricsLookupResult {
+        if let cached = readCache(for: track) { return cached }
+
+        var candidates: [LyricsCandidate] = []
+        // 1) 정확 조회 (제목·아티스트·앨범·길이)
+        if let exact = try await getExact(track) {
+            candidates.append(exact)
+            if exact.syncedLyrics != nil, LyricsSelector.best([exact], targetDuration: track.duration) != nil {
+                return store(.found(exact), for: track)
+            }
+        }
+        // 2) 표기를 바꿔 검색 — 길이가 맞는 싱크 후보가 나오면 멈춘다
+        let queries: [[String: String]] = [
+            ["track_name": track.title, "artist_name": track.artist],
+            ["q": "\(track.artist) \(track.title)"],
+            ["track_name": track.title],
+        ]
+        for query in queries {
+            candidates += try await search(query)
+            if let best = LyricsSelector.best(candidates, targetDuration: track.duration), best.syncedLyrics != nil {
+                return store(.found(best), for: track)
+            }
+        }
+        // 싱크 가사는 없지만 일반 가사라도 있으면 그걸 쓴다 (줄 시간 없이 표시)
+        if let best = LyricsSelector.best(candidates, targetDuration: track.duration) {
+            return store(.found(best), for: track)
+        }
+        return store(.notFound, for: track)
+    }
+
+    // MARK: - HTTP
+
+    private func getExact(_ track: TrackInfo) async throws -> LyricsCandidate? {
+        var components = URLComponents(url: Self.baseURL.appendingPathComponent("get"), resolvingAgainstBaseURL: false)!
+        components.queryItems = [
+            URLQueryItem(name: "track_name", value: track.title),
+            URLQueryItem(name: "artist_name", value: track.artist),
+            URLQueryItem(name: "album_name", value: track.album),
+            URLQueryItem(name: "duration", value: String(Int(track.duration.rounded()))),
+        ]
+        guard let data = try await fetch(components.url!, allowNotFound: true) else { return nil }
+        return try? JSONDecoder().decode(LyricsCandidate.self, from: data)
+    }
+
+    private func search(_ query: [String: String]) async throws -> [LyricsCandidate] {
+        var components = URLComponents(url: Self.baseURL.appendingPathComponent("search"), resolvingAgainstBaseURL: false)!
+        components.queryItems = query.map { URLQueryItem(name: $0.key, value: $0.value) }
+        guard let data = try await fetch(components.url!, allowNotFound: true) else { return [] }
+        return (try? JSONDecoder().decode([LyricsCandidate].self, from: data)) ?? []
+    }
+
+    /// 404 는 nil (allowNotFound), 503·429 는 1초 뒤 한 번 재시도
+    private func fetch(_ url: URL, allowNotFound: Bool) async throws -> Data? {
+        for attempt in 0..<2 {
+            let (data, response): (Data, URLResponse)
+            do {
+                (data, response) = try await session.data(from: url)
+            } catch {
+                if attempt == 0 { try? await Task.sleep(for: .seconds(1)); continue }
+                throw LRCLIBError.network(error.localizedDescription)
+            }
+            let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+            switch status {
+            case 200: return data
+            case 404 where allowNotFound: return nil
+            case 429 where attempt == 0, 500...599 where attempt == 0:
+                try? await Task.sleep(for: .seconds(1))
+            default:
+                throw LRCLIBError.http(status)
+            }
+        }
+        throw LRCLIBError.http(503)
+    }
+
+    // MARK: - Cache
+
+    private struct CacheEntry: Codable {
+        let result: LyricsLookupResult
+        let fetchedAt: Date
+    }
+
+    private func cacheURL(for track: TrackInfo) -> URL? {
+        // 제목·아티스트·길이로 키를 만든다 (persistent ID 는 기기·재설치마다 바뀔 수 있어 쓰지 않는다)
+        let key = "\(track.title)|\(track.artist)|\(Int(track.duration.rounded()))"
+        let digest = SHA256.hash(data: Data(key.utf8)).prefix(16).map { String(format: "%02x", $0) }.joined()
+        return cacheDirectory?.appendingPathComponent("\(digest).json")
+    }
+
+    private func readCache(for track: TrackInfo) -> LyricsLookupResult? {
+        guard let url = cacheURL(for: track),
+              let data = try? Data(contentsOf: url),
+              let entry = try? JSONDecoder().decode(CacheEntry.self, from: data)
+        else { return nil }
+        if case .notFound = entry.result, Date().timeIntervalSince(entry.fetchedAt) > notFoundTTL { return nil }
+        return entry.result
+    }
+
+    private func store(_ result: LyricsLookupResult, for track: TrackInfo) -> LyricsLookupResult {
+        if let url = cacheURL(for: track), let data = try? JSONEncoder().encode(CacheEntry(result: result, fetchedAt: Date())) {
+            try? data.write(to: url, options: .atomic)
+        }
+        return result
+    }
+}

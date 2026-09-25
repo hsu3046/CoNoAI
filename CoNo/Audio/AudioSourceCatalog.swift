@@ -22,6 +22,8 @@ struct AudioSource: Identifiable, Hashable, Sendable {
     let name: String
     let kind: Kind
     let bundleURL: URL?
+    /// 앱 번들 ID (가사 연동 가능 여부 판단용). 시스템 전체면 nil
+    var bundleID: String? = nil
     let isPlaying: Bool
 }
 
@@ -68,6 +70,7 @@ final class AudioSourceCatalog {
                 name: app.localizedName ?? app.bundleIdentifier ?? "pid \(pid)",
                 kind: .app(processObjectIDs: entry.objectIDs.sorted()),
                 bundleURL: app.bundleURL,
+                bundleID: app.bundleIdentifier,
                 isPlaying: entry.playing
             )
         }

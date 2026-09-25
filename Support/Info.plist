@@ -22,6 +22,8 @@
 	<string>1</string>
 	<key>LSApplicationCategoryType</key>
 	<string>public.app-category.music</string>
+	<key>NSAppleEventsUsageDescription</key>
+	<string>가사를 노래에 맞추기 위해 음악 앱에서 재생 중인 곡 정보와 재생 위치를 읽습니다.</string>
 	<key>NSAudioCaptureUsageDescription</key>
 	<string>스트리밍 앱의 소리를 노래방 반주로 바꾸기 위해 다른 앱의 오디오를 캡처합니다. 오디오는 저장되지 않습니다.</string>
 	<key>NSHumanReadableCopyright</key>

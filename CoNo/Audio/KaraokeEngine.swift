@@ -100,6 +100,9 @@ final class KaraokeEngine {
         didSet { separationProcessor?.output = separationOutput }
     }
 
+    /// 가사 (음악 앱일 때만 곡 정보·재생 위치 연동)
+    let lyrics = LyricsController()
+
     private let modelConfig = MDXModelConfig.karaoke2
     private var separator: MDXSeparator?
     private var pitchDetector: SwiftF0Detector?
@@ -353,6 +356,9 @@ final class KaraokeEngine {
             runningMode = mode
             status = .running(sourceName: source.name)
             startStatsPolling()
+            lyrics.start(sourceBundleID: source.bundleID) { [weak self] hostTime in
+                self?.captureTime(atHostTime: hostTime)
+            }
         } catch {
             playback.stop()
             session.teardown()
@@ -366,6 +372,7 @@ final class KaraokeEngine {
     func stop() {
         statsTask?.cancel()
         statsTask = nil
+        lyrics.stop()
         // 캡처·재생을 먼저 멈춰야 파이프라인 버퍼 해제 중에 콜백이 돌지 않는다
         output?.stop()
         output = nil
@@ -380,6 +387,18 @@ final class KaraokeEngine {
     }
 
     /// 지금 들리는 출력 스트림 위치 (초, 화면 싱크 보정 반영). 음정 타임라인과 같은 시간축.
+    /// 호스트 시각 → 캡처 스트림 시각 (가사 앵커용)
+    func captureTime(atHostTime hostTime: UInt64) -> Double? {
+        pipeline?.captureStreamPosition(atHostTime: hostTime)
+    }
+
+    /// 지금 귀에 들리는 소리가 캡처된 시각 (캡처 스트림 초).
+    /// 출력 스트림 ↔ 캡처 스트림: 패스스루/L−R 은 같은 초, AI 분리는 출력 = 캡처 − rightContext.
+    func heardCaptureTime() -> Double? {
+        let streamOffset = runningMode == .aiSeparation ? (separationTiming?.streamOffset ?? 0) : 0
+        return displayPosition().map { $0 - streamOffset }
+    }
+
     /// 키 조절 단계의 지연도 빼서, 지금 "귀에 들리는" 위치를 돌려준다.
     func displayPosition() -> Double? {
         let extraLatency = (output?.processingLatencySeconds ?? 0) + displayLatencyMilliseconds / 1000

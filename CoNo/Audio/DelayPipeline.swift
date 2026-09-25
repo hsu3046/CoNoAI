@@ -148,6 +148,13 @@ final class DelayPipeline: @unchecked Sendable {
     private let clockFrames = Atomic<Int>(0)
     private let clockHostTime = Atomic<UInt64>(0)
 
+    // 캡처 시계 (seqlock): 캡처 스레드가 쓰고 UI 가 읽는다. 가사 싱크용 (플레이어 재생 위치 ↔ 캡처 스트림 시각).
+    private let captureClockVersion = Atomic<Int>(0)
+    private let captureClockFrames = Atomic<Int>(0)
+    private let captureClockHostTime = Atomic<UInt64>(0)
+    /// 캡처 스레드 전용 누적 캡처 프레임
+    private var capturedFramesTotal = 0
+
     /// - Parameter burstSeconds: 처리기가 한 번에 몰아서 내는 최대 길이 (분리기의 최대 대기). 버퍼 여유 계산에 쓴다.
     init(
         inputSampleRate: Double,
@@ -248,7 +255,15 @@ final class DelayPipeline: @unchecked Sendable {
     ///   - tapChannelCount: 탭 스트림 채널 수 (스테레오 믹스다운 = 2)
     func renderCapture(input: UnsafePointer<AudioBufferList>, inputTime: UnsafePointer<AudioTimeStamp>, tapChannelCount: Int) {
         let start = mach_absolute_time()
+        // 캡처 시계: 이 버퍼 첫 샘플 = 캡처 스트림의 capturedFramesTotal 번째
+        let hostTime = inputTime.pointee.mFlags.contains(.hostTimeValid) ? inputTime.pointee.mHostTime : start
+        captureClockVersion.add(1, ordering: .acquiringAndReleasing)
+        captureClockFrames.store(capturedFramesTotal, ordering: .relaxed)
+        captureClockHostTime.store(hostTime, ordering: .relaxed)
+        captureClockVersion.add(1, ordering: .acquiringAndReleasing)
+
         let frames = captureTap(from: input, tapChannelCount: tapChannelCount)
+        capturedFramesTotal += frames
         let valid = inputTime.pointee.mFlags.contains(.sampleTimeValid)
         captureMonitor.record(sampleTime: valid ? inputTime.pointee.mSampleTime : nil, frames: frames, sampleRate: inputSampleRate)
         captureMonitor.recordCallback(ticks: mach_absolute_time() &- start)
@@ -393,6 +408,23 @@ final class DelayPipeline: @unchecked Sendable {
             let now = mach_absolute_time()
             let elapsed = (Double(now) - Double(hostTime)) * Self.hostTicksToSeconds
             return Double(frames) / outputSampleRate + min(max(elapsed, -0.1), 0.05)
+        }
+        return nil
+    }
+
+    /// 호스트 시각 H 에 캡처되던 소리의 캡처 스트림 위치 (초). 마지막 캡처 콜백 기준으로 외삽한다 (제한 없음).
+    /// 출력 스트림과의 관계: 패스스루/L−R 은 같은 초, AI 분리는 출력 = 캡처 − rightContext.
+    func captureStreamPosition(atHostTime hostTime: UInt64) -> Double? {
+        for _ in 0..<4 {
+            let before = captureClockVersion.load(ordering: .acquiring)
+            guard before % 2 == 0 else { continue }
+            let frames = captureClockFrames.load(ordering: .relaxed)
+            let anchorHost = captureClockHostTime.load(ordering: .relaxed)
+            let after = captureClockVersion.load(ordering: .acquiring)
+            guard before == after else { continue }
+            guard anchorHost != 0 else { return nil }
+            let elapsed = (Double(hostTime) - Double(anchorHost)) * Self.hostTicksToSeconds
+            return Double(frames) / inputSampleRate + elapsed
         }
         return nil
     }

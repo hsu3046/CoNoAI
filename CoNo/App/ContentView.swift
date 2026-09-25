@@ -22,9 +22,14 @@ struct ContentView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             header
-            if let timeline = engine.pitchTimeline {
-                PitchBarView(timeline: timeline, position: { engine.displayPosition() }, keyShift: engine.keyShift)
-                    .frame(minHeight: 240)
+            if engine.isRunning, engine.pitchTimeline != nil || engine.lyrics.status != .inactive {
+                if let timeline = engine.pitchTimeline {
+                    PitchBarView(timeline: timeline, position: { engine.displayPosition() }, keyShift: engine.keyShift)
+                        .frame(minHeight: 220)
+                }
+                if engine.lyrics.status != .inactive {
+                    LyricsView(controller: engine.lyrics, heardCaptureTime: { engine.heardCaptureTime() })
+                }
             } else {
                 sourceList
             }
@@ -336,6 +341,21 @@ struct ContentView: View {
                     }
                     .font(.callout)
                     .help("음정 바가 소리보다 빠르면 +로 늦춥니다. 블루투스 이어폰은 보통 +150~250 ms.")
+                }
+                if engine.lyrics.status != .inactive, engine.lyrics.status != .unsupportedSource {
+                    HStack {
+                        Text("가사 싱크").foregroundStyle(.secondary)
+                        Slider(
+                            value: Binding(get: { engine.lyrics.offsetSeconds }, set: { engine.lyrics.offsetSeconds = $0 }),
+                            in: -2...2,
+                            step: 0.05
+                        )
+                        Text(String(format: "%+.2f초", engine.lyrics.offsetSeconds))
+                            .monospacedDigit()
+                            .frame(width: 64, alignment: .trailing)
+                    }
+                    .font(.callout)
+                    .help("가사가 노래보다 늦으면 +로 앞당기고, 빠르면 −로 늦춥니다.")
                 }
                 if let error = engine.pitchError ?? engine.pitchTimeline?.error {
                     Text("음정 추적 오류: \(error)").font(.caption).foregroundStyle(.orange).textSelection(.enabled)
