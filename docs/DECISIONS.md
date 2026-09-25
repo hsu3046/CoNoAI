@@ -87,7 +87,7 @@
 - 마이크 채점(PoC ④)은 설계만 기록하고 보류 — 가사 먼저.
 
 ## 2026-09-25 — 회사(AIB Inc.) 개발 인증서로 서명
-- 유료 개발자 계정. 개인 팀(2QPC5T633N)·회사 팀(9BF5ZBVYYF) 중 **회사 팀**으로 결정 (사용자).
+- 유료 개발자 계정. 개인 팀·회사 팀 중 **회사 팀(9BF5ZBVYYF)** 으로 결정 (사용자).
 - 특수 entitlement 가 없어 수동 서명 + 프로필 없음. designated requirement = 앱 ID + 인증서 CN → 빌드마다 TCC 재질문 없음.
 - ShazamKit(L4) 도입 시 App ID 에 ShazamKit 서비스 활성화 + Automatic 서명·프로필로 전환 필요.
 

@@ -134,11 +134,11 @@ struct JapaneseReadingTests {
     }
 
     @Test func kanjiGetMoraWeights() {
-        let first = weights("誰を想ってるんだろう")
+        let first = weights("誰を想って歩こう")
         #expect(first["誰"] == 2, "だれ")
         #expect(first["想っ"] == 3, "おも + っ")
         #expect(first["て"] == 1)
-        let second = weights("明日の今頃には")
+        let second = weights("明日の今頃は海")
         #expect(second["明"].map { $0 + (second["日"] ?? 0) } == 2, "あす")
         #expect(second["今"] == 2 && second["頃"] == 2, "いま·ごろ")
         #expect(weights("東京の空")["空"] == 2, "そら")

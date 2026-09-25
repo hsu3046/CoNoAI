@@ -6,17 +6,17 @@ import Testing
 struct LRCParserTests {
     @Test func parsesTagsMultipleTimesOffsetAndWordTags() {
         let lrc = """
-        [ar:IU]
-        [ti:Good Day]
+        [ar:Test Artist]
+        [ti:Sample Song]
         [offset:+500]
-        [00:16.25] 어쩜 이렇게 하늘은 더 파란 건지
-        [00:23.620]오늘따라 <00:24.10>왜 <00:24.50>바람은
+        [00:16.25] 오늘은 하늘이 참 맑은 날
+        [00:23.620]창문을 <00:24.10>열면 <00:24.50>바람이
         [01:00.00][02:00.00]후렴
         [00:30.00]
         not a lyric line
         """
         let lyrics = LRCParser.parse(lrc)
-        #expect(lyrics.lines.map(\.text) == ["어쩜 이렇게 하늘은 더 파란 건지", "오늘따라 왜 바람은", "", "후렴", "후렴"])
+        #expect(lyrics.lines.map(\.text) == ["오늘은 하늘이 참 맑은 날", "창문을 열면 바람이", "", "후렴", "후렴"])
         // offset +500ms → 모든 줄 0.5초 앞당김
         #expect(abs(lyrics.lines[0].start - 15.75) < 1e-9)
         #expect(abs(lyrics.lines[1].start - 23.12) < 1e-9)
@@ -58,10 +58,10 @@ struct LyricsSelectorTests {
     }
 
     @Test func prefersSyncedNativeScriptWithMatchingDuration() {
-        let romanized = candidate(1, duration: 179, synced: "[00:23.15]Ppajyeobeorineun daydream")
-        let hangul = candidate(2, duration: 180, synced: "[00:23.15]빠져버리는 daydream")
-        let plainOnly = candidate(3, duration: 179, synced: nil, plain: "빠져버리는")
-        let otherVersion = candidate(4, duration: 210, synced: "[00:23.15]빠져버리는")
+        let romanized = candidate(1, duration: 179, synced: "[00:23.15]Haneureul boneun daydream")
+        let hangul = candidate(2, duration: 180, synced: "[00:23.15]하늘을 보는 daydream")
+        let plainOnly = candidate(3, duration: 179, synced: nil, plain: "하늘을 보는")
+        let otherVersion = candidate(4, duration: 210, synced: "[00:23.15]하늘을 보는")
         let best = LyricsSelector.best([romanized, plainOnly, otherVersion, hangul], targetDuration: 179.4)
         #expect(best?.id == 2)
     }
