@@ -285,6 +285,14 @@ struct ContentView: View {
                         Text("")
                     }
                     GridRow {
+                        Text("IO").foregroundStyle(.secondary)
+                        Text(String(format: "사이클 건너뜀 %d회 · 콜백 최대 %.2f ms / 주기 %.1f ms",
+                                    stats.ioSkippedCycles, stats.ioMaxCallbackMilliseconds, stats.ioCycleMilliseconds))
+                            .monospacedDigit()
+                            .foregroundStyle(stats.ioSkippedCycles > 0 ? .orange : .primary)
+                        Text("")
+                    }
+                    GridRow {
                         Text("장치").foregroundStyle(.secondary)
                         Text("\(engine.outputDeviceName) · \(Int(engine.sampleRate)) Hz")
                         Text("")

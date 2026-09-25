@@ -14,11 +14,15 @@ struct PitchBarView: View {
     private let futureSeconds = 4.5
     private let segmenter = NoteSegmenter()
     @State private var range = MidiRangeTracker()
+    /// 진단용: 그리기 횟수 (멈춤이 "안 그림"인지 "위치 정지"인지 구별)
+    @State private var drawCounter = DrawCounter()
 
     var body: some View {
-        TimelineView(.animation) { _ in
-            Canvas { context, size in
-                draw(in: &context, size: size)
+        // Canvas 는 그리기 함수가 쓰는 입력이 바뀔 때만 다시 그린다. 타이머 시각을 넘기지 않으면
+        // 매 틱이 "변화 없음"으로 판단돼 그리기를 건너뛴다 (창 크기를 바꿀 때만 갱신되던 버그).
+        TimelineView(.animation) { timelineContext in
+            Canvas { [date = timelineContext.date] context, size in
+                draw(in: &context, size: size, frameDate: date)
             }
         }
         .background(Color(red: 0.05, green: 0.05, blue: 0.09))
@@ -26,7 +30,11 @@ struct PitchBarView: View {
         .accessibilityLabel("음정 바")
     }
 
-    private func draw(in context: inout GraphicsContext, size: CGSize) {
+    /// - Parameter frameDate: TimelineView 틱 시각. 값 자체는 쓰지 않지만 매 틱 다시 그리게 하는 의존성이다
+    ///   (재생 위치는 오디오 출력 시각 기반의 `position()` 이 더 정확하다).
+    private func draw(in context: inout GraphicsContext, size: CGSize, frameDate: Date) {
+        _ = frameDate
+        drawCounter.count += 1
         guard let now = position() else {
             context.draw(
                 Text("재생이 시작되면 음정이 흐릅니다").font(.callout).foregroundStyle(.white.opacity(0.6)),
@@ -112,6 +120,18 @@ struct PitchBarView: View {
         }
         context.stroke(contour, with: .color(.cyan.opacity(0.55)), lineWidth: 1.5)
 
+        // 진단 표시 (좌상단)
+        context.draw(
+            Text(String(
+                format: "pos %.2fs · 분석 +%.2fs · 프레임 %d · 음표 %d · 그리기 #%d",
+                now, snapshot.knownUntil - now, snapshot.frames.count, notes.count, drawCounter.count
+            ))
+            .font(.caption2.monospacedDigit())
+            .foregroundStyle(.white.opacity(0.5)),
+            at: CGPoint(x: 40, y: 10),
+            anchor: .leading
+        )
+
         // 재생선
         var playhead = Path()
         playhead.move(to: CGPoint(x: x(now), y: 0))
@@ -140,4 +160,8 @@ final class MidiRangeTracker {
         low += (targetLow - low) * smoothing
         high += (targetHigh - high) * smoothing
     }
+}
+
+final class DrawCounter {
+    var count = 0
 }

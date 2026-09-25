@@ -35,6 +35,11 @@ struct PipelineStats: Sendable {
     var hasReceivedSignal = false
     /// 처리 단계에서 난 오류 (나면 워커는 멈추고 무음이 된다)
     var processingError: String?
+    /// IO 사이클 건너뜀 횟수 (출력 타임스탬프가 연속이 아님 = 시스템이 제때 IO 를 못 돌림 → 틱 소리)
+    var ioSkippedCycles = 0
+    /// CoNo IO 콜백 처리 시간 최대값 (ms) 과 한 주기 길이 (ms)
+    var ioMaxCallbackMilliseconds: Double = 0
+    var ioCycleMilliseconds: Double = 0
 }
 
 final class DelayPipeline: @unchecked Sendable {
@@ -84,6 +89,14 @@ final class DelayPipeline: @unchecked Sendable {
     private let clockHostTime = Atomic<UInt64>(0)
     /// IO 스레드 전용 누적 재생 프레임
     private var ioPlayedFrames = 0
+
+    // IO 진단 (IO 스레드가 쓰고 UI 가 읽는다)
+    private let ioSkipCount = Atomic<Int>(0)
+    private let ioMaxCallbackTicks = Atomic<UInt64>(0)
+    private let ioCycleFrames = Atomic<Int>(0)
+    /// IO 스레드 전용: 직전 출력 사이클의 샘플 시각과 길이
+    private var ioLastSampleTime: Double = -1
+    private var ioLastFrames = 0
     private static let hostTicksToSeconds: Double = {
         var info = mach_timebase_info_data_t()
         mach_timebase_info(&info)
@@ -188,8 +201,34 @@ final class DelayPipeline: @unchecked Sendable {
         outputTime: UnsafePointer<AudioTimeStamp>,
         tapChannelCount: Int
     ) {
+        let callbackStart = mach_absolute_time()
+        trackCycleContinuity(output: output, outputTime: outputTime)
         captureTap(from: input, tapChannelCount: tapChannelCount)
         renderPlayback(into: output, outputTime: outputTime)
+        let elapsed = mach_absolute_time() &- callbackStart
+        if elapsed > ioMaxCallbackTicks.load(ordering: .relaxed) {
+            ioMaxCallbackTicks.store(elapsed, ordering: .relaxed)
+        }
+    }
+
+    /// 출력 사이클의 샘플 시각이 "직전 시각 + 직전 길이" 와 다르면 HAL 이 사이클을 건너뛴 것.
+    /// 0.5초 이상 점프는 원본 앱 일시정지 후 재개(TapAutoStart 로 IO 가 멈췄다 다시 시작)로 보고 세지 않는다.
+    private func trackCycleContinuity(output: UnsafeMutablePointer<AudioBufferList>, outputTime: UnsafePointer<AudioTimeStamp>) {
+        let buffers = UnsafeMutableAudioBufferListPointer(output)
+        guard let first = buffers.first, first.mNumberChannels > 0 else { return }
+        let frames = Int(first.mDataByteSize) / (MemoryLayout<Float>.size * Int(first.mNumberChannels))
+        ioCycleFrames.store(frames, ordering: .relaxed)
+
+        guard outputTime.pointee.mFlags.contains(.sampleTimeValid) else { return }
+        let sampleTime = outputTime.pointee.mSampleTime
+        if ioLastSampleTime >= 0 {
+            let jump = abs(sampleTime - (ioLastSampleTime + Double(ioLastFrames)))
+            if jump > 0.5, jump < sampleRate * 0.5 {
+                ioSkipCount.add(1, ordering: .relaxed)
+            }
+        }
+        ioLastSampleTime = sampleTime
+        ioLastFrames = frames
     }
 
     private func captureTap(from input: UnsafePointer<AudioBufferList>, tapChannelCount: Int) {
@@ -341,7 +380,10 @@ final class DelayPipeline: @unchecked Sendable {
             captureOverflows: overflowCount.load(ordering: .relaxed),
             capturedSeconds: Double(capturedFrameCount.load(ordering: .relaxed)) / sampleRate,
             hasReceivedSignal: receivedSignal.load(ordering: .relaxed),
-            processingError: processingError.withLock { $0 }
+            processingError: processingError.withLock { $0 },
+            ioSkippedCycles: ioSkipCount.load(ordering: .relaxed),
+            ioMaxCallbackMilliseconds: Double(ioMaxCallbackTicks.load(ordering: .relaxed)) * Self.hostTicksToSeconds * 1000,
+            ioCycleMilliseconds: Double(ioCycleFrames.load(ordering: .relaxed)) / sampleRate * 1000
         )
     }
 }
