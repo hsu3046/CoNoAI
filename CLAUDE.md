@@ -25,3 +25,4 @@
 - **ORT ObjC API 는 double 텐서를 못 읽는다** (`ORTTensorElementDataType` 에 Double 없음): 출력이 double 인 모델은 Cast(float) 변환본을 만든다 (`scripts/convert_swiftf0.py`).
 - **음정 바 시간축**: 음정 프레임과 재생 위치는 둘 다 "출력 스트림 초". 여기에 rightContext 를 더하거나 빼지 말 것 (가사처럼 캡처 시각이 필요할 때만 사용).
 - **자가진단 실패가 핵심 기능을 막지 않게**: 음정 검출기 실패 시에도 분리는 계속 돈다.
+- **@Observable 의 didSet 에서 자기 자신에 대입 금지**: 매크로 setter 가 재진입해 무한 재귀 크래시 (키 조절 버튼 크래시). 값 보정은 변경 메서드(`changeKey(by:)`)에서.
