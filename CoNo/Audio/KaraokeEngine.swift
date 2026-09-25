@@ -359,6 +359,10 @@ final class KaraokeEngine {
             lyrics.start(sourceBundleID: source.bundleID) { [weak self] hostTime in
                 self?.captureTime(atHostTime: hostTime)
             }
+            // 음절 단위 색칠용 보컬 음정 (AI 분리 모드만). start() 가 초기화하므로 그 뒤에 넣는다.
+            if let pitchTimeline {
+                lyrics.vocalSource = VocalTimingSource(timeline: pitchTimeline, streamOffset: separationTiming?.streamOffset ?? 0)
+            }
         } catch {
             playback.stop()
             session.teardown()

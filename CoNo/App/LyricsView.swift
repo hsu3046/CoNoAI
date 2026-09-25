@@ -1,8 +1,10 @@
 // CoNo — Copyright (C) 2026 KnowAI (https://knowai.space) — GPL-3.0-or-later
 //
 // 노래방식 2줄 가사: 지금 부르는 줄(크게, 왼쪽부터 색이 차오름) + 다음 줄(작게).
-// 색칠은 줄 길이에 비례한 근사 (L3 에서 음표 시작점 기반 음절 단위로 바꿀 예정).
+// 색칠: AI 분리 모드에서는 분리된 보컬로 정렬한 음절 타이밍(SyllableAligner) + 글자 폭 환산,
+//       보컬 데이터가 없으면 줄 길이 비례 근사.
 
+import AppKit
 import SwiftUI
 
 struct LyricsView: View {
@@ -30,7 +32,7 @@ struct LyricsView: View {
         VStack(alignment: .leading, spacing: 10) {
             if let lyrics = state?.lyrics {
                 if let current = lyrics.current {
-                    KaraokeLine(text: current, progress: lyrics.progress)
+                    KaraokeLine(text: current, progress: lyrics.progress, highlightedCharacters: lyrics.highlightedCharacters)
                 } else if let countdown = lyrics.countdown {
                     CountdownDots(remaining: countdown)
                 } else {
@@ -83,10 +85,20 @@ struct LyricsView: View {
 
 /// 왼쪽부터 색이 차오르는 한 줄
 private struct KaraokeLine: View {
+    static let fontSize: CGFloat = 30
     let text: String
     let progress: Double
+    /// 음절 정렬 결과 (칠해진 글자 수). 있으면 글자 폭 기준으로 칠한다.
+    let highlightedCharacters: Double?
+
+    /// 칠할 폭 비율 — 글자 수를 실제 글자 폭으로 환산 (한글·영문 폭 차이 반영, 축소 표시에도 비율은 그대로)
+    private var widthFraction: Double {
+        guard let highlightedCharacters else { return progress }
+        return TextWidthCache.shared.fraction(of: text, characters: highlightedCharacters, fontSize: Self.fontSize)
+    }
 
     var body: some View {
+        let progress = widthFraction
         ZStack(alignment: .leading) {
             Text(text).foregroundStyle(.white.opacity(0.9))
             Text(text)
@@ -97,9 +109,44 @@ private struct KaraokeLine: View {
                     }
                 }
         }
-        .font(.system(size: 30, weight: .bold))
+        .font(.system(size: Self.fontSize, weight: .bold))
         .lineLimit(1)
         .minimumScaleFactor(0.5)
+    }
+}
+
+/// 글자 앞부분까지의 폭 누적 (줄마다 한 번 측정해 캐시)
+@MainActor
+private final class TextWidthCache {
+    static let shared = TextWidthCache()
+    private var cache: [String: [CGFloat]] = [:]
+
+    /// characters 개(소수 허용)까지 칠했을 때 전체 폭 대비 비율
+    func fraction(of text: String, characters: Double, fontSize: CGFloat) -> Double {
+        let prefix = prefixWidths(text, fontSize: fontSize)
+        guard let total = prefix.last, total > 0 else { return 0 }
+        let whole = min(max(Int(characters.rounded(.down)), 0), prefix.count - 1)
+        let partial = characters - Double(whole)
+        var width = prefix[whole]
+        if whole + 1 < prefix.count {
+            width += (prefix[whole + 1] - prefix[whole]) * partial
+        }
+        return Double(width / total)
+    }
+
+    /// prefix[k] = 앞 k 글자의 폭
+    private func prefixWidths(_ text: String, fontSize: CGFloat) -> [CGFloat] {
+        if let cached = cache[text] { return cached }
+        let font = NSFont.systemFont(ofSize: fontSize, weight: .bold)
+        let characters = Array(text)
+        var widths: [CGFloat] = [0]
+        for k in 1...max(characters.count, 1) where k <= characters.count {
+            let prefix = String(characters[0..<k]) as NSString
+            widths.append(prefix.size(withAttributes: [.font: font]).width)
+        }
+        if cache.count > 64 { cache.removeAll() }
+        cache[text] = widths
+        return widths
     }
 }
 

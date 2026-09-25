@@ -6,11 +6,20 @@
 import Foundation
 import Observation
 
+/// 음절 단위 색칠에 쓰는 분리된 보컬 음정 (AI 분리 모드에서만)
+struct VocalTimingSource {
+    let timeline: PitchTimeline
+    /// 출력 스트림 = 캡처 스트림 + streamOffset (AI 분리의 rightContext)
+    let streamOffset: Double
+}
+
 /// 화면에 그릴 가사 상태
 struct LyricsDisplay: Equatable {
     var current: String?
-    /// 현재 줄 진행률 0~1 (글자 수 비례 색칠에 쓴다)
+    /// 현재 줄 진행률 0~1 (보컬 데이터가 없을 때의 줄 길이 비례 색칠)
     var progress: Double = 0
+    /// 음절 정렬로 계산한 칠해진 글자 수 (소수 = 현재 글자 일부). nil 이면 progress 사용
+    var highlightedCharacters: Double?
     var next: String?
     /// 다음 줄까지 남은 초 (간주 중 곧 시작할 때만)
     var countdown: Double?
@@ -45,6 +54,16 @@ final class LyricsController {
     private var currentTrackID: String?
     private var pollTask: Task<Void, Never>?
 
+    /// 음절 정렬용 보컬 데이터 (엔진이 AI 분리 모드로 시작할 때 넣는다)
+    var vocalSource: VocalTimingSource?
+    /// 줄별 음절 정렬 캐시 (키: 곡ID#줄번호). 분석이 더 진행되면 다시 계산한다.
+    private struct WipeCacheEntry {
+        let wipe: LineWipe?
+        let knownUntil: Double
+        let complete: Bool
+    }
+    @ObservationIgnored private var wipeCache: [String: WipeCacheEntry] = [:]
+
     /// 가사를 지원하는 소스인지 (지금은 Apple Music 만)
     static func supports(bundleID: String?) -> Bool {
         bundleID == AppleMusicNowPlaying.bundleID
@@ -71,6 +90,8 @@ final class LyricsController {
         pollTask?.cancel()
         pollTask = nil
         clock.reset()
+        wipeCache.removeAll()
+        vocalSource = nil
         currentTrackID = nil
         status = .inactive
     }
@@ -148,6 +169,11 @@ final class LyricsController {
             display.current = line.text
             display.progress = end > line.start ? min(max((t - line.start) / (end - line.start), 0), 1) : 1
             display.next = lyrics.nextLineIndex(after: line.start).map { lyrics.lines[$0].text }
+            if let wipe = lineWipe(trackID: position.trackID, lineIndex: index, text: line.text,
+                                   songStart: line.start - offsetSeconds, songEnd: end - offsetSeconds, heardAt: c) {
+                // 음절 타이밍은 소리에서 잰 실제 곡 시각이라 사용자 오프셋 없이 비교한다
+                display.highlightedCharacters = wipe.highlightedCharacters(at: position.seconds)
+            }
         } else if let nextIndex = lyrics.nextLineIndex(after: t) {
             let next = lyrics.lines[nextIndex]
             display.next = next.text
@@ -155,5 +181,36 @@ final class LyricsController {
             if remaining <= 5 { display.countdown = remaining }
         }
         return (track, display)
+    }
+
+    /// 현재 줄의 음절 타이밍. 곡 구간 → 캡처 시각 → 출력 스트림 시각으로 바꿔 보컬 프레임을 가져와 정렬한다.
+    private func lineWipe(trackID: String, lineIndex: Int, text: String, songStart: Double, songEnd: Double, heardAt c: Double) -> LineWipe? {
+        guard let source = vocalSource,
+              let captureStart = clock.captureTime(forSongPosition: songStart, heardAt: c),
+              let captureEnd = clock.captureTime(forSongPosition: songEnd, heardAt: c)
+        else { return nil }
+
+        let key = "\(trackID)#\(lineIndex)"
+        let streamStart = captureStart + source.streamOffset
+        let streamEnd = captureEnd + source.streamOffset
+        let snapshot = source.timeline.snapshot(from: streamStart, to: streamEnd)
+
+        // 줄 전체가 분석됐으면 캐시 고정, 아니면 분석이 0.1초 이상 진행됐을 때만 다시 계산
+        if let cached = wipeCache[key], cached.complete || snapshot.knownUntil - cached.knownUntil < 0.1 {
+            return cached.wipe
+        }
+        let period = source.timeline.framePeriod
+        let frames = snapshot.frames.map { frame in
+            let streamTime = Double(frame.index) * period
+            let voiced = frame.confidence >= 0.5 && frame.pitchHz > 0
+            return VocalFrame(
+                time: songStart + (streamTime - streamStart),
+                voiced: voiced,
+                midi: voiced ? NoteSegmenter.midi(fromHz: frame.pitchHz) : nil
+            )
+        }
+        let wipe = SyllableAligner.align(text: text, frames: frames, framePeriod: period, lineStart: songStart, lineEnd: songEnd)
+        wipeCache[key] = WipeCacheEntry(wipe: wipe, knownUntil: snapshot.knownUntil, complete: snapshot.knownUntil >= streamEnd)
+        return wipe
     }
 }

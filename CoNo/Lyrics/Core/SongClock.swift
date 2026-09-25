@@ -44,6 +44,13 @@ struct SongClock: Sendable {
         anchors.removeAll()
     }
 
+    /// 역변환: 곡 위치 s 가 캡처된(될) 시각. 들리는 시점 heardAt 의 앵커를 기준으로 외삽한다
+    /// (그 앵커 이후로 계속 재생된다고 가정 — 현재 줄·다음 줄의 음절 타이밍 계산용). 일시정지 앵커면 nil.
+    func captureTime(forSongPosition s: Double, heardAt c: Double) -> Double? {
+        guard let anchor = anchors.last(where: { $0.captureTime <= c }), anchor.isPlaying else { return nil }
+        return anchor.captureTime + (s - anchor.songPosition)
+    }
+
     /// 캡처 시각 c 의 소리가 곡 어디였는지. c 이전의 가장 최근 앵커 기준.
     func position(atCaptureTime c: Double) -> SongPosition? {
         guard let anchor = anchors.last(where: { $0.captureTime <= c }), let trackID = anchor.trackID else { return nil }
