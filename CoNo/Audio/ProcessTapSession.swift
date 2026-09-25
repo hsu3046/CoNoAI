@@ -1,10 +1,11 @@
 // CoNo — Copyright (C) 2026 KnowAI (https://knowai.space) — GPL-3.0-or-later
 //
-// Core Audio process tap + 비공개(private) 애그리게이트 디바이스 수명 관리.
-// 탭/애그리게이트 구성은 insidegui/AudioCap (BSD-2-Clause) 의 ProcessTap.swift 를 참고했다.
+// Core Audio process tap + 비공개(private) 애그리게이트 디바이스 수명 관리 (캡처 전용).
+// 탭 구성은 insidegui/AudioCap (BSD-2-Clause), 탭만 넣은 애그리게이트는 makeusabrew/audiotee 를 참고했다.
 //
-// 애그리게이트 = [메인 서브디바이스: 현재 기본 출력 장치] + [탭].
-// 한 IOProc 안에서 탭 입력을 받고 같은 클럭으로 출력 장치에 쓴다 → 별도 출력 엔진·클럭 동기화가 필요 없다.
+// 애그리게이트 = [탭] 만 (서브디바이스 없음) → 탭의 원래 레이트(예: 48 kHz)로 입력만 받는다.
+// 예전처럼 출력 장치를 같은 애그리게이트에 넣으면, 출력 장치 레이트(예: 96 kHz)가 다를 때 HAL 이
+// 드리프트 보정으로 2배 변환을 하며 불규칙한 틱 소리가 났다 (docs/DECISIONS.md). 재생은 PlaybackOutput 이 따로 한다.
 // muteBehavior = .mutedWhenTapped 이면 대상 앱 소리는 탭을 읽는 동안에만 스피커로 안 나간다.
 // CoNo 가 멈추거나 죽으면 원래 소리가 자동으로 돌아온다.
 
@@ -12,7 +13,8 @@ import AudioToolbox
 import Foundation
 import OSLog
 
-final class ProcessTapSession {
+/// 준비(prepare)와 시작(start)은 백그라운드에서 호출해도 된다 — 시작은 오디오 권한 응답까지 블록될 수 있다.
+final class ProcessTapSession: @unchecked Sendable {
     private let logger = Logger(subsystem: "space.knowai.cono", category: "ProcessTapSession")
 
     private(set) var tapID = AudioObjectID.unknown
@@ -21,9 +23,8 @@ final class ProcessTapSession {
 
     /// 탭이 내보내는 포맷
     private(set) var tapFormat = AudioStreamBasicDescription()
-    /// 출력(=애그리게이트 클럭) 샘플레이트
-    private(set) var outputSampleRate: Double = 0
-    private(set) var outputDeviceName = ""
+    /// 애그리게이트(=캡처) 클럭의 샘플레이트. 보통 탭 포맷과 같다.
+    private(set) var captureSampleRate: Double = 0
 
     /// 탭과 애그리게이트 디바이스를 만든다. 실패 시 만든 것까지 정리하고 throw.
     func prepare(source: AudioSource, muteOriginal: Bool) throws {
@@ -74,24 +75,17 @@ final class ProcessTapSession {
     private var tapUUID = ""
 
     private func createAggregateDevice() throws {
-        let outputDeviceID = try AudioObjectID.readDefaultSystemOutputDevice()
-        let outputUID = try outputDeviceID.readDeviceUID()
-        outputSampleRate = try outputDeviceID.readNominalSampleRate()
-        outputDeviceName = (try? outputDeviceID.readString(kAudioObjectPropertyName)) ?? outputUID
-
         let description: [String: Any] = [
-            kAudioAggregateDeviceNameKey: "CoNo Aggregate",
-            kAudioAggregateDeviceUIDKey: "space.knowai.cono.aggregate.\(UUID().uuidString)",
-            kAudioAggregateDeviceMainSubDeviceKey: outputUID,
+            kAudioAggregateDeviceNameKey: "CoNo Capture",
+            kAudioAggregateDeviceUIDKey: "space.knowai.cono.capture.\(UUID().uuidString)",
             kAudioAggregateDeviceIsPrivateKey: true,
             kAudioAggregateDeviceIsStackedKey: false,
-            kAudioAggregateDeviceTapAutoStartKey: true,
-            kAudioAggregateDeviceSubDeviceListKey: [
-                [kAudioSubDeviceUIDKey: outputUID],
-            ],
+            // 원본 앱이 멈춰도 IO 를 계속 돌려 무음을 받는다 → 재생 지연이 일정하게 유지된다
+            kAudioAggregateDeviceTapAutoStartKey: false,
+            kAudioAggregateDeviceSubDeviceListKey: [] as [Any],
             kAudioAggregateDeviceTapListKey: [
                 [
-                    kAudioSubTapDriftCompensationKey: true,
+                    kAudioSubTapDriftCompensationKey: false,
                     kAudioSubTapUIDKey: tapUUID,
                 ],
             ],
@@ -103,7 +97,8 @@ final class ProcessTapSession {
             throw CoreAudioError("애그리게이트 디바이스 생성 실패", status: err)
         }
         aggregateDeviceID = newDeviceID
-        logger.info("aggregate #\(newDeviceID) created on output '\(self.outputDeviceName)' @ \(self.outputSampleRate) Hz")
+        captureSampleRate = (try? newDeviceID.readNominalSampleRate()).flatMap { $0 > 0 ? $0 : nil } ?? tapFormat.mSampleRate
+        logger.info("capture aggregate #\(newDeviceID) @ \(self.captureSampleRate) Hz (tap \(self.tapFormat.mSampleRate) Hz)")
     }
 
     /// IOProc 을 등록하고 시작. 블록은 오디오 IO 스레드에서 직접 호출된다 (dispatch queue 없음).

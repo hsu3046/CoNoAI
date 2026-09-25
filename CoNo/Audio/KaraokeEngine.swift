@@ -45,6 +45,8 @@ struct ModelBenchmark: Sendable, Equatable {
 final class KaraokeEngine {
     enum Status: Equatable {
         case idle
+        /// 탭·장치 준비 중 (첫 실행 땐 오디오 권한 응답을 기다릴 수 있다)
+        case starting
         case running(sourceName: String)
         case failed(String)
     }
@@ -60,10 +62,10 @@ final class KaraokeEngine {
     private(set) var modelState: ModelState = .notLoaded
     private(set) var stats = PipelineStats()
     private(set) var inferenceStats = InferenceStats()
-    private(set) var sampleRate: Double = 0
+    /// 캡처(탭) 레이트와 재생(출력 장치) 레이트 — 달라도 CoNo 가 변환한다
+    private(set) var inputSampleRate: Double = 0
+    private(set) var outputSampleRate: Double = 0
     private(set) var outputDeviceName = ""
-    /// 탭과 출력 장치 샘플레이트가 다르면 경고
-    private(set) var sampleRateWarning: String?
     /// 실행 중인 모드 (시작 시 고정)
     private(set) var runningMode: ProcessingMode?
     /// AI 모드일 때 출력 스트림 오프셋과 최대 대기 (초)
@@ -86,12 +88,21 @@ final class KaraokeEngine {
     private var pitchDetector: SwiftF0Detector?
     private var separationProcessor: SeparationProcessor?
     private var session: ProcessTapSession?
+    private var output: PlaybackOutput?
     private var pipeline: DelayPipeline?
     private var statsTask: Task<Void, Never>?
 
     var isRunning: Bool {
         if case .running = status { return true }
         return false
+    }
+
+    /// 시작 중이거나 실행 중 (설정을 잠가야 하는 상태)
+    var isBusy: Bool {
+        switch status {
+        case .starting, .running: true
+        case .idle, .failed: false
+        }
     }
 
     var isModelLoading: Bool {
@@ -208,81 +219,124 @@ final class KaraokeEngine {
         separation: SeparationSettings
     ) async {
         stop()
+        status = .starting
 
         if mode == .aiSeparation {
-            guard await prepareModel(backend: separation.backend), separator != nil else {
-                if case let .failed(message) = modelState { status = .failed(message) }
+            guard await prepareModel(backend: separation.backend), self.separator != nil else {
+                if case let .failed(message) = modelState { status = .failed(message) } else { status = .idle }
                 return
+            }
+            // 음정 검출기는 없어도 분리는 돌린다 (음정 바만 빠짐)
+            if pitchDetector == nil {
+                do {
+                    pitchDetector = try SwiftF0Detector()
+                    pitchError = nil
+                } catch {
+                    pitchError = error.localizedDescription
+                }
             }
         }
 
+        // 1) 탭 + 캡처 애그리게이트 (백그라운드)
         let session = ProcessTapSession()
-        // catch 에서 워커 스레드를 확실히 멈추기 위해 do 바깥에 둔다
+        do {
+            try await Task.detached { try session.prepare(source: source, muteOriginal: muteOriginal) }.value
+        } catch {
+            status = .failed(error.localizedDescription)
+            return
+        }
+
+        let playback = PlaybackOutput()
+        let inputRate = session.captureSampleRate
+        let outputRate = playback.sampleRate
         var createdPipeline: DelayPipeline?
         do {
-            try session.prepare(source: source, muteOriginal: muteOriginal)
-
-            let tapRate = session.tapFormat.mSampleRate
-            let outputRate = session.outputSampleRate
-            sampleRateWarning = abs(tapRate - outputRate) > 1
-                ? "탭(\(Int(tapRate)) Hz)과 출력 장치(\(Int(outputRate)) Hz)의 샘플레이트가 다릅니다. 음정이 틀어지면 출력 장치 레이트를 맞춰 주세요."
-                : nil
-
+            // 2) 처리기 (입력 레이트 → 출력 레이트)
             let processor: StreamProcessor
             var burstSeconds = 0.0
             separationProcessor = nil
             separationTiming = nil
             pitchTimeline = nil
+            let needsResample = abs(inputRate - outputRate) > 0.5
             switch mode {
             case .passthrough:
-                processor = PassthroughProcessor()
+                processor = needsResample
+                    ? try ResamplingProcessor(wrapping: PassthroughProcessor(), inputRate: inputRate, outputRate: outputRate)
+                    : PassthroughProcessor()
             case .centerCancel:
-                processor = CenterCancelProcessor()
+                processor = needsResample
+                    ? try ResamplingProcessor(wrapping: CenterCancelProcessor(), inputRate: inputRate, outputRate: outputRate)
+                    : CenterCancelProcessor()
             case .aiSeparation:
                 guard let separator else { throw CoreAudioError("분리 모델이 준비되지 않았습니다") }
-                // 음정 검출기는 없어도 분리는 돌린다 (음정 바만 빠짐)
-                if pitchDetector == nil {
-                    do {
-                        pitchDetector = try SwiftF0Detector()
-                        pitchError = nil
-                    } catch {
-                        pitchError = error.localizedDescription
-                    }
-                }
-                let separation = try SeparationProcessor(
+                let separationProcessor = try SeparationProcessor(
                     separator: separator,
                     settings: separation.streamingSettings(for: modelConfig),
-                    deviceSampleRate: outputRate,
+                    inputSampleRate: inputRate,
+                    outputSampleRate: outputRate,
                     pitchDetector: pitchDetector
                 )
-                separation.output = separationOutput
-                separationProcessor = separation
-                pitchTimeline = separation.pitchTimeline
-                separationTiming = (separation.streamOffsetSeconds, separation.maxWaitSeconds)
-                burstSeconds = separation.maxWaitSeconds
-                processor = separation
+                separationProcessor.output = separationOutput
+                self.separationProcessor = separationProcessor
+                pitchTimeline = separationProcessor.pitchTimeline
+                separationTiming = (separationProcessor.streamOffsetSeconds, separationProcessor.maxWaitSeconds)
+                burstSeconds = separationProcessor.maxWaitSeconds
+                processor = separationProcessor
             }
 
-            // 파이프라인 시간축은 출력 장치(=애그리게이트 클럭) 기준
-            let pipeline = DelayPipeline(sampleRate: outputRate, delaySeconds: delaySeconds, processor: processor, burstSeconds: burstSeconds)
+            let pipeline = DelayPipeline(
+                inputSampleRate: inputRate,
+                outputSampleRate: outputRate,
+                delaySeconds: delaySeconds,
+                processor: processor,
+                burstSeconds: burstSeconds
+            )
             createdPipeline = pipeline
             pipeline.startWorker()
 
+            // 3) 재생 (출력 장치가 바뀌면 엔진이 멈추므로 안전하게 정지하고 안내)
+            try playback.start(
+                render: { [pipeline] frames, buffers, timestamp in
+                    pipeline.renderPlayback(frameCount: frames, output: buffers, timestamp: timestamp)
+                },
+                onConfigurationChange: { [weak self] in
+                    MainActor.assumeIsolated {
+                        guard let self, self.isRunning else { return }
+                        self.stop()
+                        self.status = .failed("출력 장치가 바뀌어 정지했습니다. 다시 시작해 주세요.")
+                    }
+                }
+            )
+
+            // 4) 캡처 시작 (백그라운드 — 첫 실행 땐 권한 응답까지 블록된다)
             let tapChannels = max(1, Int(session.tapFormat.mChannelsPerFrame))
-            try session.start { [pipeline] _, inputData, _, outputData, outputTime in
-                pipeline.renderIO(input: inputData, output: outputData, outputTime: outputTime, tapChannelCount: tapChannels)
+            try await Task.detached {
+                try session.start { [pipeline] _, inputData, inputTime, _, _ in
+                    pipeline.renderCapture(input: inputData, inputTime: inputTime, tapChannelCount: tapChannels)
+                }
+            }.value
+
+            // 시작 대기 중에 사용자가 정지를 눌렀으면 정리
+            guard status == .starting else {
+                playback.stop()
+                session.teardown()
+                pipeline.stopWorker()
+                return
             }
 
             self.session = session
+            self.output = playback
             self.pipeline = pipeline
-            sampleRate = outputRate
-            outputDeviceName = session.outputDeviceName
+            inputSampleRate = inputRate
+            outputSampleRate = outputRate
+            outputDeviceName = playback.deviceName
             stats = PipelineStats()
             inferenceStats = InferenceStats()
             runningMode = mode
             status = .running(sourceName: source.name)
             startStatsPolling()
         } catch {
+            playback.stop()
             session.teardown()
             createdPipeline?.stopWorker()
             separationProcessor = nil
@@ -294,7 +348,9 @@ final class KaraokeEngine {
     func stop() {
         statsTask?.cancel()
         statsTask = nil
-        // IO 를 먼저 멈춰야 파이프라인 버퍼 해제 중에 콜백이 돌지 않는다
+        // 캡처·재생을 먼저 멈춰야 파이프라인 버퍼 해제 중에 콜백이 돌지 않는다
+        output?.stop()
+        output = nil
         session?.teardown()
         session = nil
         pipeline?.stopWorker()
@@ -302,7 +358,7 @@ final class KaraokeEngine {
         separationProcessor = nil
         pitchTimeline = nil
         runningMode = nil
-        if isRunning { status = .idle }
+        if isBusy { status = .idle }
     }
 
     /// 지금 들리는 출력 스트림 위치 (초, 화면 싱크 보정 반영). 음정 타임라인과 같은 시간축.

@@ -37,7 +37,7 @@ struct ContentView: View {
         .task {
             // 실행 중이 아닐 때 2초마다 목록 갱신 (새로 재생을 시작한 앱 반영)
             while !Task.isCancelled {
-                if !engine.isRunning { catalog.refresh() }
+                if !engine.isBusy { catalog.refresh() }
                 try? await Task.sleep(for: .seconds(2))
             }
         }
@@ -72,7 +72,7 @@ struct ContentView: View {
                 .tag(source.id)
             }
             .frame(minHeight: 180)
-            .disabled(engine.isRunning)
+            .disabled(engine.isBusy)
             .overlay {
                 if catalog.sources.count <= 1 {
                     Text("소리를 내는 앱이 없습니다. 스트리밍 앱에서 노래를 재생해 보세요.")
@@ -107,7 +107,7 @@ struct ContentView: View {
                 Text("AI 분리").tag(ProcessingMode.aiSeparation)
             }
             .pickerStyle(.segmented)
-            .disabled(engine.isRunning)
+            .disabled(engine.isBusy)
             .help("방식마다 지연이 달라서 실행 중에는 바꿀 수 없습니다")
 
             if mode == .aiSeparation {
@@ -121,7 +121,7 @@ struct ContentView: View {
                     .monospacedDigit()
                     .frame(width: 44, alignment: .trailing)
             }
-            .disabled(engine.isRunning)
+            .disabled(engine.isBusy)
             .help("보컬 분리·음정 미리보기에 쓸 여유 시간. 실행 중에는 바꿀 수 없습니다.")
 
             if mode == .aiSeparation {
@@ -133,13 +133,13 @@ struct ContentView: View {
                             .foregroundStyle(.orange)
                         Button("권장값으로") { delaySeconds = min(8, (recommended * 2).rounded(.up) / 2) }
                             .controlSize(.small)
-                            .disabled(engine.isRunning)
+                            .disabled(engine.isBusy)
                     }
                 }
             }
 
             Toggle("원본 소리 끄기 (CoNo 가 지연 재생)", isOn: $muteOriginal)
-                .disabled(engine.isRunning)
+                .disabled(engine.isBusy)
                 .help("끄면 원본과 CoNo 재생이 겹쳐 들립니다 (에코 확인용)")
         }
     }
@@ -174,7 +174,7 @@ struct ContentView: View {
                     modelStateLabel
                 }
             }
-            .disabled(engine.isRunning)
+            .disabled(engine.isBusy)
             .padding(4)
         }
     }
@@ -221,7 +221,7 @@ struct ContentView: View {
     private var controls: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
-                if engine.isRunning {
+                if engine.isBusy {
                     Button("정지", systemImage: "stop.fill") { engine.stop() }
                         .keyboardShortcut(.space, modifiers: [])
                 } else {
@@ -242,6 +242,9 @@ struct ContentView: View {
                 }
                 if case let .running(name) = engine.status {
                     Text("캡처 중: \(name)").foregroundStyle(.secondary)
+                } else if engine.status == .starting {
+                    ProgressView().controlSize(.small)
+                    Text("시작 중… 오디오 권한 창이 떠 있으면 허용해 주세요").foregroundStyle(.secondary)
                 }
             }
             .controlSize(.large)
@@ -284,17 +287,13 @@ struct ContentView: View {
                         Text("언더런 \(stats.underruns) · 오버플로 \(stats.captureOverflows)").monospacedDigit()
                         Text("")
                     }
-                    GridRow {
-                        Text("IO").foregroundStyle(.secondary)
-                        Text(String(format: "사이클 건너뜀 %d회 · 콜백 최대 %.2f ms / 주기 %.1f ms",
-                                    stats.ioSkippedCycles, stats.ioMaxCallbackMilliseconds, stats.ioCycleMilliseconds))
-                            .monospacedDigit()
-                            .foregroundStyle(stats.ioSkippedCycles > 0 ? .orange : .primary)
-                        Text("")
-                    }
+                    diagnosticsRow("캡처 IO", stats.capture)
+                    diagnosticsRow("재생 IO", stats.playback)
                     GridRow {
                         Text("장치").foregroundStyle(.secondary)
-                        Text("\(engine.outputDeviceName) · \(Int(engine.sampleRate)) Hz")
+                        Text(engine.inputSampleRate == engine.outputSampleRate
+                            ? "\(engine.outputDeviceName) · \(Int(engine.outputSampleRate)) Hz"
+                            : "\(engine.outputDeviceName) · 탭 \(Int(engine.inputSampleRate)) → 출력 \(Int(engine.outputSampleRate)) Hz (CoNo 변환)")
                         Text("")
                     }
                 }
@@ -344,9 +343,6 @@ struct ContentView: View {
                     Text("처리 중단: \(error)").font(.caption).foregroundStyle(.red).textSelection(.enabled)
                 }
 
-                if let warning = engine.sampleRateWarning {
-                    Text(warning).font(.caption).foregroundStyle(.orange)
-                }
                 if stats.capturedSeconds > 3, !stats.hasReceivedSignal {
                     Text("입력이 계속 무음입니다. 선택한 앱에서 재생 중인지, 그리고 시스템 설정 › 개인정보 보호 및 보안 › 화면 및 시스템 오디오 녹음에서 CoNo 가 허용됐는지 확인하세요.")
                         .font(.caption)
@@ -355,6 +351,22 @@ struct ContentView: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(4)
+        }
+    }
+}
+
+private extension ContentView {
+    /// 오디오 콜백 진단: 건너뜀이 늘면 시스템이 제때 IO 를 못 돌린 것 (틱 소리)
+    func diagnosticsRow(_ label: String, _ diagnostics: CallbackDiagnostics) -> some View {
+        GridRow {
+            Text(label).foregroundStyle(.secondary)
+            Text(String(
+                format: "사이클 건너뜀 %d회 · 콜백 최대 %.2f ms / 주기 %.1f ms",
+                diagnostics.skippedCycles, diagnostics.maxCallbackMilliseconds, diagnostics.cycleMilliseconds
+            ))
+            .monospacedDigit()
+            .foregroundStyle(diagnostics.skippedCycles > 0 ? .orange : .primary)
+            Text("")
         }
     }
 }
