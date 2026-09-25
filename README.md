@@ -71,7 +71,7 @@ xcodebuild -project CoNo.xcodeproj -scheme CoNo -configuration Release -derivedD
 open build/DerivedData/Build/Products/Release/CoNo.app
 ```
 
-- **Signing:** `project.yml` signs with a development team ID. Change `DEVELOPMENT_TEAM` to your own team, or set `CODE_SIGN_IDENTITY` to `"-"` for ad-hoc signing (macOS will then ask for permissions again after every build).
+- **Signing:** builds are ad-hoc signed by default, so macOS asks for permissions again after every build. To keep permissions across builds, copy `Support/Signing.local.xcconfig.example` to `Support/Signing.local.xcconfig` (git-ignored), put in your own team ID, and run `xcodegen generate` again.
 - **Permissions:** on first start, allow *System Audio Recording* and, for lyrics, *Automation → Music*.
 - **Use the Release build** for AI mode — the Debug build runs the signal processing about 30× slower.
 - **Tip:** set your output device to 48 kHz in Audio MIDI Setup (see Known Issues).

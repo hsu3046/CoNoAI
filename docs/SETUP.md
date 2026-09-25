@@ -29,8 +29,14 @@ Xcode 로 열어도 된다: `open CoNo.xcodeproj`. `CoNo.xcodeproj` 는 생성�
 ## 오디오 캡처 권한
 - 첫 캡처 시작 때 "시스템 오디오 녹음" 권한 창이 뜬다.
 - 거부했거나 창이 안 떴는데 입력 레벨이 0 이면: 시스템 설정 › 개인정보 보호 및 보안 › 화면 및 시스템 오디오 녹음 › CoNo 허용.
-- 앱은 **AIB Inc. 개발 인증서**(팀 `9BF5ZBVYYF`)로 서명한다 → 권한이 "앱 ID + 인증서" 로 기억돼 다시 빌드해도 묻지 않는다 (서명 방식을 바꾼 직후 한 번만 다시 묻는다).
-  다른 Mac 에서 빌드하려면 그 Mac 키체인에 같은 팀 인증서가 있어야 한다. 없으면 `project.yml` 의 `CODE_SIGN_IDENTITY` 를 `"-"`(ad-hoc)로 바꾸면 빌드는 되지만 빌드마다 권한을 다시 묻는다.
+- 서명 설정은 `Support/Signing.xcconfig` 에 있다. 기본은 ad-hoc(`-`) 이라 누구나 바로 빌드되지만, 빌드마다 서명이 바뀌어 권한을 다시 묻는다.
+- 개발 인증서로 서명하려면 (권한이 "앱 ID + 인증서" 로 기억돼 다시 빌드해도 묻지 않는다):
+  ```bash
+  cp Support/Signing.local.xcconfig.example Support/Signing.local.xcconfig   # git 에 올라가지 않는다
+  # DEVELOPMENT_TEAM 을 자기 팀 ID 로 바꾼다 (키체인에 그 팀의 Apple Development 인증서 필요)
+  xcodegen generate
+  ```
+  확인: `codesign -dv build/DerivedData/Build/Products/Release/CoNo.app` 의 `TeamIdentifier` 가 팀 ID 면 성공, `Signature=adhoc` 이면 로컬 파일이 안 읽힌 것.
 - 가사 기능은 **자동화 권한**(CoNo → 음악)이 필요하다. 거부했다면 시스템 설정 › 개인정보 보호 및 보안 › 자동화 › CoNo › 음악.
 
 ## 테스트

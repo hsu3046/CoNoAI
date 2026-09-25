@@ -1,0 +1,6 @@
+// 이 파일을 Signing.local.xcconfig 로 복사하고 팀 ID 를 채운다 (커밋하지 않음).
+// 팀 ID: developer.apple.com › Membership, 또는 `security find-identity -p codesigning -v` 로 인증서 확인
+// 자기 팀 인증서로 서명하면 macOS 권한(오디오 캡처·자동화)이 빌드 사이에 유지된다.
+
+DEVELOPMENT_TEAM = YOURTEAMID
+CODE_SIGN_IDENTITY = Apple Development

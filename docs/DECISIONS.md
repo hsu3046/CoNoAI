@@ -87,7 +87,7 @@
 - 마이크 채점(PoC ④)은 설계만 기록하고 보류 — 가사 먼저.
 
 ## 2026-09-25 — 회사(AIB Inc.) 개발 인증서로 서명
-- 유료 개발자 계정. 개인 팀·회사 팀 중 **회사 팀(9BF5ZBVYYF)** 으로 결정 (사용자).
+- 유료 개발자 계정. 개인 팀·회사 팀 중 **회사 팀** 으로 결정 (사용자). 팀 ID 는 로컬 파일에만 (아래 항목).
 - 특수 entitlement 가 없어 수동 서명 + 프로필 없음. designated requirement = 앱 ID + 인증서 CN → 빌드마다 TCC 재질문 없음.
 - ShazamKit(L4) 도입 시 App ID 에 ShazamKit 서비스 활성화 + Automatic 서명·프로필로 전환 필요.
 
@@ -132,3 +132,12 @@
 - 발생 중 측정: 캡처·재생 IO 건너뜀 0, 언더런·오버플로 0, 콜백 최대 1.5 ms / 10.7 ms → **박자 놓침이 아니라 신호 자체의 불연속**.
 - 후보: ① 원본(탭 입력)에 이미 있음 ② CoNo 처리(변환·1초 구간 이어 붙이기·분리 모델 잡음) ③ 출력 이후.
 - 준비된 도구: 모니터 "최근 30초 녹음 저장"(입력·출력 WAV) + `scripts/find_clicks.py`. 재현 시 저장 → 입력/출력 비교, 1초 경계 일치 여부, "원곡" 출력에서도 나는지로 가른다.
+
+## 2026-09-25 — 서명 설정을 xcconfig 로 분리 (공개 저장소)
+- 팀 ID 는 비밀은 아니지만, 공개 저장소에 박혀 있으면 남이 빌드할 때 "인증서 없음" 으로 실패한다. → 기본은 ad-hoc 으로 누구나 빌드되게.
+- `Support/Signing.xcconfig`(커밋): `CODE_SIGN_STYLE Manual`, `CODE_SIGN_IDENTITY -`, 빈 `DEVELOPMENT_TEAM` + `#include? "Signing.local.xcconfig"`.
+- `Support/Signing.local.xcconfig`(gitignore): 팀 ID + `Apple Development`. 예시는 `.example`.
+- `project.yml` 은 `configFiles` 로 연결만. 테스트 타깃은 ad-hoc 그대로.
+- 검증: 로컬 파일 있음 → TeamIdentifier = 회사 팀 / 없음 → Signature=adhoc, 둘 다 Release 빌드 성공.
+- 이전 커밋 이력에는 팀 ID 가 남아 있다 (비밀이 아니므로 이력 재작성은 하지 않음).
+

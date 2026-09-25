@@ -1,0 +1,13 @@
+// CoNo — 앱 서명 설정
+//
+// 기본값은 ad-hoc 서명이라 누구나 바로 빌드할 수 있다.
+// (단 ad-hoc 은 빌드마다 서명이 바뀌어 macOS 가 오디오 캡처·자동화 권한을 다시 묻는다)
+//
+// 자기 개발 팀으로 서명하려면 이 폴더에 Signing.local.xcconfig 를 만든다 (커밋하지 않음 — .gitignore).
+// 예시: Signing.local.xcconfig.example
+
+CODE_SIGN_STYLE = Manual
+CODE_SIGN_IDENTITY = -
+DEVELOPMENT_TEAM =
+
+#include? "Signing.local.xcconfig"
