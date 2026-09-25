@@ -81,6 +81,15 @@ struct PitchBarView: View {
         }
 
 
+        // 분석 경계(미래 쪽) 근처에서 음표·곡선만 서서히 사라지게 하는 가로 그라데이션.
+        // 덮개를 씌우면 격자선까지 지워져 선이 끊겨 보였다 → 음표·곡선의 채색 자체에만 적용한다.
+        let knownX = x(snapshot.knownUntil)
+        let fadeStart = CGPoint(x: knownX - 60, y: 0)
+        let fadeEnd = CGPoint(x: knownX, y: 0)
+        func fading(_ color: Color) -> GraphicsContext.Shading {
+            .linearGradient(Gradient(colors: [color, color.opacity(0)]), startPoint: fadeStart, endPoint: fadeEnd)
+        }
+
         // 음표 막대
         for note in notes {
             let start = Double(note.startFrame) * period
@@ -93,7 +102,7 @@ struct PitchBarView: View {
                 height: max(3, rowHeight - 2)
             )
             let color: Color = end < now ? .white.opacity(0.3) : (start <= now ? .yellow : .white.opacity(0.9))
-            context.fill(Path(roundedRect: rect, cornerRadius: min(4, rect.height / 2)), with: .color(color))
+            context.fill(Path(roundedRect: rect, cornerRadius: min(4, rect.height / 2)), with: fading(color))
         }
 
         // 원곡 보컬 음정 곡선 (무성·끊김에서 선을 끊는다)
@@ -110,7 +119,7 @@ struct PitchBarView: View {
             }
             previousIndex = frame.index
         }
-        context.stroke(contour, with: .color(.cyan.opacity(0.55)), lineWidth: 1.5)
+        context.stroke(contour, with: fading(.cyan.opacity(0.55)), lineWidth: 1.5)
 
         // 진단 표시 (좌상단)
         context.draw(
@@ -123,21 +132,6 @@ struct PitchBarView: View {
             at: CGPoint(x: 40, y: 10),
             anchor: .leading
         )
-
-        // 아직 분석되지 않은 미래 쪽 경계: 딱 잘린 띠 대신 음표가 서서히 나타나는 그라데이션
-        // (예전엔 밝은 띠 + "분석 중" 글자였는데, 1초마다 움직여 잘린 배경처럼 보였다)
-        let knownX = x(snapshot.knownUntil)
-        if knownX < size.width + 60 {
-            let fade = CGRect(x: knownX - 60, y: 0, width: 61, height: size.height)
-            context.fill(
-                Path(fade),
-                with: .linearGradient(
-                    Gradient(colors: [Self.background.opacity(0), Self.background.opacity(0.95)]),
-                    startPoint: CGPoint(x: fade.minX, y: 0),
-                    endPoint: CGPoint(x: fade.maxX, y: 0)
-                )
-            )
-        }
 
         // 재생선
         var playhead = Path()
