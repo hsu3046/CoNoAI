@@ -89,6 +89,20 @@ struct SyllableAlignerTests {
         #expect(wipe.highlightedCharacters(at: 2) == 2)
     }
 
+    @Test func partiallyAnalyzedLineKeepsEarlySyllablesPaced() {
+        // 6음절이 0.5초씩 음을 바꾸며 3초 동안 불리는 줄인데, 앞 1.5초만 분석된 상태
+        let full = frames([(0.5, 60), (0.5, 62), (0.5, 64), (0.5, 65), (0.5, 67), (0.5, 69)])
+        let analyzed = full.filter { $0.time < 1.5 }
+        let early = SyllableAligner.align(text: "가나다라마바", frames: analyzed, framePeriod: period,
+                                          lineStart: 0, lineEnd: 3.3, analyzedUntil: 1.5)?.timings.map(\.start)
+        // 앞 세 음절은 실제 음 바뀜(0, 0.5, 1.0)에 — 1.5초 안에 여섯 음절을 욱여넣지 않는다
+        expectClose(early.map { Array($0.prefix(3)) }, [0, 0.5, 1.0], tolerance: 0.06)
+        // 대조: 임시 구간 없이 정렬하면 욱여넣어져 셋째 음절이 1.0 보다 훨씬 이르다
+        let squeezed = SyllableAligner.align(text: "가나다라마바", frames: analyzed, framePeriod: period,
+                                             lineStart: 0, lineEnd: 3.3)?.timings.map(\.start)
+        #expect((squeezed?[2] ?? 1) < 0.8)
+    }
+
     @Test func silentLineGivesNil() {
         let f = frames([(1.0, nil)])
         #expect(SyllableAligner.align(text: "가사", frames: f, framePeriod: period, lineStart: 0, lineEnd: 1) == nil)

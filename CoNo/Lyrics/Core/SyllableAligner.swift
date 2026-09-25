@@ -89,16 +89,28 @@ enum SyllableAligner {
     ///   - frames: 줄 구간을 덮는 연속 프레임 (시각 오름차순, 간격 framePeriod)
     ///   - lineStart/lineEnd: 이 줄의 곡 시각 범위 (LRC)
     /// - Returns: 발성이 없거나 음절이 없으면 nil (호출자는 비례 색칠로 대체)
+    /// - Parameter analyzedUntil: 보컬 분석이 끝난 곡 시각. 줄 끝보다 이르면(줄이 시작됐는데 뒷부분이 아직 분석 전)
+    ///   그 뒤부터 줄 끝 − 0.3초까지를 "노래가 이어진다"고 가정한 임시 구간으로 채운다.
+    ///   안 채우면 분석된 앞부분에 모든 음절을 욱여넣어 초반에 너무 빨리 칠해지고, 나중에 뒤로 고쳐진다.
     static func align(
         text: String,
         frames: [VocalFrame],
         framePeriod: Double,
         lineStart: Double,
         lineEnd: Double,
+        analyzedUntil: Double? = nil,
         weights: Weights = Weights()
     ) -> LineWipe? {
         let units = LyricTokenizer.units(text)
-        let inLine = frames.filter { $0.time >= lineStart - 1e-9 && $0.time < lineEnd }
+        var inLine = frames.filter { $0.time >= lineStart - 1e-9 && $0.time < lineEnd }
+        if let analyzedUntil, analyzedUntil < lineEnd - 0.3 {
+            // 임시 구간: 음높이 없이 유성으로만 채운다 → 격자 후보만 생겨 남은 음절이 고르게 놓인다
+            var t = max(analyzedUntil, (inLine.last?.time ?? lineStart - framePeriod) + framePeriod)
+            while t < lineEnd - 0.3 {
+                inLine.append(VocalFrame(time: t, voiced: true, midi: nil))
+                t += framePeriod
+            }
+        }
         guard !units.isEmpty, let firstVoiced = inLine.firstIndex(where: \.voiced),
               let lastVoiced = inLine.lastIndex(where: \.voiced)
         else { return nil }

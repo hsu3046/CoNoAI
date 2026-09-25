@@ -6,6 +6,7 @@
 import SwiftUI
 
 struct PitchBarView: View {
+    static let background = Color(red: 0.05, green: 0.05, blue: 0.09)
     let timeline: PitchTimeline
     let position: () -> Double?
     /// 키 조절 반음 — 원곡 음정에 더해 "지금 들리는 키" 로 그린다
@@ -27,7 +28,7 @@ struct PitchBarView: View {
                 draw(in: &context, size: size, frameDate: date)
             }
         }
-        .background(Color(red: 0.05, green: 0.05, blue: 0.09))
+        .background(Self.background)
         .clipShape(RoundedRectangle(cornerRadius: 10))
         .accessibilityLabel("음정 바")
     }
@@ -53,7 +54,7 @@ struct PitchBarView: View {
         let notes = segmenter.segment(snapshot.frames).map {
             SungNote(startFrame: $0.startFrame, endFrame: $0.endFrame, midi: $0.midi + keyShift)
         }
-        range.update(with: notes.filter { Double($0.endFrame) * period > t0 })
+        range.update(with: notes, framePeriod: period, now: now)
 
         let low = range.low
         let high = range.high
@@ -79,19 +80,6 @@ struct PitchBarView: View {
             }
         }
 
-        // 아직 분석되지 않은 미래 구간
-        let knownX = x(snapshot.knownUntil)
-        if knownX < size.width {
-            let unknown = CGRect(x: max(0, knownX), y: 0, width: size.width - max(0, knownX), height: size.height)
-            context.fill(Path(unknown), with: .color(.white.opacity(0.04)))
-            if unknown.width > 60 {
-                context.draw(
-                    Text("분석 중").font(.caption2).foregroundStyle(.white.opacity(0.4)),
-                    at: CGPoint(x: size.width - 8, y: 10),
-                    anchor: .trailing
-                )
-            }
-        }
 
         // 음표 막대
         for note in notes {
@@ -136,6 +124,21 @@ struct PitchBarView: View {
             anchor: .leading
         )
 
+        // 아직 분석되지 않은 미래 쪽 경계: 딱 잘린 띠 대신 음표가 서서히 나타나는 그라데이션
+        // (예전엔 밝은 띠 + "분석 중" 글자였는데, 1초마다 움직여 잘린 배경처럼 보였다)
+        let knownX = x(snapshot.knownUntil)
+        if knownX < size.width + 60 {
+            let fade = CGRect(x: knownX - 60, y: 0, width: 61, height: size.height)
+            context.fill(
+                Path(fade),
+                with: .linearGradient(
+                    Gradient(colors: [Self.background.opacity(0), Self.background.opacity(0.95)]),
+                    startPoint: CGPoint(x: fade.minX, y: 0),
+                    endPoint: CGPoint(x: fade.maxX, y: 0)
+                )
+            )
+        }
+
         // 재생선
         var playhead = Path()
         playhead.move(to: CGPoint(x: x(now), y: 0))
@@ -144,16 +147,26 @@ struct PitchBarView: View {
     }
 }
 
-/// 세로 음역을 곡에 맞춰 천천히 따라가게 한다 (그리기마다 갱신, 상태 알림 없음)
+/// 세로 음역을 곡에 맞춘다 — 기준선이 자주 움직이면 음 위치를 놓치므로 안정성을 우선한다.
+///   - 기준: 화면에 보이는 6초가 아니라 최근 20초에 나온 음표 전체
+///   - 넓히기: 음표가 범위 밖으로 나갈 때만, 빠르게 (음표가 잘리면 안 되므로)
+///   - 좁히기: 필요한 범위보다 4반음 넘게 넓은 상태가 8초 이어질 때만, 천천히
 final class MidiRangeTracker {
     private(set) var low: Double = 55 // G3
     private(set) var high: Double = 79 // G5
     private let minimumSpan: Double = 14
     private let margin: Double = 3
-    private let smoothing: Double = 0.03
+    private let historySeconds: Double = 20
+    private var history: [Int: (time: Double, midi: Int)] = [:] // 음표 시작 프레임 → (시각, 음)
+    private var tooWideSince: Double?
 
-    func update(with notes: [SungNote]) {
-        guard let minMidi = notes.map(\.midi).min(), let maxMidi = notes.map(\.midi).max() else { return }
+    func update(with notes: [SungNote], framePeriod: Double, now: Double) {
+        for note in notes {
+            history[note.startFrame] = (Double(note.startFrame) * framePeriod, note.midi)
+        }
+        history = history.filter { $0.value.time >= now - historySeconds }
+        guard let minMidi = history.values.map(\.midi).min(), let maxMidi = history.values.map(\.midi).max() else { return }
+
         var targetLow = Double(minMidi) - margin
         var targetHigh = Double(maxMidi) + margin
         if targetHigh - targetLow < minimumSpan {
@@ -161,8 +174,22 @@ final class MidiRangeTracker {
             targetLow = center - minimumSpan / 2
             targetHigh = center + minimumSpan / 2
         }
-        low += (targetLow - low) * smoothing
-        high += (targetHigh - high) * smoothing
+
+        if targetLow < low - 0.01 || targetHigh > high + 0.01 {
+            // 범위 밖 음표 → 빠르게 넓힌다 (지금 범위와 목표의 합집합 쪽으로)
+            low += (min(low, targetLow) - low) * 0.15
+            high += (max(high, targetHigh) - high) * 0.15
+            tooWideSince = nil
+        } else if (high - low) - (targetHigh - targetLow) > 4 {
+            // 필요보다 한참 넓음 → 8초 지켜본 뒤 천천히 좁힌다
+            if tooWideSince == nil { tooWideSince = now }
+            if let since = tooWideSince, now - since > 8 {
+                low += (targetLow - low) * 0.02
+                high += (targetHigh - high) * 0.02
+            }
+        } else {
+            tooWideSince = nil
+        }
     }
 }
 

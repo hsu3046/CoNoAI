@@ -394,7 +394,10 @@ final class LyricsController {
                 midi: voiced ? NoteSegmenter.midi(fromHz: frame.pitchHz) : nil
             )
         }
-        let wipe = SyllableAligner.align(text: text, frames: frames, framePeriod: period, lineStart: songStart, lineEnd: songEnd)
+        // 분석 전선 (곡 시각) — 줄 뒷부분이 아직 분석 전이면 정렬기가 임시 구간으로 채운다
+        let analyzedSong = songStart + (snapshot.knownUntil - streamStart)
+        let wipe = SyllableAligner.align(text: text, frames: frames, framePeriod: period,
+                                         lineStart: songStart, lineEnd: songEnd, analyzedUntil: analyzedSong)
         wipeCache[key] = WipeCacheEntry(wipe: wipe, knownUntil: snapshot.knownUntil, complete: snapshot.knownUntil >= streamEnd)
         return wipe
     }
