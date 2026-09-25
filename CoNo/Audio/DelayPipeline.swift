@@ -120,6 +120,10 @@ final class DelayPipeline: @unchecked Sendable {
 
     /// 재생 스레드만 읽고 쓴다. false 면 playbackRing 이 목표 지연만큼 찰 때까지 무음 출력.
     private var playbackIsPrimed = false
+    /// 재생 스레드 전용: 다음 읽기의 앞부분을 페이드인할지 (시작·언더런 뒤 무음에서 소리로 돌아올 때 클릭 방지)
+    private var playbackNeedsFadeIn = true
+    /// 끊김·재개 페이드 길이 (프레임, 48 kHz 에서 약 1.3 ms)
+    private static let edgeFadeFrames = 64
     /// 재생 스레드 전용 누적 재생 프레임 (= 출력 스트림 위치)
     private var playedFrames = 0
 
@@ -352,7 +356,14 @@ final class DelayPipeline: @unchecked Sendable {
         var got = 0
         if playbackIsPrimed {
             got = playbackRing.read(into: playScratch, count: samples)
+            if playbackNeedsFadeIn, got > 0 {
+                Self.applyEdgeFade(playScratch, frames: got / Self.channels, fadeIn: true)
+                playbackNeedsFadeIn = false
+            }
             if got < samples {
+                // 언더런: 남은 소리 끝을 페이드아웃해 무음으로 뚝 끊기는 클릭을 줄이고, 다시 채워지면 페이드인
+                Self.applyEdgeFade(playScratch, frames: got / Self.channels, fadeIn: false)
+                playbackNeedsFadeIn = true
                 underrunCount.add(1, ordering: .relaxed)
                 playbackIsPrimed = false
                 primedFlag.store(false, ordering: .relaxed)
@@ -394,6 +405,18 @@ final class DelayPipeline: @unchecked Sendable {
         playbackMonitor.recordCallback(ticks: mach_absolute_time() &- start)
     }
 
+    /// 인터리브 스테레오 버퍼의 앞(페이드인) 또는 끝(페이드아웃) 을 선형으로 줄인다. 실시간 안전 (할당 없음).
+    private static func applyEdgeFade(_ buffer: UnsafeMutablePointer<Float>, frames: Int, fadeIn: Bool) {
+        let length = min(frames, edgeFadeFrames)
+        guard length > 0 else { return }
+        for i in 0..<length {
+            let gain = Float(i + 1) / Float(length + 1)
+            let frame = fadeIn ? i : frames - 1 - i
+            buffer[frame * channels] *= gain
+            buffer[frame * channels + 1] *= gain
+        }
+    }
+
     private static func raisePeak(_ atomic: borrowing Atomic<UInt32>, to peak: Float) {
         if peak > Float(bitPattern: atomic.load(ordering: .relaxed)) {
             atomic.store(peak.bitPattern, ordering: .relaxed)
@@ -410,6 +433,8 @@ final class DelayPipeline: @unchecked Sendable {
             guard before % 2 == 0 else { continue }
             let frames = clockFrames.load(ordering: .relaxed)
             let hostTime = clockHostTime.load(ordering: .relaxed)
+            // seqlock: 데이터 읽기가 두 번째 버전 읽기 뒤로 재배치되지 않게 (ARM64)
+            atomicMemoryFence(ordering: .acquiring)
             let after = clockVersion.load(ordering: .acquiring)
             guard before == after else { continue }
             guard hostTime != 0 else { return nil }
@@ -429,6 +454,7 @@ final class DelayPipeline: @unchecked Sendable {
             guard before % 2 == 0 else { continue }
             let frames = captureClockFrames.load(ordering: .relaxed)
             let anchorHost = captureClockHostTime.load(ordering: .relaxed)
+            atomicMemoryFence(ordering: .acquiring)
             let after = captureClockVersion.load(ordering: .acquiring)
             guard before == after else { continue }
             guard anchorHost != 0 else { return nil }

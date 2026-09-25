@@ -72,6 +72,31 @@ struct STFTTests {
 
 // MARK: - StreamingSeparator (정렬·연속성)
 
+/// 호출마다 (호출 번호 × 1000) 상수를 내는 분리기 대역 (오른쪽은 절반) — 크로스페이드 검증용
+private final class StepConstantSeparator: ChunkSeparating {
+    let chunkSize: Int
+    let edgeTrim: Int
+    private var calls = 0
+
+    init(chunkSize: Int, edgeTrim: Int) {
+        self.chunkSize = chunkSize
+        self.edgeTrim = edgeTrim
+    }
+
+    func separate(
+        left: UnsafeBufferPointer<Float>,
+        right: UnsafeBufferPointer<Float>,
+        outLeft: UnsafeMutableBufferPointer<Float>,
+        outRight: UnsafeMutableBufferPointer<Float>
+    ) throws {
+        calls += 1
+        for i in 0..<chunkSize {
+            outLeft[i] = Float(calls) * 1000
+            outRight[i] = Float(calls) * 500
+        }
+    }
+}
+
 /// 입력을 그대로 돌려주는 분리기 대역 — 반주 == 원곡 이어야 하고, 출력은 입력을 정확히 지연시킨 것이어야 한다.
 private final class IdentitySeparator: ChunkSeparating {
     let chunkSize: Int
@@ -144,6 +169,51 @@ struct StreamingSeparatorTests {
                 #expect(abs(accRight[i] - (-expected * 0.5)) < 1e-3, "acc R i=\(i)")
             }
         }
+    }
+
+    @Test func stepSeamsAreCrossfadedLinearly() throws {
+        // 창마다 다른 상수를 내는 분리기 → 이음매가 "이전 꼬리 → 이번 값" 선형 혼합인지 본다.
+        // (항등 분리기는 모든 창이 같은 값이라 크로스페이드를 지워도 통과한다)
+        let separator = StepConstantSeparator(chunkSize: 1000, edgeTrim: 50)
+        let settings = StreamingSeparatorSettings(step: 120, rightContext: 200, fade: 40)
+        let streaming = try StreamingSeparator(separator: separator, settings: settings)
+
+        let total = 2400
+        let inputLeft = [Float](repeating: 0, count: total)
+        let inputRight = (0..<total).map { Float($0 + 1) }
+        var accLeft: [Float] = []
+        var accRight: [Float] = []
+        var mixRight: [Float] = []
+        try inputLeft.withUnsafeBufferPointer { l in
+            try inputRight.withUnsafeBufferPointer { r in
+                try streaming.push(left: l, right: r) { out in
+                    accLeft += out.accompanimentLeft
+                    accRight += out.accompanimentRight
+                    mixRight += out.mixRight
+                }
+            }
+        }
+
+        let step = settings.step
+        let fade = settings.fade
+        #expect(accLeft.count == (total / step) * step)
+        for i in 0..<accLeft.count {
+            let call = Float(i / step + 1)      // 이 스텝을 만든 호출 번호 (값 = 번호 × 1000)
+            let k = i % step
+            var expected = call * 1000
+            if k < fade {
+                let a = (Float(k) + 0.5) / Float(fade)
+                expected = (call - 1) * 1000 * (1 - a) + call * 1000 * a
+            }
+            #expect(abs(accLeft[i] - expected) < 1e-2, "L i=\(i)")
+            #expect(abs(accRight[i] - expected * 0.5) < 1e-2, "R i=\(i)")
+            // 원곡(오른쪽)도 같은 스트림 오프셋으로
+            let delayed: Float = i >= settings.rightContext ? inputRight[i - settings.rightContext] : 0
+            #expect(mixRight[i] == delayed, "mixR i=\(i)")
+        }
+        // 창 사이 값 차이(1000)가 한 샘플에 몰리지 않고 fade 로 나뉜다
+        let maxJump = zip(accLeft.dropFirst(step), accLeft.dropFirst(step + 1)).map { abs($1 - $0) }.max() ?? 0
+        #expect(maxJump <= 1000 / Float(fade) + 1e-2, "이음매 점프 \(maxJump)")
     }
 
     @Test func rejectsRightContextInsideEdgeTrim() {

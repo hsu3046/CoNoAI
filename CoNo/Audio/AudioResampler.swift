@@ -75,25 +75,31 @@ final class AudioResampler {
             offset += n
 
             var supplied = false
-            outputBuffer.frameLength = 0
-            var conversionError: NSError?
-            // 스트림이 이어지므로 endOfStream 이 아니라 noDataNow 로 돌려준다 (변환기 내부 상태 유지)
-            let status = converter.convert(to: outputBuffer, error: &conversionError) { [inputBuffer] _, inputStatus in
-                if supplied {
-                    inputStatus.pointee = .noDataNow
-                    return nil
+            // 출력 버퍼가 먼저 차면 .haveData 로 돌아오고 입력이 변환기 안에 남는다.
+            // 그대로 다음 조각으로 넘어가면 남은 입력을 inputBuffer 째로 덮어쓰므로, 입력을 다 쓸 때까지(.inputRanDry) 반복한다.
+            var status: AVAudioConverterOutputStatus
+            repeat {
+                outputBuffer.frameLength = 0
+                var conversionError: NSError?
+                // 스트림이 이어지므로 endOfStream 이 아니라 noDataNow 로 돌려준다 (변환기 내부 상태 유지)
+                status = converter.convert(to: outputBuffer, error: &conversionError) { [inputBuffer] _, inputStatus in
+                    if supplied {
+                        inputStatus.pointee = .noDataNow
+                        return nil
+                    }
+                    supplied = true
+                    inputStatus.pointee = .haveData
+                    return inputBuffer
                 }
-                supplied = true
-                inputStatus.pointee = .haveData
-                return inputBuffer
-            }
-            if status == .error {
-                throw CoreAudioError("샘플레이트 변환 실패: \(conversionError?.localizedDescription ?? "unknown")")
-            }
+                if status == .error {
+                    throw CoreAudioError("샘플레이트 변환 실패: \(conversionError?.localizedDescription ?? "unknown")")
+                }
 
-            let produced = Int(outputBuffer.frameLength)
-            guard produced > 0, let outChannels = outputBuffer.floatChannelData else { continue }
-            try emit((0..<channelCount).map { UnsafeBufferPointer(start: outChannels[$0], count: produced) })
+                let produced = Int(outputBuffer.frameLength)
+                if produced > 0, let outChannels = outputBuffer.floatChannelData {
+                    try emit((0..<channelCount).map { UnsafeBufferPointer(start: outChannels[$0], count: produced) })
+                }
+            } while status == .haveData
         }
     }
 }
