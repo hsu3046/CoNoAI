@@ -79,11 +79,20 @@ final class KaraokeEngine {
     var displayLatencyMilliseconds: Double = 0
 
     /// 키 조절 (반음). 실행 전에도 정할 수 있고 실행 중에 바로 반영된다. 음정 바도 같은 만큼 옮겨 그린다.
-    var keyShift: Int = 0 {
-        didSet {
-            keyShift = min(max(keyShift, PlaybackOutput.keyShiftRange.lowerBound), PlaybackOutput.keyShiftRange.upperBound)
-            output?.setKeyShift(keyShift)
-        }
+    /// 바꿀 때는 `changeKey(by:)` / `resetKey()` 로만 (범위 제한은 거기서 한다).
+    /// ⚠️ @Observable 클래스에서는 didSet 안에서 자기 자신에 대입하면 didSet 이 다시 불려 무한 재귀 → 스택 오버플로.
+    private(set) var keyShift: Int = 0 {
+        didSet { output?.setKeyShift(keyShift) }
+    }
+
+    func changeKey(by semitones: Int) {
+        let range = PlaybackOutput.keyShiftRange
+        let next = min(max(keyShift + semitones, range.lowerBound), range.upperBound)
+        if next != keyShift { keyShift = next }
+    }
+
+    func resetKey() {
+        if keyShift != 0 { keyShift = 0 }
     }
 
     /// AI 모드에서 들려줄 출력 — 실행 중에도 바꿀 수 있다

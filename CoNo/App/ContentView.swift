@@ -363,7 +363,7 @@ private extension ContentView {
         HStack(spacing: 8) {
             Text("키").foregroundStyle(.secondary)
             Button {
-                engine.keyShift -= 1
+                engine.changeKey(by: -1)
             } label: {
                 Label("내리기", systemImage: "minus").labelStyle(.iconOnly)
             }
@@ -376,7 +376,7 @@ private extension ContentView {
                 .frame(width: 56)
 
             Button {
-                engine.keyShift += 1
+                engine.changeKey(by: 1)
             } label: {
                 Label("올리기", systemImage: "plus").labelStyle(.iconOnly)
             }
@@ -384,7 +384,7 @@ private extension ContentView {
             .keyboardShortcut(.upArrow, modifiers: .command)
             .help("반음 올리기 (⌘↑)")
 
-            Button("원키로") { engine.keyShift = 0 }
+            Button("원키로") { engine.resetKey() }
                 .disabled(engine.keyShift == 0)
                 .keyboardShortcut("0", modifiers: .command)
         }
