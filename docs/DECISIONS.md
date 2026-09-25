@@ -42,3 +42,6 @@
 - UVR 모델은 배치 차원이 기호(`batch_size`)라 "1" 이면 CoreML 이 178개 노드를 전부 거부 → 전부 CPU(약 14초/창).
 - ObjC API 에 free dimension override 가 없어 동적 형태 허용으로 해결 → 전 노드 CoreML, 약 150ms/창.
 - MLComputeUnits 값은 대문자 `ALL` (헤더 주석의 "All" 은 거부됨).
+
+## 2026-09-25 — 검증: AI 분리 실사용 품질 확인
+- Apple Music 곡으로 실시간 분리 재생 — 사용자 평가 "거의 완벽하게 분리". 기본값(step 1.0초, rightContext 1.0초, CoreML 자동)으로 충분.
