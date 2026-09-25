@@ -24,3 +24,7 @@
 
 ## 2026-09-25 — 로컬 PoC 는 ad-hoc 서명
 - 팀 ID 없이 바로 빌드 가능. 대신 빌드마다 서명이 바뀌어 오디오 캡처 권한을 다시 물을 수 있다.
+
+## 2026-09-25 — 검증: Apple Music (FairPlay) 캡처 동작 확인
+- Apple Music 앱을 process tap 으로 캡처 + 원본 음소거 + 지연 재생까지 정상 동작 (사용자 실측).
+- 타당성 조사의 1순위 리스크("DRM 재생 소리가 캡처되는가")가 Apple Music 에서는 해소됨. 멜론·YouTube Music(Chrome) 은 미검증.
