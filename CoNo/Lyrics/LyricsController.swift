@@ -91,6 +91,15 @@ final class LyricsController {
     /// nil 값 = 싱크 가사 없음 (일반 가사만 있거나 못 찾음)
     private var lyricsByTrack: [String: TrackLyrics?] = [:]
     @ObservationIgnored private var lastHeardCaptureTime: Double?
+    /// 화면에 실제로 쓰는 지연 (곡별). 자동 싱크가 값을 바꿔도 부르는 중인 줄에는 반영하지 않고
+    /// 줄이 바뀌거나 간주일 때만 따라간다 → 줄 중간에 색칠이 앞뒤로 튀지 않는다.
+    private struct DisplayCommit {
+        var delay: Double
+        var lineIndex: Int?
+    }
+    @ObservationIgnored private var displayCommits: [String: DisplayCommit] = [:]
+    /// 곡별로 찾은 가사 지연을 기억 (다시 틀면 처음부터 맞춘 상태로 시작)
+    private let learnedDelays = LearnedLyricsDelays()
     private var tracks: [String: TrackInfo] = [:]
     private var loadingTrackIDs: Set<String> = []
     /// 곡별 마지막 상태 (일시 오류에서 회복하거나 곡을 오갈 때 되돌리기 위해)
@@ -142,6 +151,7 @@ final class LyricsController {
         lastResidualTrackID = nil
         anchorDiagnostics = AnchorDiagnostics()
         lastHeardCaptureTime = nil
+        displayCommits.removeAll()
         autoSync = AutoSyncInfo()
         vocalSource = nil
         currentTrackID = nil
@@ -220,10 +230,14 @@ final class LyricsController {
         // 지연 적용: 신뢰도 충분할 때만, 작은 변화는 부드럽게, 큰 변화는 두 번 연속 확인 후
         if let estimate = estimates[trackLyrics.chosen], estimate.confidence >= 0.4 {
             trackLyrics.lastEstimate = estimate
+            let difference = abs(estimate.lyricsDelay - trackLyrics.appliedDelay)
             if !trackLyrics.hasDelay {
                 trackLyrics.appliedDelay = estimate.lyricsDelay
                 trackLyrics.hasDelay = true
-            } else if abs(estimate.lyricsDelay - trackLyrics.appliedDelay) <= 0.25 {
+            } else if difference <= 0.08 {
+                // 체감되지 않는 차이는 따라가지 않는다 (잦은 미세 보정 방지)
+                trackLyrics.pendingDelay = nil
+            } else if difference <= 0.25 {
                 trackLyrics.appliedDelay += (estimate.lyricsDelay - trackLyrics.appliedDelay) * 0.5
                 trackLyrics.pendingDelay = nil
             } else if let pending = trackLyrics.pendingDelay, abs(pending - estimate.lyricsDelay) <= 0.1 {
@@ -237,6 +251,9 @@ final class LyricsController {
         }
 
         lyricsByTrack[position.trackID] = .some(trackLyrics)
+        if trackLyrics.hasDelay, let track = tracks[position.trackID] {
+            learnedDelays.store(delay: trackLyrics.appliedDelay, candidate: trackLyrics.chosen, for: track)
+        }
         autoSync = AutoSyncInfo(
             appliedDelay: trackLyrics.appliedDelay,
             lastEstimate: trackLyrics.lastEstimate,
@@ -274,7 +291,13 @@ final class LyricsController {
                 switch try await client.lyrics(for: track) {
                 case let .synced(candidates):
                     let parsed = candidates.compactMap(\.syncedLyrics).map(LRCParser.parse).filter { !$0.lines.isEmpty }
-                    lyricsByTrack[track.id] = parsed.isEmpty ? .some(nil) : .some(TrackLyrics(candidates: parsed))
+                    var trackLyrics = TrackLyrics(candidates: parsed)
+                    if let learned = learnedDelays.load(for: track), parsed.indices.contains(learned.candidate) {
+                        trackLyrics.chosen = learned.candidate
+                        trackLyrics.appliedDelay = learned.delay
+                        trackLyrics.hasDelay = true
+                    }
+                    lyricsByTrack[track.id] = parsed.isEmpty ? .some(nil) : .some(trackLyrics)
                     outcome = .ready(track, synced: !parsed.isEmpty)
                 case .plainOnly:
                     lyricsByTrack[track.id] = .some(nil)
@@ -301,8 +324,17 @@ final class LyricsController {
         guard let entry = lyricsByTrack[position.trackID], let trackLyrics = entry, let lyrics = trackLyrics.lyrics else { return (track, nil) }
 
         // 가사 시각 이동 = 사용자 미세조정(+ 앞당김) − 자동 싱크 지연(+ 늦춤)
-        let shift = offsetSeconds - trackLyrics.appliedDelay
-        let t = position.seconds + shift
+        // 지연은 줄 사이에서만 새 값으로 바꾼다 (부르는 중인 줄은 시작할 때의 값을 유지)
+        var commit = displayCommits[position.trackID] ?? DisplayCommit(delay: trackLyrics.appliedDelay, lineIndex: nil)
+        var t = position.seconds + offsetSeconds - commit.delay
+        let lineNow = lyrics.lineIndex(at: t)
+        if commit.delay != trackLyrics.appliedDelay, lineNow == nil || lineNow != commit.lineIndex {
+            commit.delay = trackLyrics.appliedDelay
+            t = position.seconds + offsetSeconds - commit.delay
+        }
+        commit.lineIndex = lyrics.lineIndex(at: t)
+        displayCommits[position.trackID] = commit
+        let shift = offsetSeconds - commit.delay
         var display = LyricsDisplay()
         if let index = lyrics.lineIndex(at: t) {
             let line = lyrics.lines[index]
@@ -354,5 +386,26 @@ final class LyricsController {
         let wipe = SyllableAligner.align(text: text, frames: frames, framePeriod: period, lineStart: songStart, lineEnd: songEnd)
         wipeCache[key] = WipeCacheEntry(wipe: wipe, knownUntil: snapshot.knownUntil, complete: snapshot.knownUntil >= streamEnd)
         return wipe
+    }
+}
+
+/// 곡별 가사 지연·후보 기억 (UserDefaults). 키는 제목·아티스트·길이 — LRCLIB 캐시 키와 같은 기준.
+struct LearnedLyricsDelays {
+    private let defaults = UserDefaults.standard
+    private static let prefix = "space.knowai.cono.lyricsDelay."
+
+    private func key(for track: TrackInfo) -> String {
+        "\(Self.prefix)\(track.title)|\(track.artist)|\(Int(track.duration.rounded()))"
+    }
+
+    func load(for track: TrackInfo) -> (delay: Double, candidate: Int)? {
+        guard let value = defaults.dictionary(forKey: key(for: track)),
+              let delay = value["delay"] as? Double, let candidate = value["candidate"] as? Int
+        else { return nil }
+        return (delay, candidate)
+    }
+
+    func store(delay: Double, candidate: Int, for track: TrackInfo) {
+        defaults.set(["delay": delay, "candidate": candidate], forKey: key(for: track))
     }
 }
