@@ -391,6 +391,20 @@ final class KaraokeEngine {
     }
 
     /// 지금 들리는 출력 스트림 위치 (초, 화면 싱크 보정 반영). 음정 타임라인과 같은 시간축.
+    /// 진단 녹음 저장 결과 (폴더 경로 또는 오류)
+    private(set) var diagnosticSaveMessage: String?
+
+    /// 최근 30초의 처리기 입력·출력을 ~/Downloads/CoNo-diagnostic-… 에 WAV 로 저장
+    func saveDiagnosticRecording() {
+        guard let pipeline else { return }
+        do {
+            let folder = try pipeline.recorder.save()
+            diagnosticSaveMessage = "저장됨: \(folder.path)"
+        } catch {
+            diagnosticSaveMessage = "저장 실패: \(error.localizedDescription)"
+        }
+    }
+
     /// 호스트 시각 → 캡처 스트림 시각 (가사 앵커용)
     func captureTime(atHostTime hostTime: UInt64) -> Double? {
         pipeline?.captureStreamPosition(atHostTime: hostTime)

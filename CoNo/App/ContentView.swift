@@ -297,6 +297,17 @@ struct ContentView: View {
                     diagnosticsRow("캡처 IO", stats.capture)
                     diagnosticsRow("재생 IO", stats.playback)
                     GridRow {
+                        Text("진단").foregroundStyle(.secondary)
+                        HStack {
+                            Button("최근 30초 녹음 저장") { engine.saveDiagnosticRecording() }
+                                .help("틱 소리가 들린 직후 누르세요. CoNo 가 받은 소리와 내보낸 소리를 각각 저장합니다.")
+                            if let message = engine.diagnosticSaveMessage {
+                                Text(message).font(.caption).foregroundStyle(.secondary).textSelection(.enabled).lineLimit(1)
+                            }
+                        }
+                        Text("")
+                    }
+                    GridRow {
                         Text("장치").foregroundStyle(.secondary)
                         Text(engine.inputSampleRate == engine.outputSampleRate
                             ? "\(engine.outputDeviceName) · \(Int(engine.outputSampleRate)) Hz"

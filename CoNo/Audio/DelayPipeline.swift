@@ -124,6 +124,8 @@ final class DelayPipeline: @unchecked Sendable {
     private var playedFrames = 0
 
     private let processor: StreamProcessor
+    /// 진단 녹음 (처리기 입력·출력 최근 30초)
+    let recorder: DiagnosticRecorder
     private let isWorkerRunning = Atomic<Bool>(false)
     private var workerThread: Thread?
     /// 워커 루프가 완전히 끝나면 signal (정지 후 같은 분리 모델을 다른 워커가 동시에 쓰지 않도록)
@@ -167,6 +169,7 @@ final class DelayPipeline: @unchecked Sendable {
         self.outputSampleRate = outputSampleRate
         self.delaySeconds = delaySeconds
         self.processor = processor
+        recorder = DiagnosticRecorder(inputSampleRate: inputSampleRate, outputSampleRate: outputSampleRate)
         delaySamples = Int(delaySeconds * outputSampleRate) * Self.channels
 
         // 추론 중에도 캡처는 계속 쌓이므로 burst + 4초 여유
@@ -224,8 +227,10 @@ final class DelayPipeline: @unchecked Sendable {
                 continue
             }
             let n = captureRing.read(into: workerScratch, count: chunkSamples)
+            recorder.recordInput(UnsafeBufferPointer(start: workerScratch, count: n))
             do {
                 try processor.process(UnsafeBufferPointer(start: workerScratch, count: n)) { output in
+                    recorder.recordOutput(output)
                     writeToPlayback(output)
                 }
             } catch {
