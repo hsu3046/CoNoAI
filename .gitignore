@@ -6,3 +6,6 @@ xcuserdata/
 *.xcuserstate
 .DS_Store
 .env*.local
+
+# 보컬 분리 모델 (scripts/fetch-models.sh 로 받음)
+Models/

@@ -1,6 +1,6 @@
 // CoNo — Copyright (C) 2026 KnowAI (https://knowai.space) — GPL-3.0-or-later
 //
-// PoC ① 화면: 소스 선택 → 지연·음소거 설정 → 시작, 레벨·버퍼 모니터.
+// PoC 화면: 소스 선택 → 처리 방식(그대로 / L−R / AI 분리)·지연 설정 → 시작, 레벨·버퍼·추론 모니터.
 
 import AppKit
 import SwiftUI
@@ -12,6 +12,8 @@ struct ContentView: View {
     @State private var selectedSourceID: AudioSource.ID?
     @State private var delaySeconds = 3.0
     @State private var muteOriginal = true
+    @State private var mode: ProcessingMode = .aiSeparation
+    @State private var separation = SeparationSettings()
 
     private var selectedSource: AudioSource? {
         catalog.sources.first { $0.id == selectedSourceID }
@@ -41,7 +43,7 @@ struct ContentView: View {
     private var header: some View {
         VStack(alignment: .leading, spacing: 4) {
             Text("CoNo").font(.largeTitle.bold())
-            Text("PoC ① — 다른 앱 소리 캡처 · 원본 음소거 · 지연 재생")
+            Text("PoC ② — AI 보컬 분리 (UVR MDX-Net Karaoke 2)")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
         }
@@ -94,6 +96,19 @@ struct ContentView: View {
 
     private var settings: some View {
         VStack(alignment: .leading, spacing: 10) {
+            Picker("처리 방식", selection: $mode) {
+                Text("그대로").tag(ProcessingMode.passthrough)
+                Text("간이 제거 (L−R)").tag(ProcessingMode.centerCancel)
+                Text("AI 분리").tag(ProcessingMode.aiSeparation)
+            }
+            .pickerStyle(.segmented)
+            .disabled(engine.isRunning)
+            .help("방식마다 지연이 달라서 실행 중에는 바꿀 수 없습니다")
+
+            if mode == .aiSeparation {
+                separationSettings
+            }
+
             HStack {
                 Text("지연")
                 Slider(value: $delaySeconds, in: 0.5...8, step: 0.5)
@@ -104,19 +119,88 @@ struct ContentView: View {
             .disabled(engine.isRunning)
             .help("보컬 분리·음정 미리보기에 쓸 여유 시간. 실행 중에는 바꿀 수 없습니다.")
 
+            if mode == .aiSeparation {
+                let recommended = engine.recommendedDelay(for: separation)
+                if delaySeconds < recommended {
+                    HStack {
+                        Text(String(format: "권장 지연 %.1f초보다 짧아 소리가 끊길 수 있습니다", recommended))
+                            .font(.caption)
+                            .foregroundStyle(.orange)
+                        Button("권장값으로") { delaySeconds = min(8, (recommended * 2).rounded(.up) / 2) }
+                            .controlSize(.small)
+                            .disabled(engine.isRunning)
+                    }
+                }
+            }
+
             Toggle("원본 소리 끄기 (CoNo 가 지연 재생)", isOn: $muteOriginal)
                 .disabled(engine.isRunning)
                 .help("끄면 원본과 CoNo 재생이 겹쳐 들립니다 (에코 확인용)")
+        }
+    }
 
-            Picker("처리", selection: Binding(
-                get: { engine.processingMode },
-                set: { engine.processingMode = $0 }
-            )) {
-                Text("그대로").tag(ProcessingMode.passthrough)
-                Text("간이 보컬 제거 (L−R)").tag(ProcessingMode.centerCancel)
+    private var separationSettings: some View {
+        GroupBox {
+            VStack(alignment: .leading, spacing: 8) {
+                Picker("추론", selection: $separation.backend) {
+                    ForEach(InferenceBackend.allCases) { Text($0.label).tag($0) }
+                }
+                .pickerStyle(.segmented)
+
+                HStack {
+                    Text("갱신 간격").frame(width: 70, alignment: .leading)
+                    Slider(value: $separation.stepSeconds, in: 0.5...3, step: 0.25)
+                    Text(String(format: "%.2f초", separation.stepSeconds)).monospacedDigit().frame(width: 52, alignment: .trailing)
+                }
+                .help("몇 초마다 새로 분리할지. 추론 1회 시간보다 길어야 끊기지 않습니다.")
+
+                HStack {
+                    Text("뒤 문맥").frame(width: 70, alignment: .leading)
+                    Slider(value: $separation.rightContextSeconds, in: 0.25...2.5, step: 0.25)
+                    Text(String(format: "%.2f초", separation.rightContextSeconds)).monospacedDigit().frame(width: 52, alignment: .trailing)
+                }
+                .help("모델에게 보여줄 '앞으로 나올 소리' 길이. 길수록 품질이 좋아지고 지연이 늘어납니다.")
+
+                HStack(alignment: .firstTextBaseline) {
+                    Button("모델 준비 · 속도 측정") {
+                        Task { await engine.prepareModel(backend: separation.backend) }
+                    }
+                    .disabled(engine.isModelLoading)
+                    modelStateLabel
+                }
             }
-            .pickerStyle(.segmented)
-            .help("L−R 은 AI 분리 전 임시 방식이라 베이스·킥도 같이 줄어듭니다")
+            .disabled(engine.isRunning)
+            .padding(4)
+        }
+    }
+
+    @ViewBuilder
+    private var modelStateLabel: some View {
+        switch engine.modelState {
+        case .notLoaded:
+            Text("시작하면 자동으로 로드합니다").font(.caption).foregroundStyle(.secondary)
+        case let .loading(backend):
+            HStack(spacing: 6) {
+                ProgressView().controlSize(.small)
+                Text("\(backend.label) 로드 중… (CoreML 첫 로드는 컴파일로 오래 걸릴 수 있음)").font(.caption)
+            }
+        case let .ready(benchmark):
+            let ratio = benchmark.steadyInferenceMilliseconds / (separation.stepSeconds * 1000)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(String(
+                    format: "%@ · 로드 %.1f초 · 첫 추론 %.0fms · 평균 %.0fms (모델 %.0f + 전후처리 %.0f)",
+                    benchmark.backend.label, benchmark.loadSeconds,
+                    benchmark.firstInferenceMilliseconds, benchmark.steadyInferenceMilliseconds,
+                    benchmark.steadyModelMilliseconds,
+                    benchmark.steadyInferenceMilliseconds - benchmark.steadyModelMilliseconds
+                ))
+                Text(String(format: "갱신 간격 대비 %.0f%% %@", ratio * 100, ratio < 0.7 ? "— 여유 있음" : ratio < 1 ? "— 빠듯함" : "— 실시간 불가, 간격을 늘리세요"))
+                    .foregroundStyle(ratio < 0.7 ? .green : ratio < 1 ? .orange : .red)
+            }
+            .font(.caption)
+            .monospacedDigit()
+        case let .failed(message):
+            Text(message).font(.caption).foregroundStyle(.red).textSelection(.enabled)
         }
     }
 
@@ -129,10 +213,18 @@ struct ContentView: View {
                 } else {
                     Button("시작", systemImage: "play.fill") {
                         guard let selectedSource else { return }
-                        engine.start(source: selectedSource, delaySeconds: delaySeconds, muteOriginal: muteOriginal)
+                        Task {
+                            await engine.start(
+                                source: selectedSource,
+                                delaySeconds: delaySeconds,
+                                muteOriginal: muteOriginal,
+                                mode: mode,
+                                separation: separation
+                            )
+                        }
                     }
                     .keyboardShortcut(.return, modifiers: [])
-                    .disabled(selectedSource == nil)
+                    .disabled(selectedSource == nil || engine.isModelLoading)
                 }
                 if case let .running(name) = engine.status {
                     Text("캡처 중: \(name)").foregroundStyle(.secondary)
@@ -142,6 +234,19 @@ struct ContentView: View {
 
             if case let .failed(message) = engine.status {
                 Text(message).font(.callout).foregroundStyle(.red).textSelection(.enabled)
+            }
+
+            if engine.runningMode == .aiSeparation {
+                Picker("들려줄 소리", selection: Binding(
+                    get: { engine.separationOutput },
+                    set: { engine.separationOutput = $0 }
+                )) {
+                    Text("반주 (노래방)").tag(SeparationOutput.accompaniment)
+                    Text("보컬만").tag(SeparationOutput.vocals)
+                    Text("원곡").tag(SeparationOutput.original)
+                }
+                .pickerStyle(.segmented)
+                .help("세 소리는 같은 시점으로 맞춰져 있어 실행 중에 바꿔 비교할 수 있습니다")
             }
         }
     }
@@ -172,6 +277,31 @@ struct ContentView: View {
                     }
                 }
                 .font(.callout)
+
+                if engine.runningMode == .aiSeparation {
+                    let inference = engine.inferenceStats
+                    Grid(alignment: .leading, horizontalSpacing: 16, verticalSpacing: 4) {
+                        GridRow {
+                            Text("추론").foregroundStyle(.secondary)
+                            Text(String(format: "최근 %.0f · 평균 %.0f · 최대 %.0f ms (%d회)",
+                                        inference.lastMilliseconds, inference.averageMilliseconds,
+                                        inference.maxMilliseconds, inference.count))
+                        }
+                        if let timing = engine.separationTiming {
+                            GridRow {
+                                Text("분리 지연").foregroundStyle(.secondary)
+                                Text(String(format: "출력 오프셋 %.2f초 · 최대 대기 %.2f초 + 추론",
+                                            timing.streamOffset, timing.maxWait))
+                            }
+                        }
+                    }
+                    .font(.callout)
+                    .monospacedDigit()
+                }
+
+                if let error = stats.processingError {
+                    Text("처리 중단: \(error)").font(.caption).foregroundStyle(.red).textSelection(.enabled)
+                }
 
                 if let warning = engine.sampleRateWarning {
                     Text(warning).font(.caption).foregroundStyle(.orange)

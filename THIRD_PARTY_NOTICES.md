@@ -28,3 +28,15 @@ CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
 OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ```
+
+## python-audio-separator
+- Source: https://github.com/nomadkaraoke/python-audio-separator (commit bf1164a), MIT License, Copyright (c) 2023 karaokenerds
+- Used in: `CoNo/Separation/MDXSeparator.swift`, `CoNo/DSP/STFT.swift` — MDX 전처리·후처리 순서와 STFT 규칙을 참고해 Swift 로 재구현 (코드 복사 아님)
+
+## ONNX Runtime
+- Source: https://github.com/microsoft/onnxruntime-swift-package-manager (1.24.2), MIT License, Copyright (c) Microsoft Corporation
+- Used as: Swift Package 의존성
+
+## UVR-MDX-NET Karaoke 2 (모델 가중치)
+- Source: https://github.com/TRvlvr/model_repo (Ultimate Vocal Remover 공개 모델)
+- 저장소에 포함하지 않으며 `scripts/fetch-models.sh` 로 받는다. **가중치 라이선스가 명시돼 있지 않아 재배포 전 확인 필요.**

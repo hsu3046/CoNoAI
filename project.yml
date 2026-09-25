@@ -8,12 +8,24 @@ settings:
   base:
     SWIFT_VERSION: "6.0"
     MACOSX_DEPLOYMENT_TARGET: "15.0"
+packages:
+  onnxruntime:
+    url: https://github.com/microsoft/onnxruntime-swift-package-manager
+    exactVersion: 1.24.2
 targets:
   CoNo:
     type: application
     platform: macOS
     sources:
       - path: CoNo
+      # scripts/fetch-models.sh 로 받은 모델을 번들에 폴더째 넣는다 (없어도 빌드는 된다)
+      - path: Models
+        type: folder
+        optional: true
+        buildPhase: resources
+    dependencies:
+      - package: onnxruntime
+        product: onnxruntime
     info:
       path: Support/Info.plist
       properties:
@@ -32,3 +44,24 @@ targets:
         CODE_SIGN_IDENTITY: "-"
         ENABLE_HARDENED_RUNTIME: NO
         SWIFT_STRICT_CONCURRENCY: complete
+  CoNoTests:
+    type: bundle.unit-test
+    platform: macOS
+    # 앱을 띄우지 않는 독립 테스트: 순수 DSP 코드만 직접 컴파일한다
+    sources:
+      - path: CoNoTests
+      - path: CoNo/DSP
+    settings:
+      base:
+        CODE_SIGN_STYLE: Manual
+        CODE_SIGN_IDENTITY: "-"
+        SWIFT_STRICT_CONCURRENCY: complete
+        GENERATE_INFOPLIST_FILE: YES
+schemes:
+  CoNo:
+    build:
+      targets:
+        CoNo: all
+    test:
+      targets:
+        - CoNoTests

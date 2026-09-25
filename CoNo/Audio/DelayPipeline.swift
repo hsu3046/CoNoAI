@@ -2,8 +2,7 @@
 //
 // 캡처 → (워커 스레드에서 처리) → N초 지연 재생 파이프라인.
 //
-//   IO 스레드 ──write──▶ captureRing ──▶ 워커(처리: 지금은 패스스루/간이 보컬 제거,
-//                                              다음 단계에서 AI 보컬 분리) ──▶ playbackRing
+//   IO 스레드 ──write──▶ captureRing ──▶ 워커(StreamProcessor: 패스스루 / L−R / AI 분리) ──▶ playbackRing
 //   IO 스레드 ◀──read── playbackRing  (목표 지연만큼 쌓인 뒤에야 재생 시작 = 프리롤)
 //
 // 지연(N초)은 보컬 분리 모델이 쓸 계산 시간이자, 다음에 부를 음정을 미리 보여줄 여유다.
@@ -13,12 +12,14 @@ import AudioToolbox
 import Foundation
 import Synchronization
 
-/// 워커 스레드가 청크에 적용하는 처리.
+/// 시작할 때 고르는 처리 방식 (방식마다 지연이 달라 실행 중에는 바꾸지 않는다)
 enum ProcessingMode: Int, CaseIterable, Sendable {
     /// 그대로 통과 (캡처·지연 검증용)
     case passthrough = 0
-    /// 고전적인 L−R 센터 캔슬. 가운데 정위된 보컬이 줄지만 베이스·킥도 같이 빠진다. AI 분리 전의 임시 모드.
+    /// 고전적인 L−R 센터 캔슬 (AI 없이 비교용)
     case centerCancel = 1
+    /// AI 보컬 분리 (MDX-Net)
+    case aiSeparation = 2
 }
 
 /// UI 표시용 스냅샷.
@@ -32,13 +33,15 @@ struct PipelineStats: Sendable {
     var capturedSeconds: Double = 0
     /// 캡처된 신호가 한 번이라도 무음이 아니었는지 (권한 거부 시 탭은 무음만 준다)
     var hasReceivedSignal = false
+    /// 처리 단계에서 난 오류 (나면 워커는 멈추고 무음이 된다)
+    var processingError: String?
 }
 
 final class DelayPipeline: @unchecked Sendable {
     static let channels = 2
     /// IO 콜백 한 번에 처리할 최대 프레임. 이보다 큰 IO 버퍼는 초과분을 무음 처리한다.
     private static let maxIOFrames = 16_384
-    /// 워커가 한 번에 처리하는 프레임 수 (보컬 분리 도입 시 모델 청크 크기로 바뀐다).
+    /// 워커가 캡처 링에서 한 번에 꺼내는 프레임 수. 분리기는 내부에서 step 단위로 모아 처리한다.
     private static let workerChunkFrames = 1_024
 
     let sampleRate: Double
@@ -57,9 +60,11 @@ final class DelayPipeline: @unchecked Sendable {
     /// IO 스레드만 읽고 쓴다. false 면 playbackRing 이 목표 지연만큼 찰 때까지 무음 출력.
     private var ioIsPrimed = false
 
-    private let processingModeRaw = Atomic<Int>(ProcessingMode.passthrough.rawValue)
+    private let processor: StreamProcessor
     private let isWorkerRunning = Atomic<Bool>(false)
     private var workerThread: Thread?
+    /// 워커 루프가 완전히 끝나면 signal (정지 후 같은 분리 모델을 다른 워커가 동시에 쓰지 않도록)
+    private let workerExited = DispatchSemaphore(value: 0)
 
     // 통계 (IO/워커 스레드가 쓰고 UI 가 읽는다)
     private let inputPeakBits = Atomic<UInt32>(0)
@@ -69,13 +74,17 @@ final class DelayPipeline: @unchecked Sendable {
     private let overflowCount = Atomic<Int>(0)
     private let capturedFrameCount = Atomic<Int>(0)
     private let receivedSignal = Atomic<Bool>(false)
+    private let processingError = Mutex<String?>(nil)
 
-    init(sampleRate: Double, delaySeconds: Double) {
+    /// - Parameter burstSeconds: 처리기가 한 번에 몰아서 내는 최대 길이 (분리기의 step). 버퍼 여유 계산에 쓴다.
+    init(sampleRate: Double, delaySeconds: Double, processor: StreamProcessor, burstSeconds: Double = 0) {
         self.sampleRate = sampleRate
         self.delaySeconds = delaySeconds
+        self.processor = processor
         delaySamples = Int(delaySeconds * sampleRate) * Self.channels
 
-        let marginSamples = Int(2 * sampleRate) * Self.channels // 2초 여유
+        // 추론 중에도 캡처는 계속 쌓이므로 burst + 4초 여유
+        let marginSamples = Int((burstSeconds + 4) * sampleRate) * Self.channels
         captureRing = SPSCRingBuffer(capacity: marginSamples)
         playbackRing = SPSCRingBuffer(capacity: delaySamples + marginSamples)
 
@@ -97,56 +106,58 @@ final class DelayPipeline: @unchecked Sendable {
         workerScratch.deallocate()
     }
 
-    var processingMode: ProcessingMode {
-        get { ProcessingMode(rawValue: processingModeRaw.load(ordering: .relaxed)) ?? .passthrough }
-        set { processingModeRaw.store(newValue.rawValue, ordering: .relaxed) }
-    }
-
     // MARK: - Worker
 
     func startWorker() {
         guard !isWorkerRunning.exchange(true, ordering: .acquiringAndReleasing) else { return }
-        let thread = Thread { [self] in runWorkerLoop() }
+        let thread = Thread { [self] in
+            runWorkerLoop()
+            workerExited.signal()
+        }
         thread.name = "CoNo.DelayPipeline.worker"
         thread.qualityOfService = .userInteractive
         workerThread = thread
         thread.start()
     }
 
+    /// 워커를 멈추고, 진행 중인 처리(추론 1회 분량)가 끝날 때까지 최대 5초 기다린다.
     func stopWorker() {
         isWorkerRunning.store(false, ordering: .releasing)
+        guard workerThread != nil else { return }
+        if workerExited.wait(timeout: .now() + 5) == .timedOut {
+            processingError.withLock { $0 = "워커 스레드가 5초 안에 멈추지 않았습니다" }
+        }
         workerThread = nil
     }
 
     private func runWorkerLoop() {
         let chunkSamples = Self.workerChunkFrames * Self.channels
         while isWorkerRunning.load(ordering: .acquiring) {
-            // 출력 쪽에 자리가 있고 입력이 한 청크 이상 쌓였을 때만 처리
-            let hasInput = captureRing.availableToRead >= chunkSamples
-            let hasRoom = playbackRing.capacity - playbackRing.availableToRead >= chunkSamples
-            guard hasInput, hasRoom else {
+            guard captureRing.availableToRead >= chunkSamples else {
                 Thread.sleep(forTimeInterval: 0.002)
                 continue
             }
-
             let n = captureRing.read(into: workerScratch, count: chunkSamples)
-            apply(processingMode, to: workerScratch, frameCount: n / Self.channels)
-            playbackRing.write(workerScratch, count: n)
+            do {
+                try processor.process(UnsafeBufferPointer(start: workerScratch, count: n)) { output in
+                    writeToPlayback(output)
+                }
+            } catch {
+                // 처리 실패 시 워커를 멈춘다 → 출력은 언더런으로 무음이 되고 UI 에 사유가 뜬다
+                processingError.withLock { $0 = error.localizedDescription }
+                isWorkerRunning.store(false, ordering: .releasing)
+            }
         }
     }
 
-    private func apply(_ mode: ProcessingMode, to samples: UnsafeMutablePointer<Float>, frameCount: Int) {
-        switch mode {
-        case .passthrough:
-            return
-        case .centerCancel:
-            for frame in 0..<frameCount {
-                let left = samples[frame * 2]
-                let right = samples[frame * 2 + 1]
-                let side = (left - right) * 0.7
-                samples[frame * 2] = side
-                samples[frame * 2 + 1] = side
-            }
+    /// 재생 링에 전부 쓸 때까지 기다린다 (링이 차 있으면 IO 스레드가 비울 때까지 대기).
+    private func writeToPlayback(_ samples: UnsafeBufferPointer<Float>) {
+        guard let base = samples.baseAddress else { return }
+        var written = 0
+        while written < samples.count, isWorkerRunning.load(ordering: .relaxed) {
+            let n = playbackRing.write(base + written, count: samples.count - written)
+            written += n
+            if n == 0 { Thread.sleep(forTimeInterval: 0.001) }
         }
     }
 
@@ -279,7 +290,8 @@ final class DelayPipeline: @unchecked Sendable {
             underruns: underrunCount.load(ordering: .relaxed),
             captureOverflows: overflowCount.load(ordering: .relaxed),
             capturedSeconds: Double(capturedFrameCount.load(ordering: .relaxed)) / sampleRate,
-            hasReceivedSignal: receivedSignal.load(ordering: .relaxed)
+            hasReceivedSignal: receivedSignal.load(ordering: .relaxed),
+            processingError: processingError.withLock { $0 }
         )
     }
 }

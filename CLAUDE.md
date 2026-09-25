@@ -13,3 +13,8 @@
 - **지연 일정성**: 언더런 후에도 목표 지연까지 다시 채운다. 가사·음정 싱크가 "캡처 시각 + 고정 지연"을 전제로 한다.
 - **권한 거부는 에러가 아니다**: TCC 가 거부되면 탭은 무음만 준다. UI 의 무음 경고로 알린다.
 - **ad-hoc 서명**: 빌드마다 오디오 캡처 권한을 다시 물을 수 있다.
+- **AI 모드 성능은 Release 로 잰다**: Debug 는 STFT 가 30배 느려 추론 수치가 왜곡된다.
+- **CoreML EP 가 실제로 노드를 가져갔는지 확인**: 옵션이 틀려도 에러 없이 전부 CPU 로 떨어진다. `CONO_ORT_VERBOSE=1` 로 `number of nodes supported by CoreML` 확인. `RequireStaticInputShapes` 는 "0" 유지 (모델 배치 차원이 기호), `MLComputeUnits` 는 대문자 `ALL`.
+- **STFT 는 torch 규칙 그대로**: reflect 패딩·periodic Hann·정규화 없음. 바꾸면 `forwardMatchesTorchDefinition` 이 잡는다 (왕복 테스트는 패딩 오류를 못 잡는다).
+- **스트림 오프셋 ≠ 대기 시간**: 분리 출력의 위치 오프셋은 rightContext, step 은 대기 시간일 뿐. 싱크 계산에 섞지 말 것.
+- **분리 모델 객체는 한 스레드만**: `DelayPipeline.stopWorker` 가 워커 종료를 기다린 뒤에야 같은 `MDXSeparator` 를 재사용한다.

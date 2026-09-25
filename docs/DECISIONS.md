@@ -28,3 +28,17 @@
 ## 2026-09-25 — 검증: Apple Music (FairPlay) 캡처 동작 확인
 - Apple Music 앱을 process tap 으로 캡처 + 원본 음소거 + 지연 재생까지 정상 동작 (사용자 실측).
 - 타당성 조사의 1순위 리스크("DRM 재생 소리가 캡처되는가")가 Apple Music 에서는 해소됨. 멜론·YouTube Music(Chrome) 은 미검증.
+
+## 2026-09-25 — 보컬 분리: ONNX Runtime + UVR MDX-Net Karaoke 2
+- 후보: A) ONNX Runtime + MDX-Net / B) Demucs → CoreML 변환 / C) Python 보조 프로세스
+- 선택: **A**. 네이티브 단일 앱, 모델 교체 쉬움, Karaoke 모델이 코러스를 반주에 남겨 노래방 느낌에 가깝다.
+- 모델 파일은 커밋하지 않고 `scripts/fetch-models.sh` 로 받는다 (UVR 해시로 설정값 검증). 가중치 라이선스 미명시 → 배포 전 확인 필요.
+
+## 2026-09-25 — 슬라이딩 윈도우 스트리밍 (step / rightContext / fade)
+- 모델 창(5.9초)이 고정이라 매 step 마다 창 전체를 다시 분리하고 뒤쪽 일부만 쓴다. 연산은 늘지만 지연을 초 단위로 조절 가능.
+- 기본값 step 1.0초, rightContext 1.0초, fade 2048 샘플. 권장 프리롤 = rightContext + step + 추론×1.5 + 0.5초.
+
+## 2026-09-25 — CoreML: RequireStaticInputShapes = "0"
+- UVR 모델은 배치 차원이 기호(`batch_size`)라 "1" 이면 CoreML 이 178개 노드를 전부 거부 → 전부 CPU(약 14초/창).
+- ObjC API 에 free dimension override 가 없어 동적 형태 허용으로 해결 → 전 노드 CoreML, 약 150ms/창.
+- MLComputeUnits 값은 대문자 `ALL` (헤더 주석의 "All" 은 거부됨).
