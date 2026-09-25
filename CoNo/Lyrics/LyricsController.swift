@@ -40,6 +40,22 @@ final class LyricsController {
     }
 
     private(set) var status: Status = .inactive
+
+    /// 진단: 연속 재생 중 (플레이어 위치 − 캡처 시각) 의 흔들림.
+    /// 이 값이 일정해야 앵커가 믿을 만하다. 크게 흔들리면 플레이어 위치 보고 자체가 들쭉날쭉한 것.
+    struct AnchorDiagnostics: Equatable {
+        /// 최근 앵커의 (중앙값 대비) 편차 (초)
+        var lastDeviation: Double = 0
+        /// 최근 창의 최대 − 최소 (초)
+        var range: Double = 0
+        /// 창 안 앵커 수
+        var count = 0
+        /// 연속 재생 구간이 끊긴(되감기·곡 변경·큰 점프) 횟수
+        var discontinuities = 0
+    }
+    private(set) var anchorDiagnostics = AnchorDiagnostics()
+    @ObservationIgnored private var residualWindow: [Double] = []
+    @ObservationIgnored private var lastResidualTrackID: String?
     /// 사용자가 맞추는 가사 싱크 (초). + 면 가사를 앞당긴다.
     var offsetSeconds: Double = 0
 
@@ -91,6 +107,9 @@ final class LyricsController {
         pollTask = nil
         clock.reset()
         wipeCache.removeAll()
+        residualWindow.removeAll()
+        lastResidualTrackID = nil
+        anchorDiagnostics = AnchorDiagnostics()
         vocalSource = nil
         currentTrackID = nil
         status = .inactive
@@ -104,6 +123,7 @@ final class LyricsController {
             status = .failed(error.localizedDescription)
         case let .success(sample):
             guard let capture = captureTime(sample.hostTime) else { return }
+            recordResidual(sample: sample, captureTime: capture)
             clock.add(PlaybackAnchor(
                 captureTime: capture,
                 songPosition: sample.position,
@@ -123,6 +143,25 @@ final class LyricsController {
                 status = known
             }
         }
+    }
+
+    private func recordResidual(sample: NowPlayingSample, captureTime: Double) {
+        guard sample.state == .playing, let trackID = sample.track?.id else { return }
+        let residual = sample.position - captureTime
+        let median = residualWindow.sorted().dropFirst(residualWindow.count / 2).first
+        // 곡이 바뀌었거나 2초 넘게 튀면 새 연속 구간 (되감기·건너뛰기)
+        if trackID != lastResidualTrackID || median.map({ abs(residual - $0) > 2 }) ?? false {
+            if lastResidualTrackID != nil { anchorDiagnostics.discontinuities += 1 }
+            residualWindow.removeAll()
+            lastResidualTrackID = trackID
+        }
+        residualWindow.append(residual)
+        if residualWindow.count > 40 { residualWindow.removeFirst() } // 약 20초
+        let sorted = residualWindow.sorted()
+        let center = sorted[sorted.count / 2]
+        anchorDiagnostics.lastDeviation = residual - center
+        anchorDiagnostics.range = (sorted.last ?? 0) - (sorted.first ?? 0)
+        anchorDiagnostics.count = sorted.count
     }
 
     private func load(_ track: TrackInfo) {

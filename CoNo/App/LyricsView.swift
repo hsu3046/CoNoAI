@@ -60,6 +60,13 @@ struct LyricsView: View {
                 Text("\(track.title) — \(track.artist)").lineLimit(1)
             }
             Spacer()
+            // 진단: 음악 앱 재생 위치 보고의 흔들림 (범위가 크면 앵커가 들쭉날쭉)
+            let d = controller.anchorDiagnostics
+            if d.count > 1 {
+                Text(String(format: "위치 편차 %+.2fs · 20초 범위 %.2fs · 끊김 %d", d.lastDeviation, d.range, d.discontinuities))
+                    .monospacedDigit()
+                    .foregroundStyle(d.range > 0.15 ? Color.orange.opacity(0.8) : Color.white.opacity(0.4))
+            }
             if case .ready(_, synced: false) = controller.status {
                 Text("싱크 가사 없음")
             } else if case .ready = controller.status {
