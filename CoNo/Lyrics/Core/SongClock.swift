@@ -51,6 +51,20 @@ struct SongClock: Sendable {
         return anchor.captureTime + (s - anchor.songPosition)
     }
 
+    /// heardAt 의 앵커부터 거슬러 올라가며 끊김 없이 이어진 재생 구간의 시작 캡처 시각.
+    /// (같은 곡·재생 중·앵커 간 곡 진행 ≈ 캡처 진행) — 되감기 이전 데이터를 섞지 않기 위해.
+    func continuousSegmentStart(heardAt c: Double, tolerance: Double = 0.3) -> Double? {
+        guard var index = anchors.lastIndex(where: { $0.captureTime <= c }), anchors[index].isPlaying else { return nil }
+        while index > 0 {
+            let previous = anchors[index - 1]
+            let current = anchors[index]
+            let drift = (current.songPosition - previous.songPosition) - (current.captureTime - previous.captureTime)
+            guard previous.isPlaying, previous.trackID == current.trackID, abs(drift) < tolerance else { break }
+            index -= 1
+        }
+        return anchors[index].captureTime
+    }
+
     /// 캡처 시각 c 의 소리가 곡 어디였는지. c 이전의 가장 최근 앵커 기준.
     func position(atCaptureTime c: Double) -> SongPosition? {
         guard let anchor = anchors.last(where: { $0.captureTime <= c }), let trackID = anchor.trackID else { return nil }

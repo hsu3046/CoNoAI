@@ -145,7 +145,9 @@ enum SyllableAligner {
             guard actual >= weights.minimumUnitSeconds else { return .infinity }
             let expected = max(totalVoiced * units[unit].weight / totalWeight, weights.minimumUnitSeconds)
             let ratio = log(actual / expected)
-            let swallowed = strongPrefix[cj ?? candidates.count] - strongPrefix[ci + 1]
+            // 여러 박자짜리 단위(誰=2)는 안쪽에 (무게−1)개 정도의 시작점이 있는 게 정상 → 그만큼 벌점 면제
+            let allowance = max(0, units[unit].weight - 1) * 0.85
+            let swallowed = max(0, strongPrefix[cj ?? candidates.count] - strongPrefix[ci + 1] - allowance)
             let gridPenalty = unit > 0 && strength[startFrame] == 0 ? weights.gridBoundaryPenalty : 0
             return weights.duration * ratio * ratio
                 + weights.swallowedOnset * swallowed

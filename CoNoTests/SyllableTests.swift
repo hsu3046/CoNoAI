@@ -108,3 +108,89 @@ struct SongClockInverseTests {
         #expect(clock.captureTime(forSongPosition: 85, heardAt: 111) == nil)
     }
 }
+
+struct JapaneseReadingTests {
+    private func weights(_ text: String) -> [String: Double] {
+        let characters = Array(text)
+        var result: [String: Double] = [:]
+        for unit in LyricTokenizer.units(text) {
+            result[String(characters[unit.charStart..<unit.charEnd])] = unit.weight
+        }
+        return result
+    }
+
+    @Test func kanjiGetMoraWeights() {
+        let first = weights("誰を想ってるんだろう")
+        #expect(first["誰"] == 2, "だれ")
+        #expect(first["想っ"] == 3, "おも + っ")
+        #expect(first["て"] == 1)
+        let second = weights("明日の今頃には")
+        #expect(second["明"].map { $0 + (second["日"] ?? 0) } == 2, "あす")
+        #expect(second["今"] == 2 && second["頃"] == 2, "いま·ごろ")
+        #expect(weights("東京の空")["空"] == 2, "そら")
+    }
+
+    @Test func romajiMoraCounting() {
+        #expect(JapaneseReading.morae(inRomaji: "toukyou") == 4)
+        #expect(JapaneseReading.morae(inRomaji: "omo~tsu") == 3)
+        #expect(JapaneseReading.morae(inRomaji: "shinbun") == 4, "し·ん·ぶ·ん")
+        #expect(JapaneseReading.morae(inRomaji: "kanya") == 2, "n + y 는 ん 아님 (かにゃ 계열)")
+    }
+
+    @Test func koreanUnaffected() {
+        #expect(LyricTokenizer.units("사랑해").map(\.weight) == [1, 1, 1])
+    }
+}
+
+struct LyricsAutoSyncTests {
+    private let period = 0.016
+
+    /// 실제 노래가 actualStarts 에서 시작해 1.2초씩 부르고 쉬는 보컬
+    private func vocals(actualStarts: [Double], total: Double) -> [VocalFrame] {
+        let count = Int(total / period)
+        return (0..<count).map { k in
+            let t = Double(k) * period
+            let singing = actualStarts.contains { t >= $0 && t < $0 + 1.2 }
+            return VocalFrame(time: t, voiced: singing, midi: singing ? 62 : nil)
+        }
+    }
+
+    @Test func findsLyricsThatAreOneSecondEarly() throws {
+        let actual = [5.0, 7.3, 9.1, 11.8, 14.0, 16.5, 18.2]
+        let lrc = actual.map { $0 - 1.0 } // First Love 처럼 가사가 1초 이르다
+        let frames = vocals(actualStarts: actual, total: 24)
+        let estimate = try #require(LyricsAutoSync.estimate(lineStarts: lrc, frames: frames, framePeriod: period))
+        #expect(abs(estimate.lyricsDelay - 1.0) < 0.05)
+        #expect(estimate.confidence > 0.5)
+    }
+
+    @Test func correctLyricsGiveZero() throws {
+        let actual = [5.0, 7.3, 9.1, 11.8, 14.0, 16.5]
+        let estimate = try #require(LyricsAutoSync.estimate(lineStarts: actual, frames: vocals(actualStarts: actual, total: 22), framePeriod: period))
+        #expect(abs(estimate.lyricsDelay) < 0.05)
+    }
+
+    @Test func continuousSingingHasLowConfidence() {
+        // 쉼 없이 계속 부르는 구간 → 줄 시작 단서가 없다
+        let frames = (0..<Int(20 / period)).map { VocalFrame(time: Double($0) * period, voiced: true, midi: 62) }
+        let estimate = LyricsAutoSync.estimate(lineStarts: [4, 6, 8, 10, 12, 14], frames: frames, framePeriod: period)
+        #expect(estimate == nil || estimate!.confidence < 0.2)
+    }
+
+    @Test func tooFewLinesGivesNil() {
+        let actual = [5.0, 7.0]
+        #expect(LyricsAutoSync.estimate(lineStarts: actual, frames: vocals(actualStarts: actual, total: 12), framePeriod: period) == nil)
+    }
+}
+
+struct SongClockContinuityTests {
+    @Test func segmentStartsAfterSeek() {
+        var clock = SongClock()
+        clock.add(PlaybackAnchor(captureTime: 100, songPosition: 10, isPlaying: true, trackID: "A"))
+        clock.add(PlaybackAnchor(captureTime: 101, songPosition: 11, isPlaying: true, trackID: "A"))
+        clock.add(PlaybackAnchor(captureTime: 102, songPosition: 40, isPlaying: true, trackID: "A")) // 되감기(앞으로)
+        clock.add(PlaybackAnchor(captureTime: 103, songPosition: 41.02, isPlaying: true, trackID: "A"))
+        #expect(clock.continuousSegmentStart(heardAt: 103.5) == 102)
+        #expect(clock.continuousSegmentStart(heardAt: 101.5) == 100)
+    }
+}

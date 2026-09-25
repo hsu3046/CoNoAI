@@ -2,7 +2,8 @@
 //
 // 가사 한 줄 → 노래 단위(음절) 목록.
 //   한글 음절·가나·한자: 한 글자 = 한 단위 (대개 한 음표에 한 글자)
-//   작은 가나(ゃゅょっ…)·장음(ー): 앞 단위에 붙인다 (같은 음표 안에서 발음)
+//     단, 한자는 읽기의 모라 수만큼 무게를 준다 (誰=だれ 2) — JapaneseReading
+//   작은 가나(ゃゅょっ…)·장음(ー): 앞 단위에 붙인다 (っ·ー 는 박자 1 을 더하고, ゃゅょ 는 0)
 //   라틴 문자·숫자: 단어 = 한 단위, 무게 = 모음 묶음 수 (대략의 음절 수)
 //   공백·문장부호: 무게 0, 앞 단위에 붙인다 (맨 앞이면 다음 단위에)
 
@@ -21,6 +22,7 @@ struct LyricUnit: Equatable, Sendable {
 enum LyricTokenizer {
     static func units(_ text: String) -> [LyricUnit] {
         let characters = Array(text)
+        let kanjiMorae = JapaneseReading.kanjiMorae(in: text)
         var units: [(start: Int, end: Int, weight: Double)] = []
         var pendingLeading = 0 // 첫 단위 앞의 공백·문장부호 개수
         var index = 0
@@ -29,7 +31,8 @@ enum LyricTokenizer {
             let character = characters[index]
             switch kind(of: character) {
             case .syllable:
-                units.append((index - (units.isEmpty ? pendingLeading : 0), index + 1, 1))
+                let weight = kanjiMorae[index] ?? 1
+                units.append((index - (units.isEmpty ? pendingLeading : 0), index + 1, weight))
                 pendingLeading = 0
                 index += 1
             case .attachesToPrevious, .separator:
@@ -37,6 +40,8 @@ enum LyricTokenizer {
                     pendingLeading += 1
                 } else {
                     units[units.count - 1].end = index + 1
+                    // っ·ー 는 박자 하나를 차지한다 (ゃゅょ 등은 0)
+                    units[units.count - 1].weight += JapaneseReading.kanaMora(of: character)
                 }
                 index += 1
             case .latin:

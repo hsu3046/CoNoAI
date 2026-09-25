@@ -344,10 +344,10 @@ struct ContentView: View {
                 }
                 if engine.lyrics.status != .inactive, engine.lyrics.status != .unsupportedSource {
                     HStack {
-                        Text("가사 싱크").foregroundStyle(.secondary)
+                        Text("가사 미세조정").foregroundStyle(.secondary)
                         Slider(
                             value: Binding(get: { engine.lyrics.offsetSeconds }, set: { engine.lyrics.offsetSeconds = $0 }),
-                            in: -2...2,
+                            in: -1...1,
                             step: 0.05
                         )
                         Text(String(format: "%+.2f초", engine.lyrics.offsetSeconds))
@@ -355,7 +355,7 @@ struct ContentView: View {
                             .frame(width: 64, alignment: .trailing)
                     }
                     .font(.callout)
-                    .help("가사가 노래보다 늦으면 +로 앞당기고, 빠르면 −로 늦춥니다.")
+                    .help("자동 싱크 위에 더하는 미세조정입니다. 가사가 노래보다 늦으면 +로 앞당기고, 빠르면 −로 늦춥니다.")
                 }
                 if let error = engine.pitchError ?? engine.pitchTimeline?.error {
                     Text("음정 추적 오류: \(error)").font(.caption).foregroundStyle(.orange).textSelection(.enabled)

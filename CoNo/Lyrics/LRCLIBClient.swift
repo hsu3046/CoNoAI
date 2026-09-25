@@ -11,7 +11,10 @@ import CryptoKit
 import Foundation
 
 enum LyricsLookupResult: Codable, Sendable {
-    case found(LyricsCandidate)
+    /// 싱크 가사 후보 (점수순, 최대 5). 재생 중 보컬과 비교해 가장 잘 맞는 것을 고른다.
+    case synced([LyricsCandidate])
+    /// 싱크 가사는 없고 일반 가사만
+    case plainOnly(LyricsCandidate)
     case notFound
 }
 
@@ -41,7 +44,7 @@ actor LRCLIBClient {
         configuration.httpAdditionalHeaders = ["User-Agent": Self.userAgent]
         session = URLSession(configuration: configuration)
         cacheDirectory = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first?
-            .appendingPathComponent("space.knowai.cono/lyrics", isDirectory: true)
+            .appendingPathComponent("space.knowai.cono/lyrics-v2", isDirectory: true) // v2: 후보 목록 형식
         if let cacheDirectory {
             try? FileManager.default.createDirectory(at: cacheDirectory, withIntermediateDirectories: true)
         }
@@ -51,28 +54,19 @@ actor LRCLIBClient {
         if let cached = readCache(for: track) { return cached }
 
         var candidates: [LyricsCandidate] = []
-        // 1) 정확 조회 (제목·아티스트·앨범·길이)
-        if let exact = try await getExact(track) {
-            candidates.append(exact)
-            if exact.syncedLyrics != nil, LyricsSelector.best([exact], targetDuration: track.duration) != nil {
-                return store(.found(exact), for: track)
-            }
-        }
-        // 2) 표기를 바꿔 검색 — 길이가 맞는 싱크 후보가 나오면 멈춘다
-        let queries: [[String: String]] = [
-            ["track_name": track.title, "artist_name": track.artist],
-            ["q": "\(track.artist) \(track.title)"],
-            ["track_name": track.title],
-        ]
-        for query in queries {
+        // 1) 정확 조회 + 제목·아티스트 검색은 항상 (후보를 여러 개 모아 소리로 고르기 위해)
+        if let exact = try await getExact(track) { candidates.append(exact) }
+        candidates += try await search(["track_name": track.title, "artist_name": track.artist])
+        // 2) 싱크 후보가 모자라면 표기를 바꿔 더 찾는다 ("아이유" 0건 / "IU" 있음)
+        for query in [["q": "\(track.artist) \(track.title)"], ["track_name": track.title]] {
+            if LyricsSelector.rankedSynced(candidates, targetDuration: track.duration).count >= 2 { break }
             candidates += try await search(query)
-            if let best = LyricsSelector.best(candidates, targetDuration: track.duration), best.syncedLyrics != nil {
-                return store(.found(best), for: track)
-            }
         }
-        // 싱크 가사는 없지만 일반 가사라도 있으면 그걸 쓴다 (줄 시간 없이 표시)
-        if let best = LyricsSelector.best(candidates, targetDuration: track.duration) {
-            return store(.found(best), for: track)
+
+        let synced = LyricsSelector.rankedSynced(candidates, targetDuration: track.duration)
+        if !synced.isEmpty { return store(.synced(synced), for: track) }
+        if let plain = LyricsSelector.best(candidates, targetDuration: track.duration) {
+            return store(.plainOnly(plain), for: track)
         }
         return store(.notFound, for: track)
     }

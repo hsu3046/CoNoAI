@@ -60,12 +60,19 @@ struct LyricsView: View {
                 Text("\(track.title) — \(track.artist)").lineLimit(1)
             }
             Spacer()
+            // 자동 싱크: 적용 중인 가사 지연 · 최근 추정 신뢰도 · 선택한 가사 후보
+            let auto = controller.autoSync
+            if auto.candidateCount > 0 {
+                let confidence = auto.lastEstimate.map { String(format: "신뢰도 %.0f%% · %d줄", $0.confidence * 100, $0.lineCount) } ?? "측정 중"
+                Text(String(format: "자동 싱크 %+.2fs (%@) · 가사 %d/%d", -auto.appliedDelay, confidence, auto.candidateIndex + 1, auto.candidateCount))
+                    .monospacedDigit()
+            }
             // 진단: 음악 앱 재생 위치 보고의 흔들림 (범위가 크면 앵커가 들쭉날쭉)
             let d = controller.anchorDiagnostics
-            if d.count > 1 {
-                Text(String(format: "위치 편차 %+.2fs · 20초 범위 %.2fs · 끊김 %d", d.lastDeviation, d.range, d.discontinuities))
+            if d.count > 1, d.range > 0.15 {
+                Text(String(format: "위치 흔들림 %.2fs", d.range))
                     .monospacedDigit()
-                    .foregroundStyle(d.range > 0.15 ? Color.orange.opacity(0.8) : Color.white.opacity(0.4))
+                    .foregroundStyle(Color.orange.opacity(0.8))
             }
             if case .ready(_, synced: false) = controller.status {
                 Text("싱크 가사 없음")

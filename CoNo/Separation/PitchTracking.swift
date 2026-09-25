@@ -40,7 +40,9 @@ final class PitchTimeline: @unchecked Sendable {
 
     /// [from, to) 초 구간의 연속 프레임과, 분석이 끝난 시각(마지막 프레임 끝).
     func snapshot(from: Double, to: Double) -> (frames: [PitchFrame], knownUntil: Double) {
-        frames.withLock { stored in
+        // 무한대·NaN 을 프레임 번호로 바꾸면 정수 변환에서 크래시한다
+        guard from.isFinite, to.isFinite else { return ([], 0) }
+        return frames.withLock { stored in
             guard let first = stored.first, let last = stored.last else { return ([], 0) }
             let knownUntil = Double(last.index + 1) * framePeriod
             let fromIndex = max(first.index, Int((from / framePeriod).rounded(.down)))

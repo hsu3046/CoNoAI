@@ -1,7 +1,9 @@
 // CoNo — Copyright (C) 2026 KnowAI (https://knowai.space) — GPL-3.0-or-later
 //
 // 가사 기능 조립: 플레이어 폴링 → 곡 위치 앵커(SongClock) → 곡별 가사 로드 → 화면 표시값 계산.
-// 지금은 Apple Music 만 곡 정보·재생 위치를 준다 (L1). 다른 앱은 소리 기반 자동 싱크(L2) 예정.
+// 자동 싱크: 2초마다 최근 30초 보컬로 싱크 가사 후보들을 평가해 가장 잘 맞는 후보와 시각 오차를 적용한다
+// (LRCLIB 가사는 곡마다 오차가 다르다 — First Love 는 약 1초 이르게 만들어져 있었다).
+// 곡 정보·재생 위치는 지금 Apple Music 만 준다.
 
 import Foundation
 import Observation
@@ -59,10 +61,36 @@ final class LyricsController {
     /// 사용자가 맞추는 가사 싱크 (초). + 면 가사를 앞당긴다.
     var offsetSeconds: Double = 0
 
+    /// 자동 싱크 상태 (화면 진단용)
+    struct AutoSyncInfo: Equatable {
+        /// 적용 중인 가사 지연 (초, + = 가사를 늦춤)
+        var appliedDelay: Double = 0
+        var lastEstimate: AutoSyncEstimate?
+        var candidateIndex = 0
+        var candidateCount = 0
+    }
+    private(set) var autoSync = AutoSyncInfo()
+
     private let nowPlaying = AppleMusicNowPlaying()
     private let client = LRCLIBClient()
     private var clock = SongClock()
-    private var lyricsByTrack: [String: TimedLyrics?] = [:]
+
+    /// 곡 하나의 가사 후보와 자동 싱크 상태
+    private struct TrackLyrics {
+        var candidates: [TimedLyrics]
+        var chosen = 0
+        /// 적용 중인 가사 지연 (초)
+        var appliedDelay = 0.0
+        var hasDelay = false
+        /// 큰 변화는 두 번 연속 같은 값이 나와야 적용
+        var pendingDelay: Double?
+        var lastEstimate: AutoSyncEstimate?
+
+        var lyrics: TimedLyrics? { candidates.indices.contains(chosen) ? candidates[chosen] : nil }
+    }
+    /// nil 값 = 싱크 가사 없음 (일반 가사만 있거나 못 찾음)
+    private var lyricsByTrack: [String: TrackLyrics?] = [:]
+    @ObservationIgnored private var lastHeardCaptureTime: Double?
     private var tracks: [String: TrackInfo] = [:]
     private var loadingTrackIDs: Set<String> = []
     /// 곡별 마지막 상태 (일시 오류에서 회복하거나 곡을 오갈 때 되돌리기 위해)
@@ -94,9 +122,12 @@ final class LyricsController {
         }
         status = .waitingForPlayer
         pollTask = Task { [weak self] in
+            var tick = 0
             while !Task.isCancelled {
                 guard let self else { return }
                 await self.pollOnce(captureTime: captureTime)
+                tick += 1
+                if tick % 4 == 0 { self.runAutoSync() }
                 try? await Task.sleep(for: .milliseconds(500))
             }
         }
@@ -110,6 +141,8 @@ final class LyricsController {
         residualWindow.removeAll()
         lastResidualTrackID = nil
         anchorDiagnostics = AnchorDiagnostics()
+        lastHeardCaptureTime = nil
+        autoSync = AutoSyncInfo()
         vocalSource = nil
         currentTrackID = nil
         status = .inactive
@@ -145,6 +178,73 @@ final class LyricsController {
         }
     }
 
+    /// 최근 30초(되감기 이후) 보컬로 싱크 가사 후보들을 평가해 후보 선택과 가사 지연을 갱신한다.
+    private func runAutoSync() {
+        guard let source = vocalSource, let c = lastHeardCaptureTime,
+              let position = clock.position(atCaptureTime: c), position.isPlaying,
+              let entry = lyricsByTrack[position.trackID], var trackLyrics = entry
+        else { return }
+
+        // 분석 창: 연속 재생 구간 안의 최근 30초 ~ 분석이 끝난 곳까지 (캡처 시각)
+        let segmentStart = clock.continuousSegmentStart(heardAt: c) ?? c
+        let windowStart = max(segmentStart, c - 30)
+        // 끝은 창 시작 + 40초로 한정 (무한대를 넘기면 프레임 번호 변환에서 정수 오버플로로 크래시)
+        let probe = source.timeline.snapshot(from: windowStart + source.streamOffset, to: windowStart + source.streamOffset + 40)
+        let windowEnd = probe.knownUntil - source.streamOffset
+        guard windowEnd - windowStart > 8 else { return }
+
+        // 곡 시각 = 들리는 곡 위치 + (캡처 시각 − 들리는 캡처 시각)  (연속 재생 구간 안에서 선형)
+        let period = source.timeline.framePeriod
+        let frames = probe.frames.map { frame in
+            let capture = Double(frame.index) * period - source.streamOffset
+            let voiced = frame.confidence >= 0.5 && frame.pitchHz > 0
+            return VocalFrame(time: position.seconds + (capture - c), voiced: voiced, midi: nil)
+        }
+        let songWindow = (position.seconds + (windowStart - c))...(position.seconds + (windowEnd - c))
+
+        let estimates: [AutoSyncEstimate?] = trackLyrics.candidates.map { lyrics in
+            let starts = lyrics.lines.filter { !$0.isInterlude && songWindow.contains($0.start) }.map(\.start)
+            return LyricsAutoSync.estimate(lineStarts: starts, frames: frames, framePeriod: period)
+        }
+
+        // 후보 교체: 지금 후보보다 확실히 잘 맞는 후보가 있으면
+        let usable: (AutoSyncEstimate?) -> Bool = { ($0?.confidence ?? 0) >= 0.4 && ($0?.lineCount ?? 0) >= 4 }
+        if let bestIndex = estimates.indices.max(by: { (estimates[$0]?.score ?? 0) < (estimates[$1]?.score ?? 0) }),
+           bestIndex != trackLyrics.chosen, usable(estimates[bestIndex]),
+           (estimates[bestIndex]?.score ?? 0) > (estimates[trackLyrics.chosen]?.score ?? 0) + 0.08 {
+            trackLyrics.chosen = bestIndex
+            trackLyrics.hasDelay = false
+            trackLyrics.pendingDelay = nil
+        }
+
+        // 지연 적용: 신뢰도 충분할 때만, 작은 변화는 부드럽게, 큰 변화는 두 번 연속 확인 후
+        if let estimate = estimates[trackLyrics.chosen], estimate.confidence >= 0.4 {
+            trackLyrics.lastEstimate = estimate
+            if !trackLyrics.hasDelay {
+                trackLyrics.appliedDelay = estimate.lyricsDelay
+                trackLyrics.hasDelay = true
+            } else if abs(estimate.lyricsDelay - trackLyrics.appliedDelay) <= 0.25 {
+                trackLyrics.appliedDelay += (estimate.lyricsDelay - trackLyrics.appliedDelay) * 0.5
+                trackLyrics.pendingDelay = nil
+            } else if let pending = trackLyrics.pendingDelay, abs(pending - estimate.lyricsDelay) <= 0.1 {
+                trackLyrics.appliedDelay = estimate.lyricsDelay
+                trackLyrics.pendingDelay = nil
+            } else {
+                trackLyrics.pendingDelay = estimate.lyricsDelay
+            }
+        } else {
+            trackLyrics.lastEstimate = estimates[trackLyrics.chosen]
+        }
+
+        lyricsByTrack[position.trackID] = .some(trackLyrics)
+        autoSync = AutoSyncInfo(
+            appliedDelay: trackLyrics.appliedDelay,
+            lastEstimate: trackLyrics.lastEstimate,
+            candidateIndex: trackLyrics.chosen,
+            candidateCount: trackLyrics.candidates.count
+        )
+    }
+
     private func recordResidual(sample: NowPlayingSample, captureTime: Double) {
         guard sample.state == .playing, let trackID = sample.track?.id else { return }
         let residual = sample.position - captureTime
@@ -172,14 +272,13 @@ final class LyricsController {
             let outcome: Status
             do {
                 switch try await client.lyrics(for: track) {
-                case let .found(candidate):
-                    if let synced = candidate.syncedLyrics {
-                        lyricsByTrack[track.id] = .some(LRCParser.parse(synced))
-                        outcome = .ready(track, synced: true)
-                    } else {
-                        lyricsByTrack[track.id] = .some(nil)
-                        outcome = .ready(track, synced: false)
-                    }
+                case let .synced(candidates):
+                    let parsed = candidates.compactMap(\.syncedLyrics).map(LRCParser.parse).filter { !$0.lines.isEmpty }
+                    lyricsByTrack[track.id] = parsed.isEmpty ? .some(nil) : .some(TrackLyrics(candidates: parsed))
+                    outcome = .ready(track, synced: !parsed.isEmpty)
+                case .plainOnly:
+                    lyricsByTrack[track.id] = .some(nil)
+                    outcome = .ready(track, synced: false)
                 case .notFound:
                     lyricsByTrack[track.id] = .some(nil)
                     outcome = .notFound(track)
@@ -196,11 +295,14 @@ final class LyricsController {
 
     /// 캡처 시각 c 의 소리(= 지금 귀에 들리는 소리)에 맞는 가사 표시값.
     func display(atCaptureTime c: Double) -> (track: TrackInfo?, lyrics: LyricsDisplay?) {
+        lastHeardCaptureTime = c
         guard let position = clock.position(atCaptureTime: c) else { return (nil, nil) }
         let track = tracks[position.trackID]
-        guard let entry = lyricsByTrack[position.trackID], let lyrics = entry else { return (track, nil) }
+        guard let entry = lyricsByTrack[position.trackID], let trackLyrics = entry, let lyrics = trackLyrics.lyrics else { return (track, nil) }
 
-        let t = position.seconds + offsetSeconds
+        // 가사 시각 이동 = 사용자 미세조정(+ 앞당김) − 자동 싱크 지연(+ 늦춤)
+        let shift = offsetSeconds - trackLyrics.appliedDelay
+        let t = position.seconds + shift
         var display = LyricsDisplay()
         if let index = lyrics.lineIndex(at: t) {
             let line = lyrics.lines[index]
@@ -208,8 +310,8 @@ final class LyricsController {
             display.current = line.text
             display.progress = end > line.start ? min(max((t - line.start) / (end - line.start), 0), 1) : 1
             display.next = lyrics.nextLineIndex(after: line.start).map { lyrics.lines[$0].text }
-            if let wipe = lineWipe(trackID: position.trackID, lineIndex: index, text: line.text,
-                                   songStart: line.start - offsetSeconds, songEnd: end - offsetSeconds, heardAt: c) {
+            if let wipe = lineWipe(trackID: position.trackID, candidate: trackLyrics.chosen, lineIndex: index, text: line.text,
+                                   songStart: line.start - shift, songEnd: end - shift, heardAt: c) {
                 // 음절 타이밍은 소리에서 잰 실제 곡 시각이라 사용자 오프셋 없이 비교한다
                 display.highlightedCharacters = wipe.highlightedCharacters(at: position.seconds)
             }
@@ -223,13 +325,14 @@ final class LyricsController {
     }
 
     /// 현재 줄의 음절 타이밍. 곡 구간 → 캡처 시각 → 출력 스트림 시각으로 바꿔 보컬 프레임을 가져와 정렬한다.
-    private func lineWipe(trackID: String, lineIndex: Int, text: String, songStart: Double, songEnd: Double, heardAt c: Double) -> LineWipe? {
+    private func lineWipe(trackID: String, candidate: Int, lineIndex: Int, text: String, songStart: Double, songEnd: Double, heardAt c: Double) -> LineWipe? {
         guard let source = vocalSource,
               let captureStart = clock.captureTime(forSongPosition: songStart, heardAt: c),
               let captureEnd = clock.captureTime(forSongPosition: songEnd, heardAt: c)
         else { return nil }
 
-        let key = "\(trackID)#\(lineIndex)"
+        // 후보·이동량이 바뀌면 다른 키 (이동량은 50 ms 단위)
+        let key = "\(trackID)#\(candidate)#\(lineIndex)#\(Int((songStart * 20).rounded()))"
         let streamStart = captureStart + source.streamOffset
         let streamEnd = captureEnd + source.streamOffset
         let snapshot = source.timeline.snapshot(from: streamStart, to: streamEnd)

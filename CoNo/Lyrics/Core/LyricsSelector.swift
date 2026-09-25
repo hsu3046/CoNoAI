@@ -33,6 +33,21 @@ enum LyricsSelector {
             .max { score($0, targetDuration: targetDuration) < score($1, targetDuration: targetDuration) }
     }
 
+    /// 싱크 가사 후보를 점수순으로 (길이 일치·중복 제거). 소리로 다시 고를 수 있게 여러 개를 남긴다.
+    static func rankedSynced(_ candidates: [LyricsCandidate], targetDuration: Double?, limit: Int = 5) -> [LyricsCandidate] {
+        var seen = Set<String>()
+        return candidates
+            .filter { candidate in
+                guard !candidate.instrumental, let synced = candidate.syncedLyrics, !synced.isEmpty else { return false }
+                guard let target = targetDuration, let duration = candidate.duration else { return true }
+                return abs(duration - target) <= maxDurationDifference
+            }
+            .sorted { score($0, targetDuration: targetDuration) > score($1, targetDuration: targetDuration) }
+            .filter { seen.insert($0.syncedLyrics ?? "").inserted }
+            .prefix(limit)
+            .map { $0 }
+    }
+
     static func score(_ candidate: LyricsCandidate, targetDuration: Double?) -> Double {
         var score = 0.0
         if candidate.syncedLyrics != nil { score += 100 }
