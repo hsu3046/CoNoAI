@@ -44,11 +44,32 @@ struct SongClock: Sendable {
         anchors.removeAll()
     }
 
-    /// 역변환: 곡 위치 s 가 캡처된(될) 시각. 들리는 시점 heardAt 의 앵커를 기준으로 외삽한다
-    /// (그 앵커 이후로 계속 재생된다고 가정 — 현재 줄·다음 줄의 음절 타이밍 계산용). 일시정지 앵커면 nil.
+    /// 매끄럽게 할 때 합치는 최근 앵커 수 (0.5초 폴링이면 약 4초)
+    var smoothingCount = 8
+
+    /// 앵커 index 에서 쓸 (곡 위치 − 캡처 시각). 끊김 없이 이어진 최근 앵커들의 중앙값.
+    /// 플레이어 위치 보고의 수십 ms 흔들림 때문에 가장 최근 앵커 하나만 쓰면 곡 위치가 앞뒤로 튄다.
+    private func smoothedResidual(at index: Int, tolerance: Double = 0.3) -> Double {
+        var residuals = [anchors[index].songPosition - anchors[index].captureTime]
+        var i = index
+        while i > 0, residuals.count < smoothingCount {
+            let previous = anchors[i - 1]
+            let current = anchors[i]
+            let drift = (current.songPosition - previous.songPosition) - (current.captureTime - previous.captureTime)
+            guard previous.isPlaying, previous.trackID == current.trackID, abs(drift) < tolerance else { break }
+            residuals.append(previous.songPosition - previous.captureTime)
+            i -= 1
+        }
+        residuals.sort()
+        let middle = residuals.count / 2
+        return residuals.count % 2 == 1 ? residuals[middle] : (residuals[middle - 1] + residuals[middle]) / 2
+    }
+
+    /// 역변환: 곡 위치 s 가 캡처된(될) 시각. 들리는 시점 heardAt 의 앵커 구간을 기준으로 외삽한다
+    /// (그 뒤로 계속 재생된다고 가정 — 현재 줄·다음 줄의 음절 타이밍 계산용). 일시정지 앵커면 nil.
     func captureTime(forSongPosition s: Double, heardAt c: Double) -> Double? {
-        guard let anchor = anchors.last(where: { $0.captureTime <= c }), anchor.isPlaying else { return nil }
-        return anchor.captureTime + (s - anchor.songPosition)
+        guard let index = anchors.lastIndex(where: { $0.captureTime <= c }), anchors[index].isPlaying else { return nil }
+        return s - smoothedResidual(at: index)
     }
 
     /// heardAt 의 앵커부터 거슬러 올라가며 끊김 없이 이어진 재생 구간의 시작 캡처 시각.
@@ -65,10 +86,11 @@ struct SongClock: Sendable {
         return anchors[index].captureTime
     }
 
-    /// 캡처 시각 c 의 소리가 곡 어디였는지. c 이전의 가장 최근 앵커 기준.
+    /// 캡처 시각 c 의 소리가 곡 어디였는지. c 이전의 가장 최근 앵커가 속한 연속 구간의 중앙값 기준.
     func position(atCaptureTime c: Double) -> SongPosition? {
-        guard let anchor = anchors.last(where: { $0.captureTime <= c }), let trackID = anchor.trackID else { return nil }
-        let seconds = anchor.isPlaying ? anchor.songPosition + (c - anchor.captureTime) : anchor.songPosition
+        guard let index = anchors.lastIndex(where: { $0.captureTime <= c }), let trackID = anchors[index].trackID else { return nil }
+        let anchor = anchors[index]
+        let seconds = anchor.isPlaying ? c + smoothedResidual(at: index) : anchor.songPosition
         return SongPosition(trackID: trackID, seconds: seconds, isPlaying: anchor.isPlaying)
     }
 }

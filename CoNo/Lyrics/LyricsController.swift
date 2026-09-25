@@ -98,6 +98,8 @@ final class LyricsController {
         var lineIndex: Int?
     }
     @ObservationIgnored private var displayCommits: [String: DisplayCommit] = [:]
+    /// 한 줄 안에서 색칠이 뒤로 가지 않게 — 마지막으로 그린 (줄 식별, 칠한 글자 수)
+    @ObservationIgnored private var lastHighlight: (line: String, characters: Double)?
     /// 곡별로 찾은 가사 지연을 기억 (다시 틀면 처음부터 맞춘 상태로 시작)
     private let learnedDelays = LearnedLyricsDelays()
     private var tracks: [String: TrackInfo] = [:]
@@ -152,6 +154,7 @@ final class LyricsController {
         anchorDiagnostics = AnchorDiagnostics()
         lastHeardCaptureTime = nil
         displayCommits.removeAll()
+        lastHighlight = nil
         autoSync = AutoSyncInfo()
         vocalSource = nil
         currentTrackID = nil
@@ -345,7 +348,15 @@ final class LyricsController {
             if let wipe = lineWipe(trackID: position.trackID, candidate: trackLyrics.chosen, lineIndex: index, text: line.text,
                                    songStart: line.start - shift, songEnd: end - shift, heardAt: c) {
                 // 음절 타이밍은 소리에서 잰 실제 곡 시각이라 사용자 오프셋 없이 비교한다
-                display.highlightedCharacters = wipe.highlightedCharacters(at: position.seconds)
+                var characters = wipe.highlightedCharacters(at: position.seconds)
+                // 분석 진행에 따른 재정렬·곡 위치 미세 흔들림으로 뒤로 물러나지 않게 한다.
+                // 크게(1.5글자 넘게) 뒤로 가면 되감기 같은 실제 변화로 보고 따른다.
+                let lineID = "\(position.trackID)#\(trackLyrics.chosen)#\(index)"
+                if let last = lastHighlight, last.line == lineID, characters < last.characters, last.characters - characters < 1.5 {
+                    characters = last.characters
+                }
+                lastHighlight = (lineID, characters)
+                display.highlightedCharacters = characters
             }
         } else if let nextIndex = lyrics.nextLineIndex(after: t) {
             let next = lyrics.lines[nextIndex]

@@ -84,11 +84,17 @@ struct SongClockTests {
         clock.add(PlaybackAnchor(captureTime: 105, songPosition: 60, isPlaying: true, trackID: "A"))   // 재개 + 되감기
         clock.add(PlaybackAnchor(captureTime: 110, songPosition: 0.2, isPlaying: true, trackID: "B"))  // 다음 곡
 
+        // 부동소수점 끝자리 차이는 허용 (계산 순서에 따라 1.2 vs 1.2000000000000028)
+        func expectPosition(_ c: Double, _ trackID: String, _ seconds: Double, playing: Bool) {
+            let position = clock.position(atCaptureTime: c)
+            #expect(position?.trackID == trackID && position?.isPlaying == playing, "c=\(c)")
+            #expect(abs((position?.seconds ?? .nan) - seconds) < 1e-9, "c=\(c)")
+        }
         #expect(clock.position(atCaptureTime: 99.9) == nil, "첫 앵커 이전은 모름")
-        #expect(clock.position(atCaptureTime: 101.5) == SongPosition(trackID: "A", seconds: 31.5, isPlaying: true))
-        #expect(clock.position(atCaptureTime: 103) == SongPosition(trackID: "A", seconds: 31.5, isPlaying: false))
-        #expect(clock.position(atCaptureTime: 106) == SongPosition(trackID: "A", seconds: 61, isPlaying: true))
-        #expect(clock.position(atCaptureTime: 111) == SongPosition(trackID: "B", seconds: 1.2, isPlaying: true))
+        expectPosition(101.5, "A", 31.5, playing: true)
+        expectPosition(103, "A", 31.5, playing: false)
+        expectPosition(106, "A", 61, playing: true)
+        expectPosition(111, "B", 1.2, playing: true)
     }
 
     @Test func dropsOldAnchorsAndBackwardsAnchors() {
@@ -132,5 +138,28 @@ struct TitleMatchTests {
                                     duration: 260.9, instrumental: false, plainLyrics: nil, syncedLyrics: "[00:11.27]y")
         let ranked = LyricsSelector.rankedSynced([other, right], targetDuration: 259, targetTitle: "First Love")
         #expect(ranked.map(\.id) == [1])
+    }
+}
+
+struct SongClockSmoothingTests {
+    @Test func jitteryReportsGiveSmoothMonotonicPosition() {
+        // 0.5초마다 보고, 실제 (곡 − 캡처) = 30, 보고값에 ±30 ms 흔들림
+        var clock = SongClock()
+        let jitter: [Double] = [0.03, -0.02, 0.01, -0.03, 0.02, -0.01, 0.03, -0.02, 0.0, 0.02, -0.03, 0.01]
+        for (i, noise) in jitter.enumerated() {
+            let capture = 100 + Double(i) * 0.5
+            clock.add(PlaybackAnchor(captureTime: capture, songPosition: capture - 70 + noise, isPlaying: true, trackID: "A"))
+        }
+        var previous = -Double.infinity
+        var maxError = 0.0
+        var c = 102.0 // 앵커가 몇 개 쌓인 뒤부터
+        while c < 105.9 {
+            let position = clock.position(atCaptureTime: c)!.seconds
+            maxError = max(maxError, abs(position - (c - 70)))
+            #expect(position >= previous - 0.005, "곡 위치가 뒤로 튐: c=\(c)")
+            previous = position
+            c += 0.05
+        }
+        #expect(maxError <= 0.015, "중앙값으로 흔들림이 줄어야 한다 (최대 오차 \(maxError))")
     }
 }
