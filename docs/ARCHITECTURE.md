@@ -22,9 +22,10 @@
 |---|---|
 | `CoNo/Audio/CoreAudioUtils.swift` | HAL 프로퍼티 읽기 헬퍼 (AudioCap 기반) |
 | `CoNo/Audio/AudioSourceCatalog.swift` | HAL 오디오 프로세스를 "책임 프로세스" 기준으로 사용자 앱에 묶어 목록화 |
-| `CoNo/Audio/ProcessTapSession.swift` | 탭 + 비공개 애그리게이트 디바이스(메인 = 기본 출력 장치) 생성/정리 |
+| `CoNo/Audio/ProcessTapSession.swift` | 탭 + **탭만 넣은** 비공개 애그리게이트(캡처 전용, 탭 원래 레이트) 생성/정리 |
+| `CoNo/Audio/PlaybackOutput.swift` | 재생: AVAudioEngine + AVAudioSourceNode (출력 장치 하드웨어 레이트), 장치 변경 감지 |
 | `CoNo/Audio/SPSCRingBuffer.swift` | lock-free SPSC 링 버퍼 (`Synchronization.Atomic`) |
-| `CoNo/Audio/DelayPipeline.swift` | IO 스레드 캡처/재생 + 워커 스레드 처리 + 프리롤 지연 |
+| `CoNo/Audio/DelayPipeline.swift` | 캡처 콜백 / 재생 콜백 / 워커 처리 + 프리롤 지연 + 재생 시계 + IO 진단 |
 | `CoNo/Audio/StreamProcessors.swift` | 워커 처리 단계: 패스스루 / L−R / `SeparationProcessor`(AI) |
 | `CoNo/Audio/AudioResampler.swift` | 샘플레이트 변환 1~2채널 (장치 ↔ 44.1k, 보컬 → 16k 모노). AVAudioConverter, 워커 전용 |
 | `CoNo/DSP/STFT.swift` | torch.stft/istft 호환 STFT (reflect 패딩, periodic Hann, vDSP DFT) |
@@ -41,7 +42,10 @@
 | `CoNo/App/*` | SwiftUI 화면 |
 
 ### 스레드 모델
-- **IO 스레드** (`AudioDeviceCreateIOProcIDWithBlock`, queue = nil): 탭 입력 → `captureRing`, `playbackRing` → 출력. 할당·락·로그 금지.
+- **캡처 IO 스레드** (탭 애그리게이트 IOProc, 탭 레이트): 탭 입력 → `captureRing`. 할당·락·로그 금지.
+- **재생 렌더 스레드** (AVAudioSourceNode, 장치 레이트): `playbackRing` → 출력 + 재생 시계(seqlock). 할당·락·로그 금지.
+- 탭 레이트 ≠ 장치 레이트면 변환은 워커가 한다 (`ResamplingProcessor` / `SeparationProcessor` 의 up/down 샘플러).
+  예전 단일 애그리게이트(출력 장치 + 탭) 구성은 레이트가 다르면 HAL 드리프트 보정이 2배 변환을 떠맡아 틱이 났다.
 - **워커 스레드**: `captureRing` 에서 1024 프레임씩 읽어 `StreamProcessor` 로 처리 후 `playbackRing` 에 씀. AI 분리는 여기서 step 마다 추론(약 0.2초)하며, 그동안 캡처는 링에 계속 쌓인다.
 - **메인 스레드**: 50ms 마다 `takeStats()` 로 레벨·버퍼 상태 갱신.
 
