@@ -51,7 +51,15 @@ actor LRCLIBClient {
     }
 
     func lyrics(for track: TrackInfo) async throws -> LyricsLookupResult {
-        if let cached = readCache(for: track) { return cached }
+        if let cached = readCache(for: track) {
+            // 옛 캐시에 섞인 다른 곡 후보도 거른다 (제목 필터 도입 전 캐시)
+            if case let .synced(list) = cached {
+                let filtered = LyricsSelector.rankedSynced(list, targetDuration: track.duration, targetTitle: track.title)
+                if !filtered.isEmpty { return .synced(filtered) }
+            } else {
+                return cached
+            }
+        }
 
         var candidates: [LyricsCandidate] = []
         // 1) 정확 조회 + 제목·아티스트 검색은 항상 (후보를 여러 개 모아 소리로 고르기 위해)
@@ -59,11 +67,11 @@ actor LRCLIBClient {
         candidates += try await search(["track_name": track.title, "artist_name": track.artist])
         // 2) 싱크 후보가 모자라면 표기를 바꿔 더 찾는다 ("아이유" 0건 / "IU" 있음)
         for query in [["q": "\(track.artist) \(track.title)"], ["track_name": track.title]] {
-            if LyricsSelector.rankedSynced(candidates, targetDuration: track.duration).count >= 2 { break }
+            if LyricsSelector.rankedSynced(candidates, targetDuration: track.duration, targetTitle: track.title).count >= 2 { break }
             candidates += try await search(query)
         }
 
-        let synced = LyricsSelector.rankedSynced(candidates, targetDuration: track.duration)
+        let synced = LyricsSelector.rankedSynced(candidates, targetDuration: track.duration, targetTitle: track.title)
         if !synced.isEmpty { return store(.synced(synced), for: track) }
         if let plain = LyricsSelector.best(candidates, targetDuration: track.duration) {
             return store(.plainOnly(plain), for: track)

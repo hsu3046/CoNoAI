@@ -111,3 +111,26 @@ struct AppleMusicScriptTests {
         #expect(compiled, "AppleScript 컴파일 실패: \(error ?? [:])")
     }
 }
+
+struct TitleMatchTests {
+    @Test func versionSuffixesIgnoredButOtherSongsRejected() {
+        #expect(LyricsSelector.titlesMatch("First Love (Remastered 2014)", "First Love"))
+        #expect(LyricsSelector.titlesMatch("Good day (좋은 날)", "좋은 날"))
+        #expect(LyricsSelector.titlesMatch("Hype Boy", "Hype Boy"))
+        #expect(LyricsSelector.titlesMatch("Dynamite - Instrumental", "Dynamite"))
+        #expect(!LyricsSelector.titlesMatch("B&C -Album Edit-", "First Love"))
+        #expect(!LyricsSelector.titlesMatch("Automatic", "First Love"))
+        // 버전 표기만 같은 두 곡은 다른 곡
+        #expect(!LyricsSelector.titlesMatch("B&C (Remastered 2014)", "First Love (Remastered 2014)"))
+        #expect(LyricsSelector.titlesMatch("Love Always Run Away (사랑은 늘 도망가)", "사랑은 늘 도망가"))
+    }
+
+    @Test func rankedSyncedDropsOtherSongWithSimilarDuration() {
+        let right = LyricsCandidate(id: 1, trackName: "First Love (Remastered 2014)", artistName: "a", albumName: nil,
+                                    duration: 258, instrumental: false, plainLyrics: nil, syncedLyrics: "[00:21.32]x")
+        let other = LyricsCandidate(id: 2, trackName: "B&C -Album Edit-", artistName: "a", albumName: "First Love",
+                                    duration: 260.9, instrumental: false, plainLyrics: nil, syncedLyrics: "[00:11.27]y")
+        let ranked = LyricsSelector.rankedSynced([other, right], targetDuration: 259, targetTitle: "First Love")
+        #expect(ranked.map(\.id) == [1])
+    }
+}
