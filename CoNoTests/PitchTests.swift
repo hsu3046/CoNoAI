@@ -20,7 +20,7 @@ private final class IndexEchoEstimator: FramePitchEstimating {
 }
 
 struct PitchFrameStreamTests {
-    @Test func emitsContiguousFinalFramesWithContext() throws {
+    @Test func emitsContiguousFinalFramesWithContext() {
         let estimator = IndexEchoEstimator()
         let stream = PitchFrameStream(estimator: estimator, lookaheadFrames: 10, leftFrames: 11)
         let total = 4 * 300
@@ -33,7 +33,7 @@ struct PitchFrameStreamTests {
             guard n > 0 else { break }
             let emittedBefore = stream.emittedFrames
             let callsBefore = estimator.bufferStartFrames.count
-            emitted += try samples[offset..<(offset + n)].withUnsafeBufferPointer { try stream.push($0) }
+            emitted += samples[offset..<(offset + n)].withUnsafeBufferPointer { stream.push($0) }
             // 모델에 넘긴 버퍼는 이번에 확정할 첫 프레임 앞 11 프레임 문맥을 포함해야 한다
             if estimator.bufferStartFrames.count > callsBefore, let start = estimator.bufferStartFrames.last {
                 #expect(start <= max(0, emittedBefore - 11), "문맥 부족: start=\(start) emitted=\(emittedBefore)")
@@ -48,6 +48,52 @@ struct PitchFrameStreamTests {
             #expect(frame.pitchHz == Double(i), "모델이 본 버퍼 위치와 절대 번호가 어긋남 i=\(i)")
         }
         #expect(estimator.bufferStartFrames.last ?? 0 > 0, "버퍼가 한 번도 잘리지 않았다 (테스트가 트리밍을 검증하지 못함)")
+    }
+
+    @Test func failingEstimatorKeepsBufferBoundedAndIndicesContiguous() {
+        // 처음 40번은 실패, 그 뒤 회복. 실패 중에도 모델 입력이 길어지지 않고 프레임 번호가 이어져야 한다.
+        let estimator = FlakyEstimator(failures: 40)
+        let stream = PitchFrameStream(estimator: estimator, lookaheadFrames: 10, leftFrames: 11)
+        let total = 4 * 400
+        let samples = (0..<total).map { Float($0) }
+
+        var emitted: [PitchFrame] = []
+        var sawError = false
+        for offset in stride(from: 0, to: total, by: 8) {
+            emitted += samples[offset..<(offset + 8)].withUnsafeBufferPointer { stream.push($0) }
+            if stream.lastError != nil { sawError = true }
+        }
+
+        #expect(sawError)
+        #expect(stream.lastError == nil, "회복 후에는 오류가 지워져야 한다")
+        // 문맥 11 + 룩어헤드 10 + 이번 입력 2 프레임 남짓 — 실패가 이어져도 이보다 길어지면 안 된다
+        #expect(estimator.maxInputFrames <= 11 + 10 + 3, "모델 입력이 커졌다: \(estimator.maxInputFrames) 프레임")
+        #expect(emitted.count == total / 4 - 10)
+        for (i, frame) in emitted.enumerated() { #expect(frame.index == i) }
+        // 실패 구간은 무성, 회복 뒤는 정상 값
+        #expect(emitted.prefix(10).allSatisfy { $0.confidence == 0 })
+        #expect(emitted.last.map { $0.pitchHz == Double($0.index) && $0.confidence == 1 } == true)
+    }
+}
+
+/// 처음 몇 번은 실패하고 그 뒤로는 IndexEchoEstimator 처럼 동작한다.
+private final class FlakyEstimator: FramePitchEstimating {
+    struct Failure: Error {}
+    let hop = 4
+    private var failuresLeft: Int
+    private(set) var maxInputFrames = 0
+
+    init(failures: Int) { failuresLeft = failures }
+
+    func estimate(_ audio: UnsafeBufferPointer<Float>) throws -> (pitchHz: [Double], confidence: [Float]) {
+        let frames = audio.count / hop
+        maxInputFrames = max(maxInputFrames, frames)
+        if failuresLeft > 0 {
+            failuresLeft -= 1
+            throw Failure()
+        }
+        let pitch = (0..<frames).map { Double(Int(audio[$0 * hop]) / hop) }
+        return (pitch, [Float](repeating: 1, count: frames))
     }
 }
 

@@ -30,6 +30,8 @@ final class PitchFrameStream {
     private var baseFrame = 0
     /// 지금까지 확정해 내보낸 프레임 수
     private(set) var emittedFrames = 0
+    /// 마지막 push 의 검출 실패 (성공하면 nil)
+    private(set) var lastError: Error?
 
     init(estimator: FramePitchEstimating, lookaheadFrames: Int = 10, leftFrames: Int = 11) {
         self.estimator = estimator
@@ -38,7 +40,10 @@ final class PitchFrameStream {
     }
 
     /// 16 kHz 모노 샘플을 추가하고 새로 확정된 프레임을 돌려준다.
-    func push(_ samples: UnsafeBufferPointer<Float>) throws -> [PitchFrame] {
+    /// 검출이 실패하면 그 프레임들을 무성으로 채우고 `lastError` 에 남긴다 (던지지 않는다):
+    ///   - 던지면 아래 버퍼 정리를 건너뛰어, 실패가 이어질수록 모델 입력이 끝없이 길어진다 (워커가 느려져 분리까지 끊김)
+    ///   - 프레임 번호는 빈틈없이 이어져야 한다 (PitchTimeline.snapshot 이 번호 = 배열 위치로 자른다)
+    func push(_ samples: UnsafeBufferPointer<Float>) -> [PitchFrame] {
         buffer.append(contentsOf: samples)
         let hop = estimator.hop
         let first = emittedFrames - baseFrame
@@ -46,14 +51,21 @@ final class PitchFrameStream {
         let last = available - lookaheadFrames
         guard last > first else { return [] }
 
-        let (pitch, confidence) = try buffer.withUnsafeBufferPointer { try estimator.estimate($0) }
-        let usable = min(last, pitch.count, confidence.count)
-        guard usable > first else { return [] }
-
         var frames: [PitchFrame] = []
-        frames.reserveCapacity(usable - first)
-        for i in first..<usable {
-            frames.append(PitchFrame(index: baseFrame + i, pitchHz: pitch[i], confidence: confidence[i]))
+        frames.reserveCapacity(last - first)
+        do {
+            let (pitch, confidence) = try buffer.withUnsafeBufferPointer { try estimator.estimate($0) }
+            let usable = min(last, pitch.count, confidence.count)
+            guard usable > first else { throw PitchStreamError.tooFewFrames(expected: last, got: min(pitch.count, confidence.count)) }
+            for i in first..<usable {
+                frames.append(PitchFrame(index: baseFrame + i, pitchHz: pitch[i], confidence: confidence[i]))
+            }
+            lastError = nil
+        } catch {
+            for i in first..<last {
+                frames.append(PitchFrame(index: baseFrame + i, pitchHz: 0, confidence: 0))
+            }
+            lastError = error
         }
         emittedFrames += frames.count
 
@@ -64,5 +76,15 @@ final class PitchFrameStream {
             baseFrame += keep
         }
         return frames
+    }
+}
+
+enum PitchStreamError: LocalizedError {
+    case tooFewFrames(expected: Int, got: Int)
+
+    var errorDescription: String? {
+        switch self {
+        case let .tooFewFrames(expected, got): "음정 검출기 출력 프레임이 모자랍니다 (필요 \(expected), 받음 \(got))"
+        }
     }
 }

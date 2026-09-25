@@ -42,6 +42,8 @@ final class SwiftF0Detector: FramePitchEstimating, @unchecked Sendable {
 
     func estimate(_ audio: UnsafeBufferPointer<Float>) throws -> (pitchHz: [Double], confidence: [Float]) {
         guard audio.count >= hop, let base = audio.baseAddress else { return ([], []) }
+        // ⚠️ tensorData() 는 ORTValue 의 메모리를 복사 없이 가리킨다 → 복사를 마칠 때까지 outputs 를 살려 둔다
+        let outputs: [String: ORTValue]
         let pitchData: NSMutableData
         let confidenceData: NSMutableData
         do {
@@ -51,7 +53,7 @@ final class SwiftF0Detector: FramePitchEstimating, @unchecked Sendable {
                 "fmin": try ORTValue(tensorData: fminData, elementType: .float, shape: []),
                 "fmax": try ORTValue(tensorData: fmaxData, elementType: .float, shape: []),
             ]
-            let outputs = try session.run(withInputs: inputs, outputNames: ["pitch", "confidence"], runOptions: nil)
+            outputs = try session.run(withInputs: inputs, outputNames: ["pitch", "confidence"], runOptions: nil)
             guard let pitch = outputs["pitch"], let confidence = outputs["confidence"] else {
                 throw MDXSeparatorError.onnx("SwiftF0 출력 없음", underlying: nil)
             }
@@ -70,6 +72,7 @@ final class SwiftF0Detector: FramePitchEstimating, @unchecked Sendable {
         let confidencePointer = confidenceData.bytes.assumingMemoryBound(to: Float.self)
         let pitch = UnsafeBufferPointer(start: pitchPointer, count: frames).map(Double.init)
         var confidence = Array(UnsafeBufferPointer(start: confidencePointer, count: frames))
+        withExtendedLifetime(outputs) {}
 
         // 무음 프레임 신뢰도 0
         for frame in 0..<frames {

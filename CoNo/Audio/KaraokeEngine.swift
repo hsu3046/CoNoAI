@@ -111,6 +111,9 @@ final class KaraokeEngine {
     private var output: PlaybackOutput?
     private var pipeline: DelayPipeline?
     private var statsTask: Task<Void, Never>?
+    /// 시작 시도마다 올리는 번호. await 뒤에 번호가 바뀌었으면(정지·재시작) 그 시도는 버린다.
+    /// status 만 보면 "정지 → 다시 시작" 한 뒤에도 .starting 이라 옛 시도가 살아남는다.
+    @ObservationIgnored private var startGeneration = 0
 
     var isRunning: Bool {
         if case .running = status { return true }
@@ -239,10 +242,15 @@ final class KaraokeEngine {
         separation: SeparationSettings
     ) async {
         stop()
+        startGeneration &+= 1
+        let generation = startGeneration
         status = .starting
 
         if mode == .aiSeparation {
-            guard await prepareModel(backend: separation.backend), self.separator != nil else {
+            let modelReady = await prepareModel(backend: separation.backend)
+            // 모델을 준비하는 동안 정지·재시작됐으면 이 시도는 버린다
+            guard isCurrentStart(generation) else { return }
+            guard modelReady, self.separator != nil else {
                 if case let .failed(message) = modelState { status = .failed(message) } else { status = .idle }
                 return
             }
@@ -262,7 +270,11 @@ final class KaraokeEngine {
         do {
             try await Task.detached { try session.prepare(source: source, muteOriginal: muteOriginal) }.value
         } catch {
-            status = .failed(error.localizedDescription)
+            if isCurrentStart(generation) { status = .failed(error.localizedDescription) }
+            return
+        }
+        guard isCurrentStart(generation) else {
+            session.teardown()
             return
         }
 
@@ -311,8 +323,9 @@ final class KaraokeEngine {
                 processor: processor,
                 burstSeconds: burstSeconds
             )
+            // 워커는 캡처가 붙고 이 시도가 아직 유효한지 확인한 뒤에 띄운다 (아래).
+            // 먼저 띄우면 권한 대기 중 정지·재시작했을 때 옛 워커와 새 워커가 같은 분리 모델을 동시에 쓴다.
             createdPipeline = pipeline
-            pipeline.startWorker()
 
             // 3) 재생 (출력 장치가 바뀌면 엔진이 멈추므로 안전하게 정지하고 안내)
             playback.setKeyShift(keyShift)
@@ -322,7 +335,9 @@ final class KaraokeEngine {
                 },
                 onConfigurationChange: { [weak self] in
                     MainActor.assumeIsolated {
-                        guard let self, self.isRunning else { return }
+                        // 시작 중(권한 대기)에 바뀌어도 정지해야 한다 — isRunning 만 보면 알림이 버려지고
+                        // 멈춘 엔진으로 .running 이 된다. 정지하면 번호가 바뀌어 대기 중인 시작도 스스로 정리한다.
+                        guard let self, generation == self.startGeneration, self.isBusy else { return }
                         self.stop()
                         self.status = .failed("출력 장치가 바뀌어 정지했습니다. 다시 시작해 주세요.")
                     }
@@ -337,13 +352,13 @@ final class KaraokeEngine {
                 }
             }.value
 
-            // 시작 대기 중에 사용자가 정지를 눌렀으면 정리
-            guard status == .starting else {
+            // 시작 대기 중에 정지·재시작됐으면 이 시도가 만든 것만 정리 (워커는 아직 안 떴다)
+            guard isCurrentStart(generation) else {
                 playback.stop()
                 session.teardown()
-                pipeline.stopWorker()
                 return
             }
+            pipeline.startWorker()
 
             self.session = session
             self.output = playback
@@ -366,14 +381,31 @@ final class KaraokeEngine {
         } catch {
             playback.stop()
             session.teardown()
-            createdPipeline?.stopWorker()
-            separationProcessor = nil
-            pitchTimeline = nil
-            status = .failed(error.localizedDescription)
+            stopPipeline(createdPipeline)
+            // 이미 버려진 시도면 새 시도의 상태를 건드리지 않는다
+            if isCurrentStart(generation) {
+                separationProcessor = nil
+                pitchTimeline = nil
+                status = .failed(error.localizedDescription)
+            }
         }
     }
 
+    private func isCurrentStart(_ generation: Int) -> Bool {
+        generation == startGeneration && status == .starting
+    }
+
+    /// 파이프라인 워커를 멈춘다. 시간 안에 안 멈추면 워커가 분리 모델·음정 검출기를 아직 쓰고 있을 수 있으므로
+    /// 다시 쓰지 않고 버린다 (다음 시작 때 새로 로드). 모델 객체는 한 스레드만 써야 한다.
+    private func stopPipeline(_ pipeline: DelayPipeline?) {
+        guard let pipeline, !pipeline.stopWorker() else { return }
+        separator = nil
+        pitchDetector = nil
+        modelState = .notLoaded
+    }
+
     func stop() {
+        startGeneration &+= 1
         statsTask?.cancel()
         statsTask = nil
         lyrics.stop()
@@ -382,7 +414,7 @@ final class KaraokeEngine {
         output = nil
         session?.teardown()
         session = nil
-        pipeline?.stopWorker()
+        stopPipeline(pipeline)
         pipeline = nil
         separationProcessor = nil
         pitchTimeline = nil

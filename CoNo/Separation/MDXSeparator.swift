@@ -168,6 +168,9 @@ final class MDXSeparator: ChunkSeparating, @unchecked Sendable {
         }
 
         // 3) 추론
+        // ⚠️ tensorData() 는 복사하지 않고 ORTValue 가 가진 메모리를 가리킨다 (freeWhenDone:NO).
+        // ORTValue 가 해제되면 그 메모리도 풀로 돌아가므로, 다 읽을 때까지 outputValue 를 살려 둔다.
+        let outputValue: ORTValue
         let output: NSMutableData
         do {
             let input = try ORTValue(tensorData: inputData, elementType: .float, shape: inputShape)
@@ -175,6 +178,7 @@ final class MDXSeparator: ChunkSeparating, @unchecked Sendable {
             let results = try session.run(withInputs: ["input": input], outputNames: ["output"], runOptions: nil)
             lastModelMilliseconds = (ContinuousClock.now - runStart).milliseconds
             guard let value = results["output"] else { throw MDXSeparatorError.onnx("모델 출력 'output' 없음", underlying: nil) }
+            outputValue = value
             output = try value.tensorData()
         } catch let error as MDXSeparatorError {
             throw error
@@ -184,10 +188,12 @@ final class MDXSeparator: ChunkSeparating, @unchecked Sendable {
         guard output.length >= 4 * plane * MemoryLayout<Float>.size else {
             throw MDXSeparatorError.onnx("모델 출력 크기가 예상과 다릅니다 (\(output.length) bytes)", underlying: nil)
         }
-        let predicted = output.bytes.assumingMemoryBound(to: Float.self)
 
         // 4) iSTFT (dim_f 위 빈은 0) → 반주
-        stft.inverse(real: predicted, imag: predicted + plane, providedBins: dimF, frames: dimT, output: outLeft)
-        stft.inverse(real: predicted + 2 * plane, imag: predicted + 3 * plane, providedBins: dimF, frames: dimT, output: outRight)
+        withExtendedLifetime(outputValue) {
+            let predicted = output.bytes.assumingMemoryBound(to: Float.self)
+            stft.inverse(real: predicted, imag: predicted + plane, providedBins: dimF, frames: dimT, output: outLeft)
+            stft.inverse(real: predicted + 2 * plane, imag: predicted + 3 * plane, providedBins: dimF, frames: dimT, output: outRight)
+        }
     }
 }

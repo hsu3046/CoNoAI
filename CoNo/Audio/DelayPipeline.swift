@@ -210,13 +210,17 @@ final class DelayPipeline: @unchecked Sendable {
     }
 
     /// 워커를 멈추고, 진행 중인 처리(추론 1회 분량)가 끝날 때까지 최대 5초 기다린다.
-    func stopWorker() {
+    /// false = 시간 안에 안 멈춤 → 워커가 아직 처리기(분리 모델)를 쓰고 있을 수 있다. 호출 쪽이 모델을 재사용하면 안 된다.
+    @discardableResult
+    func stopWorker() -> Bool {
         isWorkerRunning.store(false, ordering: .releasing)
-        guard workerThread != nil else { return }
-        if workerExited.wait(timeout: .now() + 5) == .timedOut {
+        guard workerThread != nil else { return true }
+        let exited = workerExited.wait(timeout: .now() + 5) == .success
+        if !exited {
             processingError.withLock { $0 = "워커 스레드가 5초 안에 멈추지 않았습니다" }
         }
         workerThread = nil
+        return exited
     }
 
     private func runWorkerLoop() {

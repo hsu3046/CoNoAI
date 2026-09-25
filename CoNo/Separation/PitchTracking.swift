@@ -80,13 +80,19 @@ final class PitchTracker {
             try mono.withUnsafeBufferPointer { buffer in
                 let input = UnsafeBufferPointer(rebasing: buffer[0..<n])
                 if let resampler {
-                    try resampler.process(mono: input) { timeline.append(try stream.push($0)) }
+                    try resampler.process(mono: input) { pushToStream($0) }
                 } else {
-                    timeline.append(try stream.push(input))
+                    pushToStream(input)
                 }
             }
         } catch {
             timeline.record(error: error)
         }
+    }
+
+    /// 검출 실패 구간은 무성 프레임으로 채워져 오므로 타임라인은 계속 이어지고, 오류만 따로 남긴다.
+    private func pushToStream(_ samples: UnsafeBufferPointer<Float>) {
+        timeline.append(stream.push(samples))
+        if let error = stream.lastError { timeline.record(error: error) }
     }
 }
