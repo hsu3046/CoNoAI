@@ -191,6 +191,31 @@ struct LyricsAutoSyncTests {
         #expect(estimate == nil || estimate!.confidence < 0.2)
     }
 
+    @Test func coarseSearchFindsLongIntroOffset() throws {
+        // 영상 인트로가 14초 더 길다: LRC 는 실제보다 14초 이르다. 30초 남짓 분석한 뒤에도 찾아야 한다.
+        let actual = [18.0, 20.4, 22.1, 25.3, 27.0, 29.8, 31.5, 34.2, 36.9]
+        let lrc = actual.map { $0 - 14 }
+        let frames = vocals(actualStarts: actual, total: 40)
+        // 평소 범위(±2.5초)로는 못 찾는다
+        let narrow = LyricsAutoSync.estimate(lineStarts: lrc, frames: frames, framePeriod: period)
+        #expect(narrow == nil || abs(narrow!.lyricsDelay - 14) > 1)
+        let coarse = try #require(LyricsAutoSync.estimate(lineStarts: lrc, frames: frames, framePeriod: period, searchRange: LyricsAutoSync.coarseRange))
+        #expect(abs(coarse.lyricsDelay - 14) < 0.05)
+        #expect(coarse.confidence > 0.5)
+    }
+
+    @Test func trackingAroundAppliedDelayFollowsDrift() throws {
+        // 14초 지연을 적용 중인데 라이브라 조금씩 늘어져 지금은 14.6초 → 14±2.5 범위에서 따라간다
+        let actual = [18.0, 20.4, 22.1, 25.3, 27.0, 29.8, 31.5]
+        let lrc = actual.map { $0 - 14.6 }
+        let frames = vocals(actualStarts: actual, total: 36)
+        let tracked = try #require(LyricsAutoSync.estimate(
+            lineStarts: lrc, frames: frames, framePeriod: period,
+            searchRange: (14 - LyricsAutoSync.trackingHalfWidth)...(14 + LyricsAutoSync.trackingHalfWidth)
+        ))
+        #expect(abs(tracked.lyricsDelay - 14.6) < 0.05)
+    }
+
     @Test func tooFewLinesGivesNil() {
         let actual = [5.0, 7.0]
         #expect(LyricsAutoSync.estimate(lineStarts: actual, frames: vocals(actualStarts: actual, total: 12), framePeriod: period) == nil)

@@ -92,6 +92,8 @@ final class LyricsController {
         var hasDelay = false
         /// 큰 변화는 두 번 연속 같은 값이 나와야 적용
         var pendingDelay: Double?
+        /// 넓게 찾기(영상 인트로 차이) 결과 — 두 번 연속 같으면 적용
+        var pendingCoarseDelay: Double?
         var lastEstimate: AutoSyncEstimate?
 
         var lyrics: TimedLyrics? { candidates.indices.contains(chosen) ? candidates[chosen] : nil }
@@ -258,9 +260,23 @@ final class LyricsController {
         }
         let songWindow = (position.seconds + (windowStart - c))...(position.seconds + (windowEnd - c))
 
+        // 영상처럼 길이를 믿을 수 없는 곡은 처음에 ±30초로 넓게 찾고(인트로 길이 차), 그 뒤로는 적용 중인 지연 ±2.5초만 따라간다
+        let coarse = tracks[position.trackID]?.durationIsReliable == false && !trackLyrics.hasDelay
+        let center = trackLyrics.hasDelay ? trackLyrics.appliedDelay : 0
+        let range: ClosedRange<Double> = coarse
+            ? LyricsAutoSync.coarseRange
+            : (center - LyricsAutoSync.trackingHalfWidth)...(center + LyricsAutoSync.trackingHalfWidth)
         let estimates: [AutoSyncEstimate?] = trackLyrics.candidates.map { lyrics in
-            let starts = lyrics.lines.filter { !$0.isInterlude && songWindow.contains($0.start) }.map(\.start)
-            return LyricsAutoSync.estimate(lineStarts: starts, frames: frames, framePeriod: period)
+            let starts = lyrics.lines
+                .filter { line in
+                    guard !line.isInterlude else { return false }
+                    // 줄이 실제로 불릴 곡 시각 (= LRC + 지연) 이 분석 창에 들 수 있는 줄
+                    return coarse
+                        ? line.start >= songWindow.lowerBound - range.upperBound && line.start <= songWindow.upperBound - range.lowerBound
+                        : songWindow.contains(line.start + center)
+                }
+                .map(\.start)
+            return LyricsAutoSync.estimate(lineStarts: starts, frames: frames, framePeriod: period, searchRange: range)
         }
 
         // 후보 교체: 지금 후보보다 확실히 잘 맞는 후보가 있으면
@@ -271,10 +287,25 @@ final class LyricsController {
             trackLyrics.chosen = bestIndex
             trackLyrics.hasDelay = false
             trackLyrics.pendingDelay = nil
+            trackLyrics.pendingCoarseDelay = nil
         }
 
-        // 지연 적용: 신뢰도 충분할 때만, 작은 변화는 부드럽게, 큰 변화는 두 번 연속 확인 후
-        if let estimate = estimates[trackLyrics.chosen], estimate.confidence >= 0.4 {
+        // 넓게 찾기: 더 엄격하게 (신뢰도 0.5·5줄 이상) + 두 번 연속 0.3초 안에서 같은 값일 때만 — 엉뚱한 박자에 붙지 않게
+        if coarse {
+            if let estimate = estimates[trackLyrics.chosen], estimate.confidence >= 0.5, estimate.lineCount >= 5 {
+                trackLyrics.lastEstimate = estimate
+                if let pending = trackLyrics.pendingCoarseDelay, abs(pending - estimate.lyricsDelay) <= 0.3 {
+                    trackLyrics.appliedDelay = estimate.lyricsDelay
+                    trackLyrics.hasDelay = true
+                    trackLyrics.pendingCoarseDelay = nil
+                } else {
+                    trackLyrics.pendingCoarseDelay = estimate.lyricsDelay
+                }
+            } else {
+                trackLyrics.lastEstimate = estimates[trackLyrics.chosen]
+            }
+        } else if let estimate = estimates[trackLyrics.chosen], estimate.confidence >= 0.4 {
+            // 지연 적용: 신뢰도 충분할 때만, 작은 변화는 부드럽게, 큰 변화는 두 번 연속 확인 후
             trackLyrics.lastEstimate = estimate
             let difference = abs(estimate.lyricsDelay - trackLyrics.appliedDelay)
             if !trackLyrics.hasDelay {

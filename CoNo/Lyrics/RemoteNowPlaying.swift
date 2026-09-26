@@ -72,7 +72,9 @@ final class RemoteNowPlayingProvider: NowPlayingProvider {
             title: cleaned.title,
             artist: cleaned.artist,
             album: info.album ?? "",
-            duration: duration
+            duration: duration,
+            // 브라우저 영상은 원곡과 길이가 다를 수 있다 (음악 앱류는 음원 그대로)
+            durationIsReliable: false
         )
         return .success(NowPlayingSample(state: info.playing ? .playing : .paused, track: track, position: position, hostTime: hostTime))
     }

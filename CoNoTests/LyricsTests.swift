@@ -289,3 +289,32 @@ struct MediaTitleCleanerTests {
     }
 }
 
+struct VideoTrackLyricsTests {
+    private func synced(_ id: Int, title: String, artist: String, duration: Double) -> LyricsCandidate {
+        LyricsCandidate(id: id, trackName: title, artistName: artist, albumName: nil, duration: duration,
+                        // 본문이 같으면 중복 제거로 빠지므로 후보마다 다르게
+                        instrumental: false, plainLyrics: nil, syncedLyrics: "[00:10.00]가사 한 줄 \(id)")
+    }
+
+    @Test func videoLongerThanSongStillFindsLyricsOfSameArtist() {
+        // 영상은 인트로·아웃트로로 원곡(290초)보다 25초 길다
+        let studio = synced(1, title: "雪の華", artist: "中島美嘉", duration: 290)
+        let otherArtist = synced(2, title: "雪の華", artist: "Someone Else", duration: 292)
+        let video = TrackInfo(id: "v", title: "雪の華", artist: "中島美嘉", album: "", duration: 315, durationIsReliable: false)
+        #expect(LyricsSelector.syncedCandidates([studio, otherArtist], for: video).map(\.id) == [1],
+                "길이를 풀되 가수는 맞아야 한다")
+
+        // 음악 앱 곡(길이 신뢰)은 예전처럼 길이로 거른다
+        let musicAppTrack = TrackInfo(id: "m", title: "雪の華", artist: "中島美嘉", album: "", duration: 315)
+        #expect(LyricsSelector.syncedCandidates([studio], for: musicAppTrack).isEmpty)
+    }
+
+    @Test func exactDurationMatchWinsOverLenientForVideo() {
+        let exact = synced(1, title: "Song", artist: "Artist", duration: 200)
+        let far = synced(2, title: "Song", artist: "Artist", duration: 240)
+        let video = TrackInfo(id: "v", title: "Song", artist: "Artist", album: "", duration: 201, durationIsReliable: false)
+        // 길이가 맞는 후보가 있으면 그것만 (완화 검색은 없을 때만)
+        #expect(LyricsSelector.syncedCandidates([far, exact], for: video).map(\.id) == [1])
+    }
+}
+

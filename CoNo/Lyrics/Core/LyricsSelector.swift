@@ -36,14 +36,20 @@ enum LyricsSelector {
 
     /// 싱크 가사 후보를 점수순으로 (제목·길이 일치, 중복 제거). 소리로 다시 고를 수 있게 여러 개를 남긴다.
     /// 제목 필터가 없으면 같은 앨범의 비슷한 길이 다른 곡이 섞인다 (First Love 검색에 "B&C -Album Edit-" 260.9초).
+    /// - Parameter lenientDuration: 영상처럼 길이가 원곡과 다를 수 있을 때. 길이로 거르지 않는 대신 가수가 맞아야 한다
+    ///   (같은 제목 다른 곡을 막기 위해). 길이 차는 순위에만 쓴다.
     static func rankedSynced(_ candidates: [LyricsCandidate], targetDuration: Double?, targetTitle: String?,
-                             targetArtist: String? = nil, limit: Int = 5) -> [LyricsCandidate] {
+                             targetArtist: String? = nil, lenientDuration: Bool = false, limit: Int = 5) -> [LyricsCandidate] {
         let target = validDuration(targetDuration)
         var seen = Set<String>()
         return candidates
             .filter { candidate in
                 guard !candidate.instrumental, let synced = candidate.syncedLyrics, !synced.isEmpty else { return false }
                 if let targetTitle, !titlesMatch(candidate.trackName, targetTitle) { return false }
+                if lenientDuration {
+                    guard let targetArtist else { return false }
+                    return artistsMatch(candidate.artistName, targetArtist)
+                }
                 guard let target, let duration = candidate.duration else { return true }
                 return abs(duration - target) <= maxDurationDifference
             }
@@ -51,6 +57,13 @@ enum LyricsSelector {
             .filter { seen.insert($0.syncedLyrics ?? "").inserted }
             .prefix(limit)
             .map { $0 }
+    }
+
+    /// 곡에 맞는 싱크 후보: 길이가 맞는 것 먼저, 길이를 믿을 수 없는 곡(영상)이면 길이 조건을 푼 것까지
+    static func syncedCandidates(_ candidates: [LyricsCandidate], for track: TrackInfo) -> [LyricsCandidate] {
+        let strict = rankedSynced(candidates, targetDuration: track.duration, targetTitle: track.title, targetArtist: track.artist)
+        guard strict.isEmpty, !track.durationIsReliable else { return strict }
+        return rankedSynced(candidates, targetDuration: track.duration, targetTitle: track.title, targetArtist: track.artist, lenientDuration: true)
     }
 
     /// 플레이어가 길이를 못 줄 때 0 이 온다 → 0 을 목표로 삼으면 모든 후보가 걸러져 "못 찾음" 이 캐시된다

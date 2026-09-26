@@ -44,7 +44,7 @@ actor LRCLIBClient {
         configuration.httpAdditionalHeaders = ["User-Agent": Self.userAgent]
         session = URLSession(configuration: configuration)
         cacheDirectory = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first?
-            .appendingPathComponent("space.knowai.cono/lyrics-v2", isDirectory: true) // v2: 후보 목록 형식
+            .appendingPathComponent("space.knowai.cono/lyrics-v3", isDirectory: true) // v3: 영상 곡은 길이 조건을 푼 검색 (v2 의 "못 찾음" 을 버린다)
         if let cacheDirectory {
             try? FileManager.default.createDirectory(at: cacheDirectory, withIntermediateDirectories: true)
         }
@@ -54,7 +54,7 @@ actor LRCLIBClient {
         if let cached = readCache(for: track) {
             // 옛 캐시에 섞인 다른 곡 후보도 거른다 (제목 필터 도입 전 캐시)
             if case let .synced(list) = cached {
-                let filtered = LyricsSelector.rankedSynced(list, targetDuration: track.duration, targetTitle: track.title, targetArtist: track.artist)
+                let filtered = LyricsSelector.syncedCandidates(list, for: track)
                 if !filtered.isEmpty { return .synced(filtered) }
             } else {
                 return cached
@@ -67,11 +67,11 @@ actor LRCLIBClient {
         candidates += try await search(["track_name": track.title, "artist_name": track.artist])
         // 2) 싱크 후보가 모자라면 표기를 바꿔 더 찾는다 ("아이유" 0건 / "IU" 있음)
         for query in [["q": "\(track.artist) \(track.title)"], ["track_name": track.title]] {
-            if LyricsSelector.rankedSynced(candidates, targetDuration: track.duration, targetTitle: track.title, targetArtist: track.artist).count >= 2 { break }
+            if LyricsSelector.syncedCandidates(candidates, for: track).count >= 2 { break }
             candidates += try await search(query)
         }
 
-        let synced = LyricsSelector.rankedSynced(candidates, targetDuration: track.duration, targetTitle: track.title, targetArtist: track.artist)
+        let synced = LyricsSelector.syncedCandidates(candidates, for: track)
         if !synced.isEmpty { return store(.synced(synced), for: track) }
         if let plain = LyricsSelector.best(candidates, targetDuration: track.duration, targetArtist: track.artist) {
             return store(.plainOnly(plain), for: track)

@@ -11,4 +11,7 @@ struct TrackInfo: Hashable, Sendable {
     let album: String
     /// 초
     let duration: Double
+    /// 길이가 원곡 음원과 같다고 믿을 수 있는지. 영상(MV·라이브)은 인트로·아웃트로로 달라서 false —
+    /// 가사 검색이 길이 조건을 풀고, 자동 싱크가 처음에 넓게 찾는다.
+    var durationIsReliable = true
 }
