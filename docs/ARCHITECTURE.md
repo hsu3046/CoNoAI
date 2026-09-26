@@ -39,6 +39,9 @@
 | `CoNo/Audio/KaraokeEngine.swift` | UI 파사드 (모델 로드·벤치마크·자가진단, 시작/정지, 통계 폴링, 재생 위치) |
 | `CoNoTests/DSPTests.swift` | STFT torch 일치·왕복, 슬라이딩 윈도우 정렬 테스트 |
 | `CoNoTests/PitchTests.swift` | 음정 스트리밍 연속성·문맥, 음표 묶기 테스트 |
+| `CoNo/Lyrics/RemoteNowPlaying.swift` | 음악 앱이 아닌 앱의 곡 정보·재생 위치·아트 ("지금 재생 중" 스트림 → `NowPlayingProvider`) |
+| `CoNo/Lyrics/MediaRemoteBridge.swift` | 번들의 mediaremote-adapter 를 `/usr/bin/perl` 로 실행 (get/send) |
+| `CoNo/Lyrics/Core/MediaTitleCleaner.swift` | 영상 제목·채널명 → 곡 제목·가수 |
 | `CoNo/DSP/SmartKey.swift` | 남자키·여자키: 원곡 보컬 음역(유성 프레임 중앙값) → 옥타브 접은 키 (−6…+6) |
 | `CoNo/App/KaraokeScreen.swift` | 메인 무대 화면 (헤더·음정 바·가사·도크, 시작 전 화면, 단축키, 전체화면 무대 모드, 자동 시작) |
 | `CoNo/App/ControlDock.swift` | 재생·일시정지 · 키 ♭/♯ · 원키/남자키/여자키 · 반주/보컬/원곡 (+ 반주일 때 가이드 보컬) · 끝내기 |

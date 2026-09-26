@@ -59,8 +59,8 @@ struct LyricsView: View {
     private var statusMessage: String {
         switch controller.status {
         case .inactive: " "
-        case .unsupportedSource: "가사는 지금 음악 앱에서만 나옵니다"
-        case .waitingForPlayer: "음악 앱에서 노래를 틀면 가사가 나옵니다"
+        case .unsupportedSource: "이 연결에서는 가사를 받을 수 없습니다 (시스템 전체 캡처)"
+        case .waitingForPlayer: "연결된 앱에서 노래를 틀면 가사가 나옵니다"
         case let .loading(track): "가사를 찾는 중… \(track.title)"
         case let .ready(_, synced): synced ? "곧 가사가 시작됩니다" : "이 곡은 시간이 맞춰진 가사가 없습니다"
         case .notFound: "이 곡의 가사를 찾지 못했습니다"

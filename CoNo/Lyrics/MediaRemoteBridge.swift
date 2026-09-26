@@ -63,15 +63,19 @@ final class MediaRemoteBridge: Sendable {
         return await run(["send", code])?.status == 0
     }
 
+    /// `/usr/bin/perl 스크립트 프레임워크 인자…` 프로세스 (실행은 호출 쪽이)
+    func makeProcess(_ arguments: [String]) -> Process {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/perl")
+        process.arguments = [scriptPath, frameworkPath] + arguments
+        return process
+    }
+
     /// perl 로 어댑터를 실행한다. 3초 안에 안 끝나면 끊는다 (MediaRemote 가 응답하지 않는 경우).
     private func run(_ arguments: [String]) async -> (status: Int32, data: Data)? {
-        let script = scriptPath
-        let framework = frameworkPath
-        return await withCheckedContinuation { continuation in
-            DispatchQueue.global(qos: .userInitiated).async {
-                let process = Process()
-                process.executableURL = URL(fileURLWithPath: "/usr/bin/perl")
-                process.arguments = [script, framework] + arguments
+        await withCheckedContinuation { continuation in
+            DispatchQueue.global(qos: .userInitiated).async { [self] in
+                let process = makeProcess(arguments)
                 let pipe = Pipe()
                 process.standardOutput = pipe
                 process.standardError = FileHandle.nullDevice

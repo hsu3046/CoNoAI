@@ -74,7 +74,10 @@ final class LyricsController {
     }
     private(set) var autoSync = AutoSyncInfo()
 
-    private let nowPlaying = AppleMusicNowPlaying()
+    /// 음악 앱 (재생 제어에도 쓴다)
+    private let appleMusic = AppleMusicNowPlaying()
+    /// 지금 곡 정보를 주는 쪽: 음악 앱이면 AppleScript, 그 밖의 앱은 macOS "지금 재생 중"
+    private var provider: NowPlayingProvider?
     private let client = LRCLIBClient()
     private var clock = SongClock()
 
@@ -127,15 +130,20 @@ final class LyricsController {
     }
     @ObservationIgnored private var wipeCache: [String: WipeCacheEntry] = [:]
 
-    /// 가사를 지원하는 소스인지 (지금은 Apple Music 만)
-    static func supports(bundleID: String?) -> Bool {
+    /// 음악 앱인지 (AppleScript 로 곡 정보·재생 제어)
+    static func isAppleMusic(bundleID: String?) -> Bool {
         bundleID == AppleMusicNowPlaying.bundleID
     }
 
     /// - Parameter captureTime: 호스트 시각 → 캡처 스트림 시각 (DelayPipeline 캡처 시계)
     func start(sourceBundleID: String?, captureTime: @escaping @MainActor (UInt64) -> Double?) {
         stop()
-        guard Self.supports(bundleID: sourceBundleID) else {
+        if Self.isAppleMusic(bundleID: sourceBundleID) {
+            provider = appleMusic
+        } else if let remote = RemoteNowPlayingProvider(bundleID: sourceBundleID) {
+            provider = remote
+        } else {
+            // 시스템 전체 캡처이거나 "지금 재생 중" 어댑터를 쓸 수 없다
             status = .unsupportedSource
             return
         }
@@ -155,6 +163,8 @@ final class LyricsController {
     func stop() {
         pollTask?.cancel()
         pollTask = nil
+        provider?.stop()
+        provider = nil
         clock.reset()
         wipeCache.removeAll()
         residualWindow.removeAll()
@@ -173,12 +183,12 @@ final class LyricsController {
 
     /// 음악 앱 재생·일시정지
     func send(_ command: PlayerCommand) async -> Result<Void, NowPlayingError> {
-        await nowPlaying.send(command)
+        await appleMusic.send(command)
     }
 
     /// 지금 곡의 앨범 아트 바이트 (화면 조명 색용)
     func currentArtworkData() async -> Data? {
-        await nowPlaying.artworkData()
+        await provider?.artworkData()
     }
 
     /// 캡처 시각 c 의 소리(= 들리는 소리)가 속한 곡. 화면 제목용 — 상태를 바꾸지 않는다.
@@ -187,7 +197,8 @@ final class LyricsController {
     }
 
     private func pollOnce(captureTime: @MainActor (UInt64) -> Double?) async {
-        let result = await nowPlaying.poll()
+        guard let provider else { return }
+        let result = await provider.poll()
         guard !Task.isCancelled else { return }
         switch result {
         case let .failure(error):

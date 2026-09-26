@@ -290,7 +290,7 @@ private struct StageHeader: View {
     }
 
     private var subtitle: String {
-        LyricsController.supports(bundleID: engine.runningSource?.bundleID) ? "음악 앱에서 노래를 틀어 주세요" : "가사는 음악 앱에서만 나옵니다"
+        engine.lyrics.status == .unsupportedSource ? "곡 정보를 받을 수 없는 연결입니다" : "연결된 앱에서 노래를 틀어 주세요"
     }
 
     /// 연결된 앱 (소리를 가져오는 앱)

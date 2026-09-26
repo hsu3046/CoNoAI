@@ -13,6 +13,10 @@ struct CoNoApp: App {
             KaraokeScreen(engine: engine, catalog: catalog, settings: settings)
                 .frame(minWidth: 1040, minHeight: 600)
                 .preferredColorScheme(.dark)
+                // 종료할 때 캡처·"지금 재생 중" 백그라운드 프로세스를 정리한다
+                .onReceive(NotificationCenter.default.publisher(for: NSApplication.willTerminateNotification)) { _ in
+                    engine.stop()
+                }
         }
         .windowStyle(.hiddenTitleBar)
         .windowResizability(.contentMinSize)

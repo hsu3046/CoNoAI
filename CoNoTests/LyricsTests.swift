@@ -263,3 +263,29 @@ struct LyricsReviewFixTests {
         #expect(query == "q=Florence%20%2B%20the%20Machine")
     }
 }
+
+struct MediaTitleCleanerTests {
+    private func clean(_ title: String, _ artist: String) -> [String] {
+        let result = MediaTitleCleaner.clean(title: title, artist: artist)
+        return [result.title, result.artist]
+    }
+
+    @Test func youTubeVideoTitlesBecomeSongAndArtist() {
+        #expect(clean("中島美嘉 - 雪の華 / THE FIRST TAKE", "THE FIRST TAKE") == ["雪の華", "中島美嘉"])
+        #expect(clean("YOASOBI「アイドル」 Official Music Video", "Ayase / YOASOBI") == ["アイドル", "YOASOBI"])
+        #expect(clean("[MV] IU(아이유) _ Blueming(블루밍)", "1theK (원더케이)") == ["Blueming(블루밍)", "IU(아이유)"])
+        #expect(clean("Artist - Song (Official Video) [4K]", "ArtistVEVO") == ["Song", "Artist"])
+        #expect(clean("Hype Boy", "NewJeans - Topic") == ["Hype Boy", "NewJeans"])
+    }
+
+    @Test func cleanValuesAndMeaningfulParenthesesStay() {
+        // YouTube Music 은 이미 곡·가수
+        #expect(clean("First Love", "Hikaru Utada") == ["First Love", "Hikaru Utada"])
+        // 원제·피처링 괄호는 남긴다
+        #expect(clean("Good day (좋은 날)", "IU") == ["Good day (좋은 날)", "IU"])
+        #expect(clean("Song (feat. Someone)", "Artist") == ["Song (feat. Someone)", "Artist"])
+        // "곡 - 버전 표기" 는 가수·곡으로 나누지 않는다
+        #expect(clean("First Love - Remastered 2014", "Hikaru Utada") == ["First Love - Remastered 2014", "Hikaru Utada"])
+    }
+}
+

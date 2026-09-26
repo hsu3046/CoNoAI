@@ -172,15 +172,15 @@ final class KaraokeEngine {
 
     /// 음악 앱은 AppleScript 로 정확히, 다른 앱은 ⏯ 미디어 키로 멈춘다
     private var controlsAppleMusic: Bool {
-        LyricsController.supports(bundleID: runningSource?.bundleID)
+        LyricsController.isAppleMusic(bundleID: runningSource?.bundleID)
     }
 
     /// 재생·일시정지를 CoNo 에서 할 수 있는지
     var canControlPlayback: Bool { isRunning }
 
-    /// 화면의 재생 버튼 상태: CoNo 가 얼렸거나, 음악 앱에서 멈춘 경우
+    /// 화면의 재생 버튼 상태: CoNo 가 얼렸거나, 원곡 앱에서 멈춘 경우
     var showsPaused: Bool {
-        isPaused || (controlsAppleMusic && lyrics.playerState == .paused)
+        isPaused || lyrics.playerState == .paused
     }
 
     func togglePlayback() {

@@ -189,3 +189,9 @@
   - 음악 앱이 아닌 앱은 먼저 "지금 재생 중" 이 캡처 중인 앱인지 확인하고 명확한 명령을 보낸다 (토글 아님, 엉뚱한 앱 제어 없음, 손쉬운 사용 권한 불필요). 실패하면 미디어 키로.
   - 어댑터는 `ThirdParty/mediaremote-adapter` 에 원본 그대로 두고 Xcode 프레임워크 타깃으로 빌드해 앱에 넣는다 (cmake 불필요). 앱은 링크하지 않고 perl 이 불러 쓴다.
 
+## 2026-09-26 — 모든 앱의 곡 정보 (1단계)
+- 음악 앱이 아닌 연결 앱은 "지금 재생 중" 스트림(`RemoteNowPlayingProvider` — adapter `stream --micros --no-diff`, perl 프로세스 하나)에서 곡 정보·재생 위치·앨범 아트를 받는다. 연결된 앱의 것일 때만 쓴다.
+- 재생 위치 = elapsedTime + (지금 − timestamp) × rate → 음악 앱과 같은 `NowPlayingSample` 이라 SongClock·LRCLIB·자동 싱크·음절 색칠이 그대로 동작한다 (곡 길이가 맞는 YouTube Music 등은 가사도 나온다).
+- 영상 제목은 `MediaTitleCleaner` 로 다듬는다 ("가수 - 곡 / THE FIRST TAKE", 「」, " _ ", "(Official MV)", 채널 "- Topic"/"VEVO"). "곡 - Remastered" 같은 버전 표기는 나누지 않는다.
+- 남은 2단계: 영상 길이가 원곡과 다른 경우(MV 인트로·라이브)의 가사 매칭 — LRCLIB 길이 필터(±3초)에 걸린다. 자동 싱크 범위(±2.5초)도 넘는다.
+

@@ -28,7 +28,14 @@ final class ArtworkStore {
         guard let trackID, !requested.contains(trackID) else { return }
         requested.insert(trackID)
         Task {
-            guard let data = await lyrics.currentArtworkData(), let image = NSImage(data: data) else { return }
+            // 브라우저 등 "지금 재생 중" 앱의 아트는 곡 정보보다 늦게 오는 경우가 많다 → 몇 번 더 기다린다
+            var data: Data?
+            for attempt in 0..<8 {
+                data = await lyrics.currentArtworkData()
+                if data != nil || lyrics.currentTrack?.id != trackID { break }
+                if attempt < 7 { try? await Task.sleep(for: .seconds(1.5)) }
+            }
+            guard lyrics.currentTrack?.id == trackID, let data, let image = NSImage(data: data) else { return }
             let (primary, secondary) = ArtworkPalette.colors(of: image)
             // 오래 쓰면 쌓이지 않게 최근 몇 곡만
             if artworks.count > 12 { artworks.removeAll() }
