@@ -41,7 +41,7 @@
 | `CoNoTests/PitchTests.swift` | 음정 스트리밍 연속성·문맥, 음표 묶기 테스트 |
 | `CoNo/DSP/SmartKey.swift` | 남자키·여자키: 원곡 보컬 음역(유성 프레임 중앙값) → 옥타브 접은 키 (−6…+6) |
 | `CoNo/App/KaraokeScreen.swift` | 메인 무대 화면 (헤더·음정 바·가사·도크, 시작 전 화면, 단축키, 전체화면 무대 모드, 자동 시작) |
-| `CoNo/App/ControlDock.swift` | 재생·일시정지 · 키 ♭/♯ · 원키/남자키/여자키 · 가이드 보컬 · 끝내기 |
+| `CoNo/App/ControlDock.swift` | 재생·일시정지 · 키 ♭/♯ · 원키/남자키/여자키 · 반주/보컬/원곡 (+ 반주일 때 가이드 보컬) · 끝내기 |
 | `CoNo/App/SettingsView.swift` | 설정 창 (⌘,): 일반 · 소리 · AI 분리 · 싱크 · 진단(모니터·녹음 저장) |
 | `CoNo/App/AppSettings.swift` | UserDefaults 설정 (소스·모드·지연·AI·자동 시작·가이드 보컬·화면 싱크) |
 | `CoNo/App/ArtworkStore.swift` | 곡별 앨범 아트(AppleScript `raw data`) + 무대 조명 색 추출 |

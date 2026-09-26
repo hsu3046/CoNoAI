@@ -25,6 +25,10 @@ final class AppSettings {
     var displayLatencyMilliseconds: Double { didSet { store(displayLatencyMilliseconds, "displayLatencyMilliseconds") } }
     /// 음정 바에 진단 숫자 표시
     var showPitchDiagnostics: Bool { didSet { store(showPitchDiagnostics, "showPitchDiagnostics") } }
+    /// 음정 바 세로 범위를 곡 음역에 맞춰 자동으로 넓히고 좁힌다 (끄면 A2–A5 고정)
+    var pitchAutoZoom: Bool { didSet { store(pitchAutoZoom, "pitchAutoZoom") } }
+    /// 음표 막대 외에 원곡 가수의 음정 곡선도 그린다
+    var showPitchContour: Bool { didSet { store(showPitchContour, "showPitchContour") } }
 
     static let autoSource = "auto"
     static let systemSource = "system"
@@ -46,6 +50,8 @@ final class AppSettings {
         guideVocalLevel = value("guideVocalLevel", 0.0)
         displayLatencyMilliseconds = value("displayLatencyMilliseconds", 0.0)
         showPitchDiagnostics = value("showPitchDiagnostics", false)
+        pitchAutoZoom = value("pitchAutoZoom", true)
+        showPitchContour = value("showPitchContour", true)
     }
 
     var separation: SeparationSettings {

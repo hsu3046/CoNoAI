@@ -75,6 +75,17 @@ private struct GeneralSettings: View {
                     .foregroundStyle(.secondary)
             }
 
+            Section("음정 바") {
+                Toggle("음역에 맞춰 자동 확대·축소", isOn: Binding(get: { settings.pitchAutoZoom }, set: { settings.pitchAutoZoom = $0 }))
+                Text("끄면 A2–A5 범위로 고정합니다. 음 높이의 위치가 늘 같아 감을 잡기 쉽지만 음표가 얇아집니다.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Toggle("원곡 음정 곡선 표시", isOn: Binding(get: { settings.showPitchContour }, set: { settings.showPitchContour = $0 }))
+                Text("음표 막대 위에 원곡 가수가 실제로 부른 음정(분홍 선)을 겹쳐 그립니다.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
             Section("가사와 재생 제어") {
                 Text("가사·곡 정보·재생/일시정지는 지금 음악 앱(Apple Music)에서만 됩니다. 처음 쓸 때 '자동화' 권한을 허용해 주세요.")
                     .font(.caption)
@@ -135,15 +146,6 @@ private struct SoundSettings: View {
                         }), in: 0...0.5)
                         Text(String(format: "%.0f%%", settings.guideVocalLevel * 100)).monospacedDigit().frame(width: 44, alignment: .trailing)
                     }
-                }
-                if engine.runningMode == .aiSeparation {
-                    Picker("들려줄 소리 (비교용)", selection: Binding(get: { engine.separationOutput }, set: { engine.separationOutput = $0 })) {
-                        Text("반주").tag(SeparationOutput.accompaniment)
-                        Text("보컬만").tag(SeparationOutput.vocals)
-                        Text("원곡").tag(SeparationOutput.original)
-                    }
-                    .pickerStyle(.segmented)
-                    Text("세 소리는 같은 시점으로 맞춰져 있어 실행 중에 바꿔 비교할 수 있습니다.").font(.caption).foregroundStyle(.secondary)
                 }
             }
         }

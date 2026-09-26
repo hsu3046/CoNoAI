@@ -12,6 +12,12 @@ struct PitchBarView: View {
     var keyShift: Int = 0
     /// 좌상단 진단 숫자 (설정 › 진단)
     var showDiagnostics = false
+    /// 세로 범위 자동 맞춤 (끄면 `fixedRange` 고정)
+    var autoZoom = true
+    /// 원곡 음정 곡선과 재생선 위 점
+    var showContour = true
+    /// 자동 맞춤을 끌 때 쓰는 범위: A2–A5 (남녀 노래를 키를 옮겨도 대부분 담는다)
+    static let fixedRange: ClosedRange<Double> = 45...81
 
     /// 재생선 왼쪽(지나간 부분)과 오른쪽(앞으로 부를 부분)에 보여줄 초
     private let pastSeconds = 1.5
@@ -58,8 +64,8 @@ struct PitchBarView: View {
         }
         range.update(with: notes, framePeriod: period, now: now)
 
-        let low = range.low
-        let high = range.high
+        let low = autoZoom ? range.low : Self.fixedRange.lowerBound
+        let high = autoZoom ? range.high : Self.fixedRange.upperBound
         let rows = high - low + 1
         let rowHeight = size.height / rows
         func x(_ t: Double) -> CGFloat { CGFloat((t - t0) / (t1 - t0)) * size.width }
@@ -120,7 +126,7 @@ struct PitchBarView: View {
         var contour = Path()
         var previousIndex: Int?
         var headPoint: CGPoint?
-        for frame in snapshot.frames where frame.confidence >= segmenter.voicedThreshold && frame.pitchHz > 0 {
+        for frame in snapshot.frames where showContour && frame.confidence >= segmenter.voicedThreshold && frame.pitchHz > 0 {
             let t = Double(frame.index) * period
             guard t >= t0 else { continue }
             guard t <= now else { break }

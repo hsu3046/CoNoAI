@@ -1,6 +1,6 @@
 // CoNo — Copyright (C) 2026 KnowAI (https://knowai.space) — GPL-3.0-or-later
 //
-// 하단 도크: 재생·일시정지 | 키 ♭/♯ | 원키·남자키·여자키 | 가이드 보컬 | 끝내기.
+// 하단 도크: 재생·일시정지 | 키 ♭/♯ | 원키·남자키·여자키 | 반주·보컬·원곡 (+ 가이드 보컬) | 끝내기.
 // 노래방 리모컨처럼 큰 버튼 몇 개로 끝나게 한다. 단축키는 KaraokeScreen 이 받는다.
 
 import SwiftUI
@@ -12,14 +12,19 @@ struct ControlDock: View {
     private var isAIMode: Bool { engine.runningMode == .aiSeparation }
 
     var body: some View {
-        HStack(spacing: 14) {
+        HStack(spacing: 12) {
             playButton
             divider
             keyStepper
             voiceChips
             if isAIMode {
                 divider
-                guideVocal
+                outputSwitch
+                // 가이드 보컬은 반주에 섞는 것이라 반주를 들을 때만
+                if engine.separationOutput == .accompaniment {
+                    guideVocal
+                        .transition(.opacity.combined(with: .move(edge: .leading)))
+                }
             }
             divider
             stopButton
@@ -142,6 +147,30 @@ struct ControlDock: View {
         }
         .help(help)
         .accessibilityAddTraits(selected ? .isSelected : [])
+    }
+
+    // MARK: 반주·보컬·원곡
+
+    private var outputSwitch: some View {
+        HStack(spacing: 2) {
+            ForEach(SeparationOutput.allCases, id: \.self) { output in
+                let selected = engine.separationOutput == output
+                Button {
+                    withAnimation(.snappy) { engine.separationOutput = output }
+                } label: {
+                    Text(output.label)
+                        .font(StageTheme.rounded(12, .semibold))
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .foregroundStyle(selected ? StageTheme.night : StageTheme.secondaryInk)
+                        .background(Capsule().fill(selected ? StageTheme.ink : .clear))
+                }
+                .help("\(output.label) 듣기 (\(output.rawValue + 1))")
+                .accessibilityAddTraits(selected ? .isSelected : [])
+            }
+        }
+        .padding(3)
+        .background(Capsule().fill(Color.white.opacity(0.08)))
     }
 
     // MARK: 가이드 보컬

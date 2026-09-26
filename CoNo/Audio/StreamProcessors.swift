@@ -95,6 +95,14 @@ enum SeparationOutput: Int, CaseIterable, Sendable {
     case accompaniment = 0
     case vocals = 1
     case original = 2
+
+    var label: String {
+        switch self {
+        case .accompaniment: "반주"
+        case .vocals: "보컬"
+        case .original: "원곡"
+        }
+    }
 }
 
 /// 추론 시간 통계 (워커가 쓰고 UI 가 읽는다)

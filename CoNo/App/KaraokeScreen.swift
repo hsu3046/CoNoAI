@@ -3,7 +3,7 @@
 // 메인 화면 = 노래방 무대. 노래 부를 때 필요한 것만: 곡 제목·가수, 음정 바, 가사, 재생·키 도크.
 // 나머지(소스·처리 방식·지연·AI 설정·싱크·진단)는 설정 창(⌘,)에 있다.
 //
-// 단축키 (메인 창에서): Space 재생·일시정지 · ↑↓ 키 · 0 원키 · M 남자키 · F 여자키 · [ ] 가사 싱크 · Return 시작
+// 단축키 (메인 창에서): Space 재생·일시정지 · ↑↓ 키 · 0 원키 · M 남자키 · F 여자키 · 1/2/3 반주·보컬·원곡 · [ ] 가사 싱크 · Return 시작
 
 import AppKit
 import SwiftUI
@@ -119,7 +119,9 @@ struct KaraokeScreen: View {
                         timeline: timeline,
                         position: { engine.displayPosition() },
                         keyShift: engine.keyShift,
-                        showDiagnostics: settings.showPitchDiagnostics
+                        showDiagnostics: settings.showPitchDiagnostics,
+                        autoZoom: settings.pitchAutoZoom,
+                        showContour: settings.showPitchContour
                     )
                 } else {
                     VStack(spacing: 8) {
@@ -193,6 +195,11 @@ struct KaraokeScreen: View {
                 applyVoice(.male, title: "남자키")
             case "f":
                 applyVoice(.female, title: "여자키")
+            case "1", "2", "3":
+                guard engine.runningMode == .aiSeparation else { return .ignored }
+                let output: SeparationOutput = press.characters == "1" ? .accompaniment : press.characters == "2" ? .vocals : .original
+                engine.separationOutput = output
+                show(output.label)
             case "[":
                 nudgeLyrics(by: -0.05)
             case "]":
@@ -414,7 +421,7 @@ private struct IdleStage: View {
 
             statusLine
             Spacer()
-            Text("Space 재생·일시정지 · ↑↓ 키 · M 남자키 · F 여자키 · [ ] 가사 싱크 · ⌘, 설정")
+            Text("Space 재생·일시정지 · ↑↓ 키 · M 남자키 · F 여자키 · 1 2 3 반주·보컬·원곡 · [ ] 가사 싱크 · ⌘, 설정")
                 .font(StageTheme.rounded(11, .medium))
                 .foregroundStyle(StageTheme.faintInk)
                 .padding(.bottom, 18)
