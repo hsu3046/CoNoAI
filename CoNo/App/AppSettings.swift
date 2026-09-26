@@ -30,6 +30,8 @@ final class AppSettings {
     /// LRCLIB 말고 함께 찾을 가사 소스
     var lyricsNetEase: Bool { didSet { store(lyricsNetEase, "lyricsNetEase") } }
     var lyricsAMLL: Bool { didSet { store(lyricsAMLL, "lyricsAMLL") } }
+    /// Apple Music 음절 가사 (비공개 엔드포인트 — 기본 꺼짐, 계정 연결 필요)
+    var lyricsAppleMusic: Bool { didSet { store(lyricsAppleMusic, "lyricsAppleMusic") } }
     /// 내 목소리 — "내 키" 버튼이 곡을 이 목소리에 맞춘다
     var myVoice: VoiceType { didSet { store(myVoice.rawValue, "myVoice") } }
     /// 음표 막대 외에 원곡 가수의 음정 곡선도 그린다
@@ -60,12 +62,14 @@ final class AppSettings {
         myVoice = VoiceType(rawValue: value("myVoice", VoiceType.male.rawValue)) ?? .male
         lyricsNetEase = value("lyricsNetEase", true)
         lyricsAMLL = value("lyricsAMLL", true)
+        lyricsAppleMusic = value("lyricsAppleMusic", false)
     }
 
     var extraLyricsSources: Set<LyricsSource> {
         var sources: Set<LyricsSource> = []
         if lyricsNetEase { sources.insert(.netease) }
         if lyricsAMLL { sources.insert(.amll) }
+        if lyricsAppleMusic { sources.insert(.appleMusic) }
         return sources
     }
 

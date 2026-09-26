@@ -56,4 +56,5 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 - **LRCLIB** — https://lrclib.net (community lyrics database)
 - **AMLL TTML DB** — https://github.com/amll-dev/amll-ttml-db (CC0-1.0), community word-synced TTML lyrics
 - **NetEase Cloud Music** — public web endpoints (not an official API); can be turned off in Settings › Lyrics
+- **Apple Music** — optional, off by default; uses Apple's web player endpoints with the user's own subscription sign-in (not an official public API). The approach follows findings from [lyrimuse](https://github.com/Yudaotor/lyrimuse) (GPL-3.0).
 

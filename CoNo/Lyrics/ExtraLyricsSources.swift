@@ -37,7 +37,9 @@ actor ExtraLyricsSources {
     func candidates(for track: TrackInfo, sources: Set<LyricsSource>) async -> [LyricsCandidate] {
         let wanted = sources.subtracting([.lrclib])
         guard !wanted.isEmpty, !track.title.isEmpty else { return [] }
-        let cacheKey = "\(track.title)|\(track.artist)|\(Int(track.duration.rounded()))|\(wanted.map(\.rawValue).sorted().joined(separator: ","))"
+        // Apple Music 은 연결 여부에 따라 결과가 달라진다 (연결 전 "못 찾음" 을 연결 뒤에 쓰지 않게)
+        let appleMusicState = wanted.contains(.appleMusic) ? (AppleMusicCredentials.userToken == nil ? "am-off" : "am-on") : ""
+        let cacheKey = "\(track.title)|\(track.artist)|\(Int(track.duration.rounded()))|\(wanted.map(\.rawValue).sorted().joined(separator: ","))|\(appleMusicState)"
         if let cached = readCache(cacheKey) { return cached }
 
         var found: [LyricsCandidate] = []
@@ -49,6 +51,9 @@ actor ExtraLyricsSources {
         }
         if wanted.contains(.amll) {
             found += await amllCandidates(for: track, neteaseIDs: neteaseIDs)
+        }
+        if wanted.contains(.appleMusic) {
+            found += await AppleMusicCatalog.shared.candidates(for: track)
         }
         store(found, key: cacheKey)
         return found

@@ -232,3 +232,12 @@
 - 실측으로 고친 것: NetEase 는 커버·sped up·합창 판이 많아 **가수가 맞는 곡만**. AMLL 을 NetEase 번호로 찾을 때 **제목이 맞은 곡의 번호만** 넘긴다 (검색 결과 전체를 넘겼더니 같은 가수의 다른 곡 AMLL 가사가 붙었다). NetEase 가사 앞의 JSON·"作词 :" 크레딧 줄은 자동 싱크를 헷갈리게 해 뺀다.
 - 설정 › 가사 › 가사 소스에서 NetEase·AMLL 을 켜고 끈다 (기본 켜짐, 다음 곡부터).
 
+## 2026-09-26 — Apple Music 음절 가사, 설정에서 선택 (#4)
+- 앱 가로채기는 불가 (가사가 디스크에 없고 AppleScript `lyrics` 는 스트리밍 곡에서 빈 값, 공식 MusicKit 은 이 엔드포인트에 안 됨). 비공개 amp-api 를 쓴다 — 흐름은 [lyrimuse](https://github.com/Yudaotor/lyrimuse)(GPL-3) 의 실측을 참고해 Swift 로 새로 썼다.
+  1. 개발자 토큰: music.apple.com 의 `/assets/index~*.js` 안 JWT 후보 중 카탈로그 검색이 200 인 것 (2026-09-26 실측: 3개 중 두 번째). 계정 불필요.
+  2. 카탈로그 검색(`/v1/catalog/{sf}/search`, 개발자 토큰만) → `hasTimeSyncedLyrics` · 제목 · 가수 · 길이로 거름.
+  3. 가사: `/songs/{id}/syllable-lyrics` → 없으면 `/lyrics`. 구독자 `media-user-token` 필요 (없으면 404). amp-api 는 `Origin: https://music.apple.com` 이 없으면 403.
+- 연결: 앱 안 웹 창에 Apple 로그인 페이지 → 쿠키의 `media-user-token`(6개월, 연장 불가)·`itua`(구독 지역)만 꺼내 **키체인**에. 로그인은 Apple 페이지가 처리하고 CoNo 는 비밀번호를 보지 않는다. 401/403 이면 "다시 연결" 안내. 연결 끊기는 키체인 + 웹 로그인 상태까지 지운다.
+- 기본 꺼짐. 설정 › 가사 › "Apple Music 음절 가사 (선택)". 후보 점수에 출처 가산 (Apple +12, AMLL +8) — 최종 선택은 보컬 대조 자동 싱크.
+- 캐시 키에 연결 여부를 넣어, 연결 전 "못 찾음" 이 연결 뒤에 남지 않게 했다.
+

@@ -439,4 +439,17 @@ struct LyricsSourcesTests {
         let keys = LyricsSelector.syncedCandidates(pool, for: track).map(\.key)
         #expect(Set(keys) == ["lrclib:1", "netease:1", "amll:9"])
     }
+
+    @Test func officialAndHandMadeLyricsComeFirst() {
+        func candidate(_ id: Int, _ source: LyricsSource) -> LyricsCandidate {
+            LyricsCandidate(id: id, trackName: "Song", artistName: "Artist", albumName: nil, duration: 200,
+                            instrumental: false, plainLyrics: nil, syncedLyrics: "[00:10.00]줄 \(id)", source: source)
+        }
+        let track = TrackInfo(id: "t", title: "Song", artist: "Artist", album: "", duration: 200)
+        let ranked = LyricsSelector.syncedCandidates(
+            [candidate(1, .lrclib), candidate(2, .netease), candidate(3, .amll), candidate(4, .appleMusic)], for: track
+        ).map(\.origin)
+        // 조건이 같으면 Apple Music(공식 음절) → AMLL(사람이 맞춤) → 나머지. 최종 선택은 보컬 대조가 한다.
+        #expect(Array(ranked.prefix(2)) == [.appleMusic, .amll])
+    }
 }

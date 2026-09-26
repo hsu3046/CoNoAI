@@ -334,6 +334,8 @@ private struct LyricsSettings: View {
                 Caption("여러 소스에서 후보를 모은 뒤, 분리한 보컬과 대 보아 가장 잘 맞는 가사를 고릅니다. 바꾼 설정은 다음 곡부터 반영돼요.")
             }
 
+            AppleMusicLyricsSection(settings: settings)
+
             Section("가사 출처") {
                 Caption("곡 정보는 음악 앱은 직접, 그 밖의 앱(브라우저의 YouTube 등)은 macOS '지금 재생 중' 으로 받아요. 영상 제목은 '가수 - 곡' 형태로 다듬어 찾습니다.")
                 HStack {
@@ -350,6 +352,63 @@ private struct LyricsSettings: View {
             }
         }
         .formStyle(.grouped)
+    }
+}
+
+/// Apple Music 음절 가사 (선택 기능, 계정 연결)
+private struct AppleMusicLyricsSection: View {
+    let settings: AppSettings
+    private let connection = AppleMusicConnection.shared
+
+    var body: some View {
+        Section("Apple Music 음절 가사 (선택)") {
+            Toggle("Apple Music 가사 사용", isOn: Binding(get: { settings.lyricsAppleMusic }, set: { settings.lyricsAppleMusic = $0 }))
+            Caption("Apple Music 이 직접 만든 음절 단위 싱크 가사를 씁니다. 가장 정확하지만 Apple Music 구독 계정 연결이 필요해요. 공개 API 가 아닌 Apple 웹 플레이어의 통로를 쓰므로 예고 없이 막힐 수 있습니다.")
+            if settings.lyricsAppleMusic {
+                HStack(alignment: .firstTextBaseline) {
+                    status
+                    Spacer()
+                    buttons
+                }
+                Caption("연결을 누르면 Apple 의 로그인 페이지가 열립니다. 로그인은 Apple 페이지에서만 이뤄지고, CoNo 는 로그인 뒤 받은 이용 토큰만 이 Mac 의 키체인에 보관해요 (6개월 뒤 다시 연결).")
+            }
+        }
+        .onAppear { connection.refresh() }
+    }
+
+    @ViewBuilder
+    private var status: some View {
+        switch connection.state {
+        case .disconnected:
+            Text("연결 안 됨").foregroundStyle(.secondary)
+        case let .connected(_, storefront):
+            VStack(alignment: .leading, spacing: 2) {
+                if connection.rejected {
+                    Text("연결이 만료됐어요. 다시 연결해 주세요.").foregroundStyle(.orange)
+                } else {
+                    Text("연결됨" + (storefront.isEmpty ? "" : " · 지역 \(storefront.uppercased())"))
+                }
+                if let expires = connection.expiresAt {
+                    Text("\(expires.formatted(date: .abbreviated, time: .omitted)) 까지").font(.caption).foregroundStyle(.secondary)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var buttons: some View {
+        switch connection.state {
+        case .disconnected:
+            Button(connection.isConnecting ? "로그인 중…" : "연결") { connection.connect() }
+                .disabled(connection.isConnecting)
+        case .connected:
+            HStack {
+                if connection.rejected {
+                    Button("다시 연결") { connection.connect() }
+                }
+                Button("연결 끊기") { connection.disconnect() }
+            }
+        }
     }
 }
 

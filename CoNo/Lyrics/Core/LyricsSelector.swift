@@ -135,6 +135,7 @@ enum LyricsSelector {
         score += nativeScriptRatio(text) * 20
         // 원문 줄 + 번역 줄을 같은 시각에 겹쳐 둔 병기 가사는 뒤로 (원문 문자 가점을 번역이 받아 가는 것도 막는다)
         if let synced = candidate.syncedLyrics, LRCParser.sharedTimestampRatio(synced) >= 0.3 { score -= 40 }
+        score += candidate.origin.trustBonus
         return score
     }
 

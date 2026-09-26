@@ -9,12 +9,24 @@ enum LyricsSource: String, Codable, CaseIterable, Sendable {
     case lrclib
     case netease
     case amll
+    case appleMusic
 
     var label: String {
         switch self {
         case .lrclib: "LRCLIB"
         case .netease: "NetEase 云音乐"
         case .amll: "AMLL"
+        case .appleMusic: "Apple Music"
+        }
+    }
+
+    /// 후보 점수 가산: 공식 음절 싱크(Apple Music)·사람이 맞춘 단어 싱크(AMLL) 를 조금 앞에.
+    /// 최종 선택은 여전히 보컬과 대 본 자동 싱크가 한다.
+    var trustBonus: Double {
+        switch self {
+        case .appleMusic: 12
+        case .amll: 8
+        case .lrclib, .netease: 0
         }
     }
 }
