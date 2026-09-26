@@ -26,12 +26,18 @@ struct KaraokeScreen: View {
 
     var body: some View {
         ZStack {
-            StageBackdrop(engine: engine, artworks: artworks)
-            if engine.isRunning {
-                runningStage
-            } else {
-                IdleStage(engine: engine, catalog: catalog, settings: settings, start: start)
+            Group {
+                StageBackdrop(engine: engine, artworks: artworks)
+                if engine.isRunning {
+                    runningStage
+                } else {
+                    IdleStage(engine: engine, catalog: catalog, settings: settings, start: start)
+                }
             }
+            // 채점 연출 중에는 뒤 무대를 흐리게 (음정 바·가사가 점수와 겹쳐 보이지 않게)
+            .blur(radius: engine.singingResult == nil ? 0 : 18)
+            .opacity(engine.singingResult == nil ? 1 : 0.55)
+            .animation(.easeOut(duration: 0.4), value: engine.singingResult == nil)
             if let result = engine.singingResult {
                 SingingResultCard(result: result, artwork: artworks.artwork(for: result.trackID)?.image) {
                     withAnimation(.easeOut) { engine.singingResult = nil }

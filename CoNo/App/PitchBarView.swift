@@ -67,8 +67,8 @@ struct PitchBarView: View {
         }
         range.update(with: notes, framePeriod: period, now: now)
         let sung = singing?.snapshot().frames ?? []
-        // 지금 내가 맞게 부르고 있는지 (마지막 마이크 프레임)
-        let singingOnPitch = sung.last.map { $0.hit && now - $0.time < 0.25 } ?? false
+        // 지금 맞게 부르는 정도 0…1: 판정은 16 ms 프레임마다 켜졌다 꺼지므로 최근 0.35초 비율로 부드럽게 (화면만 — 채점은 그대로)
+        let onPitch = Self.onPitchLevel(sung, now: now)
 
         let low = autoZoom ? range.low : Self.fixedRange.lowerBound
         let high = autoZoom ? range.high : Self.fixedRange.upperBound
@@ -121,11 +121,14 @@ struct PitchBarView: View {
                 let hit = !sung.isEmpty && Self.hitRatio(sung, from: start, to: end, noteFrames: note.endFrame - note.startFrame) >= 0.5
                 context.fill(bar, with: .color(hit ? StageTheme.gold.opacity(0.6) : .white.opacity(0.16)))
             } else if start <= now {
-                // 빛 번짐 → 본체. 지금 맞게 부르는 중이면 금빛으로 크게 번진다
-                let glow = singingOnPitch ? StageTheme.gold.opacity(0.4) : StageTheme.mint.opacity(0.22)
-                let spread: CGFloat = singingOnPitch ? 7 : 4
-                context.fill(Path(roundedRect: rect.insetBy(dx: -spread, dy: -spread), cornerRadius: rect.height / 2 + spread),
-                             with: .color(glow))
+                // 빛 번짐 → 본체. 맞게 부르는 만큼 금빛이 서서히 커진다
+                context.fill(Path(roundedRect: rect.insetBy(dx: -4, dy: -4), cornerRadius: rect.height / 2 + 4),
+                             with: .color(StageTheme.mint.opacity(0.22 * (1 - onPitch))))
+                if onPitch > 0 {
+                    let spread = 4 + 4 * onPitch
+                    context.fill(Path(roundedRect: rect.insetBy(dx: -spread, dy: -spread), cornerRadius: rect.height / 2 + spread),
+                                 with: .color(StageTheme.gold.opacity(0.42 * onPitch)))
+                }
                 context.fill(bar, with: .color(StageTheme.mint))
             } else {
                 context.fill(bar, with: fading(.white.opacity(0.82)))
@@ -189,6 +192,21 @@ extension PitchBarView {
         return Double(hits) / Double(noteFrames)
     }
 
+    /// 최근 0.35초 마이크 프레임 중 맞은 비율을 0…1 로 (30% 아래는 0, 75% 위는 1 — 가끔 튀는 판정은 빛으로 안 보인다)
+    static func onPitchLevel(_ frames: [SingingTracker.Frame], now: Double) -> Double {
+        var total = 0
+        var hits = 0
+        for frame in frames.reversed() {
+            guard now - frame.time < 0.35 else { break }
+            total += 1
+            if frame.hit { hits += 1 }
+        }
+        guard total >= 5 else { return 0 }
+        let ratio = Double(hits) / Double(total)
+        let x = min(1, max(0, (ratio - 0.3) / 0.45))
+        return x * x * (3 - 2 * x)
+    }
+
     /// 내 목소리 음정 선 (금색, 맞는 구간은 굵게) + 머리 점
     fileprivate func drawSinging(
         _ frames: [SingingTracker.Frame],
@@ -199,12 +217,16 @@ extension PitchBarView {
         y: (Double) -> CGFloat
     ) {
         var previous: (point: CGPoint, time: Double)?
-        var head: (point: CGPoint, time: Double, hit: Bool)?
-        for frame in frames where frame.time >= t0 && frame.time <= now + 0.05 {
+        var head: (point: CGPoint, time: Double, strength: Double)?
+        // 판정을 앞뒤 4 프레임 평균으로 (선이 굵었다 가늘었다 깜빡이지 않게)
+        let hits = frames.map { $0.hit ? 1.0 : 0 }
+        for (index, frame) in frames.enumerated() where frame.time >= t0 && frame.time <= now + 0.05 {
             guard let midi = frame.midi else {
                 previous = nil
                 continue
             }
+            let window = hits[max(0, index - 4)...min(hits.count - 1, index + 4)]
+            let strength = window.reduce(0, +) / Double(window.count)
             let point = CGPoint(x: x(frame.time), y: y(midi))
             if let previous, frame.time - previous.time < 0.05 {
                 var segment = Path()
@@ -212,15 +234,15 @@ extension PitchBarView {
                 segment.addLine(to: point)
                 context.stroke(
                     segment,
-                    with: .color(StageTheme.gold.opacity(frame.hit ? 1 : 0.55)),
-                    style: StrokeStyle(lineWidth: frame.hit ? 4 : 2.5, lineCap: .round)
+                    with: .color(StageTheme.gold.opacity(0.55 + 0.45 * strength)),
+                    style: StrokeStyle(lineWidth: 2.5 + 1.5 * strength, lineCap: .round)
                 )
             }
             previous = (point, frame.time)
-            head = (point, frame.time, frame.hit)
+            head = (point, frame.time, strength)
         }
         if let head, now - head.time < 0.25 {
-            let radius: CGFloat = head.hit ? 8 : 6
+            let radius: CGFloat = 6 + 2 * head.strength
             context.fill(Path(ellipseIn: CGRect(x: head.point.x - radius * 2, y: head.point.y - radius * 2, width: radius * 4, height: radius * 4)),
                          with: .color(StageTheme.gold.opacity(0.22)))
             context.fill(Path(ellipseIn: CGRect(x: head.point.x - radius, y: head.point.y - radius, width: radius * 2, height: radius * 2)),

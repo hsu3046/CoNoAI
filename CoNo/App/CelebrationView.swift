@@ -156,7 +156,7 @@ struct CelebrationFrame: View {
             ZStack {
                 // 무대 어둡게 (가장자리 더 어둡게)
                 RadialGradient(
-                    colors: [Color.black.opacity(0.35), Color.black.opacity(0.78)],
+                    colors: [Color.black.opacity(0.5), Color.black.opacity(0.85)],
                     center: .center, startRadius: 0, endRadius: max(size.width, size.height) * 0.7
                 )
                 .opacity(min(1, elapsed / 0.35))
