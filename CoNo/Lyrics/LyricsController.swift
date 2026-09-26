@@ -82,6 +82,8 @@ final class LyricsController {
         var lastEstimate: AutoSyncEstimate?
         var candidateIndex = 0
         var candidateCount = 0
+        /// 지금 쓰는 가사의 출처
+        var source: LyricsSource?
     }
     private(set) var autoSync = AutoSyncInfo()
 
@@ -90,13 +92,17 @@ final class LyricsController {
     /// 지금 곡 정보를 주는 쪽: 음악 앱이면 AppleScript, 그 밖의 앱은 macOS "지금 재생 중"
     private var provider: NowPlayingProvider?
     private let client = LRCLIBClient()
+    private let extraSources = ExtraLyricsSources()
+    /// LRCLIB 말고 함께 찾을 소스 (설정 › 가사). 다음 곡부터 반영.
+    @ObservationIgnored var enabledExtraSources: Set<LyricsSource> = [.netease, .amll]
     private var clock = SongClock()
 
     /// 곡 하나의 가사 후보와 자동 싱크 상태
     private struct TrackLyrics {
         var candidates: [TimedLyrics]
         /// candidates 와 같은 순서의 LRCLIB id (학습값은 순번이 아니라 id 로 기억한다 — 캐시를 다시 받으면 순서가 바뀔 수 있다)
-        var candidateIDs: [Int]
+        var candidateKeys: [String]
+        var candidateSources: [LyricsSource] = []
         var chosen = 0
         /// 적용 중인 가사 지연 (초)
         var appliedDelay = 0.0
@@ -409,14 +415,15 @@ final class LyricsController {
         }
 
         lyricsByTrack[position.trackID] = .some(trackLyrics)
-        if trackLyrics.hasDelay, let track = tracks[position.trackID], trackLyrics.candidateIDs.indices.contains(trackLyrics.chosen) {
-            learnedDelays.store(delay: trackLyrics.appliedDelay, candidateID: trackLyrics.candidateIDs[trackLyrics.chosen], for: track)
+        if trackLyrics.hasDelay, let track = tracks[position.trackID], trackLyrics.candidateKeys.indices.contains(trackLyrics.chosen) {
+            learnedDelays.store(delay: trackLyrics.appliedDelay, candidateKey: trackLyrics.candidateKeys[trackLyrics.chosen], for: track)
         }
         autoSync = AutoSyncInfo(
             appliedDelay: trackLyrics.appliedDelay,
             lastEstimate: trackLyrics.lastEstimate,
             candidateIndex: trackLyrics.chosen,
-            candidateCount: trackLyrics.candidates.count
+            candidateCount: trackLyrics.candidates.count,
+            source: trackLyrics.candidateSources.indices.contains(trackLyrics.chosen) ? trackLyrics.candidateSources[trackLyrics.chosen] : nil
         )
     }
 
@@ -442,41 +449,58 @@ final class LyricsController {
     private func load(_ track: TrackInfo) {
         loadingTrackIDs.insert(track.id)
         status = .loading(track)
+        let sources = enabledExtraSources
         Task { [weak self] in
             guard let self else { return }
             let outcome: Status
+            // LRCLIB 과 추가 소스(NetEase·AMLL)를 함께 찾는다. LRCLIB 이 실패해도 추가 소스에서 찾으면 쓴다.
+            async let extra = extraSources.candidates(for: track, sources: sources)
+            let base: Result<LyricsLookupResult, Error>
             do {
-                switch try await client.lyrics(for: track) {
-                case let .synced(candidates):
-                    let usable = candidates
-                        .compactMap { candidate in candidate.syncedLyrics.map { (id: candidate.id, lyrics: LRCParser.parse($0)) } }
-                        .filter { !$0.lyrics.lines.isEmpty }
-                    let parsed = usable.map(\.lyrics)
-                    var trackLyrics = TrackLyrics(candidates: parsed, candidateIDs: usable.map(\.id))
-                    if let learned = learnedDelays.load(for: track),
-                       let index = learned.candidateIndex(in: trackLyrics.candidateIDs) {
-                        trackLyrics.chosen = index
-                        trackLyrics.appliedDelay = learned.delay
-                        trackLyrics.hasDelay = true
-                    }
-                    lyricsByTrack[track.id] = parsed.isEmpty ? .some(nil) : .some(trackLyrics)
-                    outcome = .ready(track, synced: !parsed.isEmpty)
-                case .plainOnly:
-                    lyricsByTrack[track.id] = .some(nil)
-                    outcome = .ready(track, synced: false)
-                case .notFound:
-                    lyricsByTrack[track.id] = .some(nil)
-                    outcome = .notFound(track)
+                base = .success(try await client.lyrics(for: track))
+            } catch {
+                base = .failure(error)
+            }
+            var pool = await extra
+            if case let .success(.synced(list)) = base { pool += list }
+            let ranked = LyricsSelector.syncedCandidates(pool, for: track)
+            let usable = ranked
+                .compactMap { candidate in candidate.syncedLyrics.map { (candidate, LRCParser.parse($0)) } }
+                .filter { !$0.1.lines.isEmpty }
+
+            if !usable.isEmpty {
+                var trackLyrics = TrackLyrics(candidates: usable.map(\.1), candidateKeys: usable.map(\.0.key))
+                trackLyrics.candidateSources = usable.map(\.0.origin)
+                if let learned = learnedDelays.load(for: track),
+                   let index = learned.candidateIndex(in: trackLyrics.candidateKeys) {
+                    trackLyrics.chosen = index
+                    trackLyrics.appliedDelay = learned.delay
+                    trackLyrics.hasDelay = true
                 }
+                lyricsByTrack[track.id] = .some(trackLyrics)
+                outcome = .ready(track, synced: true)
                 statusByTrack[track.id] = outcome
                 loadFailures[track.id] = nil
-            } catch {
-                // 5초 → 10 → 20 → 40 → 60초 간격으로 다시 시도 (그동안은 실패 상태를 유지)
-                let count = (loadFailures[track.id]?.count ?? 0) + 1
-                let wait = min(5 * pow(2, Double(count - 1)), 60)
-                loadFailures[track.id] = (count, ContinuousClock.now + .seconds(wait))
-                outcome = .failed("\(error.localizedDescription) — \(Int(wait))초 뒤 다시 시도합니다")
-                statusByTrack[track.id] = outcome
+            } else {
+                switch base {
+                case .success(.plainOnly):
+                    lyricsByTrack[track.id] = .some(nil)
+                    outcome = .ready(track, synced: false)
+                    statusByTrack[track.id] = outcome
+                    loadFailures[track.id] = nil
+                case .success:
+                    lyricsByTrack[track.id] = .some(nil)
+                    outcome = .notFound(track)
+                    statusByTrack[track.id] = outcome
+                    loadFailures[track.id] = nil
+                case let .failure(error):
+                    // 5초 → 10 → 20 → 40 → 60초 간격으로 다시 시도 (그동안은 실패 상태를 유지)
+                    let count = (loadFailures[track.id]?.count ?? 0) + 1
+                    let wait = min(5 * pow(2, Double(count - 1)), 60)
+                    loadFailures[track.id] = (count, ContinuousClock.now + .seconds(wait))
+                    outcome = .failed("\(error.localizedDescription) — \(Int(wait))초 뒤 다시 시도합니다")
+                    statusByTrack[track.id] = outcome
+                }
             }
             loadingTrackIDs.remove(track.id)
             if currentTrackID == track.id { status = outcome }

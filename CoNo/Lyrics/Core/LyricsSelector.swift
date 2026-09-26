@@ -16,6 +16,8 @@ struct LyricsCandidate: Equatable, Sendable, Codable {
     let instrumental: Bool
     let plainLyrics: String?
     let syncedLyrics: String?
+    /// 출처 (LRCLIB 응답 JSON 에는 없다 → nil = LRCLIB). `origin` · `key` 참고.
+    var source: LyricsSource? = nil
 }
 
 enum LyricsSelector {
@@ -39,7 +41,7 @@ enum LyricsSelector {
     /// - Parameter lenientDuration: 영상처럼 길이가 원곡과 다를 수 있을 때. 길이로 거르지 않는 대신 가수가 맞아야 한다
     ///   (같은 제목 다른 곡을 막기 위해). 길이 차는 순위에만 쓴다.
     static func rankedSynced(_ candidates: [LyricsCandidate], targetDuration: Double?, targetTitle: String?,
-                             targetArtist: String? = nil, lenientDuration: Bool = false, limit: Int = 5) -> [LyricsCandidate] {
+                             targetArtist: String? = nil, lenientDuration: Bool = false, limit: Int = 6) -> [LyricsCandidate] {
         let target = validDuration(targetDuration)
         var seen = Set<String>()
         return candidates

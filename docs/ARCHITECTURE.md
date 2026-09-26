@@ -39,6 +39,8 @@
 | `CoNo/Audio/KaraokeEngine.swift` | UI 파사드 (모델 로드·벤치마크·자가진단, 시작/정지, 통계 폴링, 재생 위치) |
 | `CoNoTests/DSPTests.swift` | STFT torch 일치·왕복, 슬라이딩 윈도우 정렬 테스트 |
 | `CoNoTests/PitchTests.swift` | 음정 스트리밍 연속성·문맥, 음표 묶기 테스트 |
+| `CoNo/Lyrics/ExtraLyricsSources.swift` | LRCLIB 외 가사 후보: NetEase 云音乐 · AMLL TTML DB (캐시 포함) |
+| `CoNo/Lyrics/Core/LyricsSources.swift` | 소스 구분, NetEase 크레딧 줄 제거, TTML → LRC, AMLL 색인 찾기 |
 | `CoNo/Lyrics/RemoteNowPlaying.swift` | 음악 앱이 아닌 앱의 곡 정보·재생 위치·아트 ("지금 재생 중" 스트림 → `NowPlayingProvider`) |
 | `CoNo/Lyrics/MediaRemoteBridge.swift` | 번들의 mediaremote-adapter 를 `/usr/bin/perl` 로 실행 (get/send) |
 | `CoNo/Lyrics/Core/MediaTitleCleaner.swift` | 영상 제목·채널명 → 곡 제목·가수 |

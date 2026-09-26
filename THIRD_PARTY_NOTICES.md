@@ -51,3 +51,9 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 - License: BSD 3-Clause — full text in `ThirdParty/mediaremote-adapter/LICENSE`
 - Use: built into `MediaRemoteAdapter.framework` and run by `/usr/bin/perl` to read macOS Now Playing and send play/pause to non-Music apps
 
+## Lyrics sources (fetched at runtime, not bundled)
+
+- **LRCLIB** — https://lrclib.net (community lyrics database)
+- **AMLL TTML DB** — https://github.com/amll-dev/amll-ttml-db (CC0-1.0), community word-synced TTML lyrics
+- **NetEase Cloud Music** — public web endpoints (not an official API); can be turned off in Settings › Lyrics
+

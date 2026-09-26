@@ -27,6 +27,9 @@ final class AppSettings {
     var showPitchDiagnostics: Bool { didSet { store(showPitchDiagnostics, "showPitchDiagnostics") } }
     /// 음정 바 세로 범위를 곡 음역에 맞춰 자동으로 넓히고 좁힌다 (끄면 A2–A5 고정)
     var pitchAutoZoom: Bool { didSet { store(pitchAutoZoom, "pitchAutoZoom") } }
+    /// LRCLIB 말고 함께 찾을 가사 소스
+    var lyricsNetEase: Bool { didSet { store(lyricsNetEase, "lyricsNetEase") } }
+    var lyricsAMLL: Bool { didSet { store(lyricsAMLL, "lyricsAMLL") } }
     /// 내 목소리 — "내 키" 버튼이 곡을 이 목소리에 맞춘다
     var myVoice: VoiceType { didSet { store(myVoice.rawValue, "myVoice") } }
     /// 음표 막대 외에 원곡 가수의 음정 곡선도 그린다
@@ -55,6 +58,15 @@ final class AppSettings {
         pitchAutoZoom = value("pitchAutoZoom", true)
         showPitchContour = value("showPitchContour", true)
         myVoice = VoiceType(rawValue: value("myVoice", VoiceType.male.rawValue)) ?? .male
+        lyricsNetEase = value("lyricsNetEase", true)
+        lyricsAMLL = value("lyricsAMLL", true)
+    }
+
+    var extraLyricsSources: Set<LyricsSource> {
+        var sources: Set<LyricsSource> = []
+        if lyricsNetEase { sources.insert(.netease) }
+        if lyricsAMLL { sources.insert(.amll) }
+        return sources
     }
 
     var separation: SeparationSettings {

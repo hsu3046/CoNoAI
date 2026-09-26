@@ -60,6 +60,9 @@ struct KaraokeScreen: View {
             engine.displayLatencyMilliseconds = value
         }
         .onAppear { engine.guideVocalLevel = settings.guideVocalLevel }
+        .onChange(of: settings.extraLyricsSources, initial: true) { _, sources in
+            engine.lyrics.enabledExtraSources = sources
+        }
         .onChange(of: settings.myVoice) { _, voice in
             // 내 키를 쓰는 중에 목소리를 바꾸면 바로 다시 맞춘다
             if case .voice = engine.keyMode { engine.applyVoiceKey(voice) }

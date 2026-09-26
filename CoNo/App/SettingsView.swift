@@ -325,8 +325,17 @@ private struct LyricsSettings: View {
                 Caption("음정 바와 가사가 소리보다 앞서 보이면 + 로 늦춥니다. 블루투스 이어폰·스피커는 보통 +150~250 ms.")
             }
 
+            Section("가사 소스") {
+                LabeledContent("LRCLIB") { Text("항상 사용").foregroundStyle(.secondary) }
+                Toggle("NetEase 云音乐", isOn: Binding(get: { settings.lyricsNetEase }, set: { settings.lyricsNetEase = $0 }))
+                Caption("일본·한국·중국 곡이 많습니다. 공식 공개 API 가 아니라서 언젠가 막힐 수 있어요.")
+                Toggle("AMLL 커뮤니티 가사", isOn: Binding(get: { settings.lyricsAMLL }, set: { settings.lyricsAMLL = $0 }))
+                Caption("사람이 손으로 맞춘 단어 단위 싱크 가사 모음(CC0)입니다. 곡 수는 적지만 정확해요.")
+                Caption("여러 소스에서 후보를 모은 뒤, 분리한 보컬과 대 보아 가장 잘 맞는 가사를 고릅니다. 바꾼 설정은 다음 곡부터 반영돼요.")
+            }
+
             Section("가사 출처") {
-                Caption("시간이 맞춰진 가사는 LRCLIB(커뮤니티 가사 DB)에서 찾습니다. 곡 정보는 음악 앱은 직접, 그 밖의 앱(브라우저의 YouTube 등)은 macOS '지금 재생 중' 으로 받아요. 영상 제목은 '가수 - 곡' 형태로 다듬어 찾습니다.")
+                Caption("곡 정보는 음악 앱은 직접, 그 밖의 앱(브라우저의 YouTube 등)은 macOS '지금 재생 중' 으로 받아요. 영상 제목은 '가수 - 곡' 형태로 다듬어 찾습니다.")
                 HStack {
                     Button("가사 캐시·기억한 싱크 지우기") {
                         LRCLIBClient.clearCache()
@@ -361,8 +370,8 @@ private struct AutoSyncInfoView: View {
                 Text(String(format: "음악 앱 위치 보고 흔들림 %.2f초 · 끊김 %d회", diagnostics.range, diagnostics.discontinuities))
                     .foregroundStyle(diagnostics.range > 0.15 ? .orange : .secondary)
             }
-            if case .ready(_, synced: true) = controller.status {
-                Text("가사 출처: LRCLIB (커뮤니티 가사 DB)")
+            if case .ready(_, synced: true) = controller.status, let source = auto.source {
+                Text("지금 가사 출처: \(source.label)")
             }
         }
         .font(.caption)

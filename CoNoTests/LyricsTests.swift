@@ -252,17 +252,21 @@ struct LyricsReviewFixTests {
         let store = LearnedLyricsDelays(defaults: defaults)
         let track = TrackInfo(id: "p1", title: "Love", artist: "IU", album: "", duration: 200)
 
-        store.store(delay: 0.8, candidateID: 42, for: track)
+        store.store(delay: 0.8, candidateKey: "netease:42", for: track)
         let learned = try #require(store.load(for: track))
         #expect(learned.delay == 0.8)
         // 캐시를 다시 받아 순서가 바뀌어도 같은 가사를 가리킨다
-        #expect(learned.candidateIndex(in: [7, 42, 9]) == 1)
+        #expect(learned.candidateIndex(in: ["lrclib:7", "netease:42", "amll:9"]) == 1)
         // 기억한 가사가 목록에 없으면 적용하지 않는다 (다른 가사에 지연을 얹지 않게)
-        #expect(learned.candidateIndex(in: [7, 9]) == nil)
+        #expect(learned.candidateIndex(in: ["lrclib:7", "lrclib:42"]) == nil, "번호가 같아도 소스가 다르면 다른 가사")
         // 옛 형식(순번만)도 읽는다
-        let legacy = LearnedLyricsDelays.Learned(delay: 0.5, candidateID: nil, legacyIndex: 1)
-        #expect(legacy.candidateIndex(in: [7, 9]) == 1)
-        #expect(legacy.candidateIndex(in: [7]) == nil)
+        let legacy = LearnedLyricsDelays.Learned(delay: 0.5, candidateKey: nil, legacyIndex: 1)
+        #expect(legacy.candidateIndex(in: ["lrclib:7", "lrclib:9"]) == 1)
+        #expect(legacy.candidateIndex(in: ["lrclib:7"]) == nil)
+        // 옛 형식(LRCLIB 번호만 저장)은 "lrclib:번호" 로 읽힌다
+        let old = TrackInfo(id: "p2", title: "Old", artist: "A", album: "", duration: 100)
+        defaults.set(["delay": 0.3, "candidateID": 77], forKey: "space.knowai.cono.lyricsDelay.Old|A|100")
+        #expect(store.load(for: old)?.candidateKey == "lrclib:77")
     }
 
     @Test func plusSignIsPercentEncoded() throws {
@@ -367,5 +371,72 @@ struct AdDetectorTests {
             #expect(compiled, "\(bundleID) 탭 스크립트 컴파일 실패: \(error ?? [:])")
         }
         #expect(!BrowserTabScript.supports(bundleID: "com.apple.Music"))
+    }
+}
+
+struct LyricsSourcesTests {
+    @Test func netEaseCreditLinesAndJSONAreRemoved() throws {
+        let raw = """
+        {"t":0,"c":[{"tx":"作词: "},{"tx":"누군가"}]}
+        [00:00.00] 作词 : 누군가
+        [00:01.00] 作曲 : 다른 사람
+        [00:02.00] Arranger : 편곡자
+        [00:12.30]창문을 열면 바람이
+        [00:16.80]하늘을 보는 daydream
+        [00:21.10]오늘은 하늘이 참 맑은 날
+        """
+        let cleaned = try #require(NetEaseLyrics.cleaned(raw))
+        #expect(LRCParser.parse(cleaned).lines.map(\.text) == ["창문을 열면 바람이", "하늘을 보는 daydream", "오늘은 하늘이 참 맑은 날"])
+        // 가사가 없는 곡 ("纯音乐，请欣赏") 은 후보에서 뺀다
+        #expect(NetEaseLyrics.cleaned("[00:00.00]纯音乐，请欣赏\n[00:10.00]x\n[00:20.00]y\n[00:30.00]z") == nil)
+    }
+
+    @Test func ttmlLinesBecomeLRCWithoutBackgroundVocals() throws {
+        let ttml = """
+        <tt xmlns="http://www.w3.org/ns/ttml" xmlns:ttm="http://www.w3.org/ns/ttml#metadata"><body><div>
+        <p begin="00:12.345" end="00:15.000"><span begin="00:12.345" end="00:13.000">창문을</span> <span begin="00:13.100" end="00:14.000">열면</span><span ttm:role="x-bg"><span begin="00:14.1" end="00:14.9">(우우)</span></span></p>
+        <p begin="1:02.5" end="1:05"><span begin="1:02.5" end="1:03">하늘을</span> <span begin="1:03.1" end="1:04">보는</span><span ttm:role="x-translation">looking at the sky</span></p>
+        </div></body></tt>
+        """
+        let lrc = try #require(TTMLLyrics.lrc(from: ttml))
+        let lines = LRCParser.parse(lrc).lines
+        #expect(lines.map(\.text) == ["창문을 열면", "하늘을 보는"])
+        #expect(abs(lines[0].start - 12.35) < 0.01)
+        #expect(abs(lines[1].start - 62.5) < 0.01)
+        #expect(TTMLLyrics.seconds("62.5s") == 62.5)
+        #expect(TTMLLyrics.seconds("00:01:02.5") == 62.5)
+    }
+
+    @Test func amllIndexMatchesByTitleArtistOrNetEaseID() {
+        let jsonl = """
+        {"metadata":[["artists",["YOASOBI"]],["musicName",["Idol","アイドル"]],["ncmMusicId",["2048982668"]]],"rawLyricFile":"a.ttml"}
+        {"metadata":[["artists",["Someone"]],["musicName",["Idol"]],["ncmMusicId",["111"]]],"rawLyricFile":"b.ttml"}
+        {"metadata":[["artists",["Other"]],["musicName",["Different"]],["ncmMusicId",["222"]]],"rawLyricFile":"c.ttml"}
+        not json
+        """
+        let entries = AMLLIndex.parse(jsonl)
+        #expect(entries.count == 3)
+        // 제목(별칭 포함)과 가수가 모두 맞아야 — 같은 제목 다른 가수는 빠진다
+        #expect(AMLLIndex.matches(entries, title: "アイドル", artist: "YOASOBI").map(\.file) == ["a.ttml"])
+        // NetEase 검색으로 찾은 곡 번호가 같으면 제목 표기가 달라도
+        #expect(AMLLIndex.matches(entries, title: "전혀 다른 표기", artist: "?", neteaseIDs: ["222"]).map(\.file) == ["c.ttml"])
+        #expect(entries[0].candidateID == entries[0].candidateID && entries[0].candidateID != entries[1].candidateID)
+    }
+
+    @Test func candidatesFromAllSourcesAreRankedTogether() {
+        func candidate(_ id: Int, _ source: LyricsSource, duration: Double?, text: String) -> LyricsCandidate {
+            LyricsCandidate(id: id, trackName: "Song", artistName: "Artist", albumName: nil, duration: duration,
+                            instrumental: false, plainLyrics: nil, syncedLyrics: "[00:10.00]\(text)", source: source)
+        }
+        let track = TrackInfo(id: "t", title: "Song", artist: "Artist", album: "", duration: 200)
+        let pool = [
+            candidate(1, .lrclib, duration: 200, text: "한 줄"),
+            candidate(1, .netease, duration: 200.5, text: "다른 줄"),
+            candidate(9, .amll, duration: nil, text: "손으로 맞춘 줄"),
+            candidate(2, .netease, duration: 260, text: "다른 버전"), // 길이가 달라 빠진다
+            candidate(3, .netease, duration: 200, text: "한 줄"),     // LRCLIB 과 본문이 같아 중복으로 빠진다
+        ]
+        let keys = LyricsSelector.syncedCandidates(pool, for: track).map(\.key)
+        #expect(Set(keys) == ["lrclib:1", "netease:1", "amll:9"])
     }
 }
