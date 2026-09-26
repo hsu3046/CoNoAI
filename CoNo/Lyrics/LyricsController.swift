@@ -201,9 +201,9 @@ final class LyricsController {
         return false
     }
 
-    /// 이동 뒤 곡이 실제로 target 에 닿은 캡처 시각 (아직이면 nil)
-    func captureTime(whenReaching target: Double, after start: Double) -> Double? {
-        clock.captureTime(whenReaching: target, after: start)
+    /// 이동 뒤 곡이 실제로 target 에 닿은 캡처 시각 (아직이면 nil). 찾으면 곡 시계를 도착 기준으로 정리한다.
+    func settleSeek(toward target: Double, after start: Double) -> Double? {
+        clock.settleSeek(toward: target, after: start)
     }
 
     /// 들리는 소리의 곡 위치와 곡 길이 (진행 막대용) — 상태를 바꾸지 않는다

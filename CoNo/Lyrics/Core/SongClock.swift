@@ -99,6 +99,29 @@ struct SongClock: Sendable {
         return nil
     }
 
+    /// 이동 도착을 앵커에 반영한다: 도착 시각에 새 위치 앵커를 끼우고, 그 뒤의 옛 위치 앵커(플레이어 보고가 늦어
+    /// 옛 위치를 계속 외삽한 것)를 지운다. 안 하면 도착~첫 새 앵커 사이의 소리가 옛 위치로 계산돼
+    /// 진행 막대·가사가 잠깐 옛 위치로 튄다. 도착을 찾았으면 그 캡처 시각을 돌려준다.
+    mutating func settleSeek(toward target: Double, after start: Double, tolerance: Double = 3) -> Double? {
+        guard let arrival = captureTime(whenReaching: target, after: start, tolerance: tolerance),
+              let first = anchors.firstIndex(where: { anchor in
+                  anchor.captureTime >= start && anchor.isPlaying
+                      && anchor.songPosition - target >= -0.5 && anchor.songPosition - target <= tolerance
+              })
+        else { return nil }
+        let reported = anchors[first]
+        let settled = PlaybackAnchor(
+            captureTime: arrival,
+            songPosition: reported.songPosition - (reported.captureTime - arrival),
+            isPlaying: true,
+            trackID: reported.trackID
+        )
+        anchors.removeAll { $0.captureTime >= arrival && $0.captureTime < reported.captureTime }
+        let insertAt = anchors.firstIndex { $0.captureTime > arrival } ?? anchors.count
+        anchors.insert(settled, at: insertAt)
+        return arrival
+    }
+
     /// 캡처 시각 c 의 소리가 곡 어디였는지. c 이전의 가장 최근 앵커가 속한 연속 구간의 중앙값 기준.
     func position(atCaptureTime c: Double) -> SongPosition? {
         guard let index = anchors.lastIndex(where: { $0.captureTime <= c }), let trackID = anchors[index].trackID else { return nil }

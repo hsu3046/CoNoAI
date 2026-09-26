@@ -232,6 +232,21 @@ struct SongClockSeekArrivalTests {
         clock.add(PlaybackAnchor(captureTime: 200.9, songPosition: 60.3, isPlaying: true, trackID: "A"))
         let arrival = clock.captureTime(whenReaching: 60, after: 200)
         #expect(arrival.map { abs($0 - 200.6) < 1e-9 } == true, "60.3 을 보고한 0.3초 전 = 200.6")
+        // 도착~첫 새 앵커 사이의 소리가 옛 위치(2:00)로 계산되지 않아야 한다 (진행 막대가 되돌아가 보이던 문제)
+        var settling = clock
+        settling.add(PlaybackAnchor(captureTime: 200.95, songPosition: 60.35, isPlaying: true, trackID: "A"))
+        var stale = SongClock()
+        stale.add(PlaybackAnchor(captureTime: 199.5, songPosition: 119.5, isPlaying: true, trackID: "A"))
+        stale.add(PlaybackAnchor(captureTime: 200.7, songPosition: 120.7, isPlaying: true, trackID: "A")) // 보고가 늦어 옛 위치를 외삽
+        stale.add(PlaybackAnchor(captureTime: 200.9, songPosition: 60.3, isPlaying: true, trackID: "A"))
+        #expect((stale.position(atCaptureTime: 200.75)?.seconds ?? 0) > 100, "보정 전에는 옛 위치로 계산된다")
+        let settled = stale.settleSeek(toward: 60, after: 200)
+        #expect(settled.map { abs($0 - 200.6) < 1e-9 } == true)
+        let during = stale.position(atCaptureTime: 200.75)?.seconds ?? 0
+        #expect(abs(during - 60.15) < 0.01, "도착 뒤는 새 위치: \(during)")
+        #expect(stale.position(atCaptureTime: 200.5).map { $0.seconds > 100 } == true, "도착 전(옛 소리)은 그대로 옛 위치")
+        #expect(settling.settleSeek(toward: 60, after: 200) != nil)
+
         // 명령 이전 앵커는 보지 않는다 / 일시정지 앵커는 보지 않는다
         var paused = SongClock()
         paused.add(PlaybackAnchor(captureTime: 201, songPosition: 60, isPlaying: false, trackID: "A"))

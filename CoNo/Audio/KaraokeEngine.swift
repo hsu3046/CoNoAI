@@ -318,7 +318,7 @@ final class KaraokeEngine {
         let elapsed = ContinuousClock.now - started
         let streamOffset = runningMode == .aiSeparation ? (separationTiming?.streamOffset ?? 0) : 0
         if !seekArrivalFound {
-            if let start = seekCaptureStart, let arrival = lyrics.captureTime(whenReaching: target, after: start) {
+            if let start = seekCaptureStart, let arrival = lyrics.settleSeek(toward: target, after: start) {
                 pipeline.muteOutput(untilStreamSeconds: arrival + streamOffset)
                 seekArrivalFound = true
             } else if elapsed > .seconds(10) {

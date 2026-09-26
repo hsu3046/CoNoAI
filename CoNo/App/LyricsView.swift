@@ -86,6 +86,7 @@ struct LyricsView: View {
                 }
             }
             .frame(height: 34)
+            .padding(.top, 10)
         }
     }
 
