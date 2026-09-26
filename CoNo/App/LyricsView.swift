@@ -13,12 +13,23 @@ struct LyricsView: View {
     let heardCaptureTime: () -> Double?
     /// 지금 줄 글자 크기 (전체화면에서 키운다)
     var lineFontSize: CGFloat = 42
+    @State private var hovering = false
 
     var body: some View {
         TimelineView(.animation) { timeline in
             content(frameDate: timeline.date)
         }
         .frame(maxWidth: .infinity, minHeight: 130)
+        // 가사 싱크 미세조정: 자주 쓰지 않으니 가사 위에 마우스를 올렸을 때만 (단축키 [ ] 는 늘)
+        .overlay(alignment: .bottomTrailing) {
+            if hovering, controller.status != .unsupportedSource {
+                LyricsSyncPill(controller: controller)
+                    .transition(.opacity)
+            }
+        }
+        .onHover { inside in
+            withAnimation(.easeOut(duration: 0.2)) { hovering = inside }
+        }
     }
 
     @ViewBuilder
@@ -68,6 +79,61 @@ struct LyricsView: View {
         case .notFound: "이 곡의 가사를 찾지 못했습니다"
         case let .failed(message): message
         }
+    }
+}
+
+/// 가사 싱크 알약: [−] +0.00초 [+]. 가운데를 누르면 0 으로.
+private struct LyricsSyncPill: View {
+    let controller: LyricsController
+    private let step = 0.05
+
+    var body: some View {
+        let offset = controller.offsetSeconds
+        HStack(spacing: 2) {
+            Image(systemName: "metronome")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(StageTheme.secondaryInk)
+                .padding(.leading, 8)
+            nudge("minus", by: -step, help: "가사를 늦추기 ([)")
+            Button {
+                controller.offsetSeconds = 0
+            } label: {
+                Text(String(format: "%+.2f초", offset))
+                    .font(StageTheme.rounded(12, .semibold))
+                    .monospacedDigit()
+                    .foregroundStyle(offset == 0 ? StageTheme.secondaryInk : StageTheme.ink)
+                    .frame(minWidth: 58)
+            }
+            .buttonStyle(.plain)
+            .help("누르면 0 으로 · \(autoSyncSummary)")
+            nudge("plus", by: step, help: "가사를 앞당기기 (])")
+        }
+        .padding(.vertical, 4)
+        .padding(.trailing, 4)
+        .glassCapsule()
+        .foregroundStyle(StageTheme.ink)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("가사 싱크")
+    }
+
+    private var autoSyncSummary: String {
+        let auto = controller.autoSync
+        guard auto.candidateCount > 0, let estimate = auto.lastEstimate else { return "자동 싱크 측정 중" }
+        return String(format: "자동 싱크 %+.2f초 (신뢰도 %.0f%%)", -auto.appliedDelay, estimate.confidence * 100)
+    }
+
+    private func nudge(_ symbol: String, by delta: Double, help: String) -> some View {
+        Button {
+            controller.offsetSeconds = min(max(controller.offsetSeconds + delta, -1), 1)
+        } label: {
+            Image(systemName: symbol)
+                .font(.system(size: 11, weight: .bold))
+                .frame(width: 26, height: 26)
+                .background(Circle().fill(Color.white.opacity(0.1)))
+        }
+        .buttonStyle(.plain)
+        .help(help)
+        .accessibilityLabel(help)
     }
 }
 
