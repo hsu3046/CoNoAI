@@ -39,7 +39,13 @@
 | `CoNo/Audio/KaraokeEngine.swift` | UI 파사드 (모델 로드·벤치마크·자가진단, 시작/정지, 통계 폴링, 재생 위치) |
 | `CoNoTests/DSPTests.swift` | STFT torch 일치·왕복, 슬라이딩 윈도우 정렬 테스트 |
 | `CoNoTests/PitchTests.swift` | 음정 스트리밍 연속성·문맥, 음표 묶기 테스트 |
-| `CoNo/App/*` | SwiftUI 화면 |
+| `CoNo/DSP/SmartKey.swift` | 남자키·여자키: 원곡 보컬 음역(유성 프레임 중앙값) → 옥타브 접은 키 (−6…+6) |
+| `CoNo/App/KaraokeScreen.swift` | 메인 무대 화면 (헤더·음정 바·가사·도크, 시작 전 화면, 단축키, 전체화면 무대 모드, 자동 시작) |
+| `CoNo/App/ControlDock.swift` | 재생·일시정지 · 키 ♭/♯ · 원키/남자키/여자키 · 가이드 보컬 · 끝내기 |
+| `CoNo/App/SettingsView.swift` | 설정 창 (⌘,): 일반 · 소리 · AI 분리 · 싱크 · 진단(모니터·녹음 저장) |
+| `CoNo/App/AppSettings.swift` | UserDefaults 설정 (소스·모드·지연·AI·자동 시작·가이드 보컬·화면 싱크) |
+| `CoNo/App/ArtworkStore.swift` | 곡별 앨범 아트(AppleScript `raw data`) + 무대 조명 색 추출 |
+| `CoNo/App/StageTheme.swift` | 무대 색·글꼴, 배경(그라데이션 + 흐린 앨범 아트 + 반주 세기에 숨쉬는 조명) |
 
 ### 스레드 모델
 - **캡처 IO 스레드** (탭 애그리게이트 IOProc, 탭 레이트): 탭 입력 → `captureRing`. 할당·락·로그 금지.
@@ -69,3 +75,12 @@
 
 ## 빌드
 `project.yml` → `xcodegen generate` → `CoNo.xcodeproj`. 자세한 건 [SETUP.md](SETUP.md).
+
+### 일시정지 (즉시 멈춤)
+- `DelayPipeline.setPaused(true)`: 재생 스레드는 첫 콜백만 64프레임 페이드아웃하고 링을 건드리지 않는다 (재생 위치 고정).
+- 캡처 스레드는 음악 앱이 실제로 멈출 때까지 들어온 소리(꼬리)는 받고, 그 뒤 **디지털 무음만 버린다**. 재개 후에도 음악이 다시 나오거나 1.5초 유예가 끝날 때까지 무음을 버린다.
+  → 재개하면 얼린 지점부터 한 샘플도 빠지지 않고 이어진다. 버린 무음은 스트림 시각에 포함되지 않으므로 음정 바·가사 싱크가 그대로다.
+- 무음을 버리는 동안 `captureStreamPosition` 은 외삽하지 않는다 (가사 앵커가 미래로 튀지 않게).
+- 얼린 상태에서 소리가 1초 넘게 들어오면(음악 앱에서 직접 재생) 엔진이 얼림을 푼다.
+- 재생 제어는 음악 앱만 (`AppleMusicScript.command`). 다른 앱은 멈출 수단이 없어 버튼을 끈다.
+

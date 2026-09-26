@@ -11,16 +11,14 @@ struct LyricsView: View {
     let controller: LyricsController
     /// 지금 귀에 들리는 소리의 캡처 스트림 시각
     let heardCaptureTime: () -> Double?
+    /// 지금 줄 글자 크기 (전체화면에서 키운다)
+    var lineFontSize: CGFloat = 42
 
     var body: some View {
         TimelineView(.animation) { timeline in
             content(frameDate: timeline.date)
         }
-        .frame(maxWidth: .infinity, minHeight: 120)
-        .padding(.vertical, 12)
-        .padding(.horizontal, 20)
-        .background(Color(red: 0.05, green: 0.05, blue: 0.09))
-        .clipShape(RoundedRectangle(cornerRadius: 10))
+        .frame(maxWidth: .infinity, minHeight: 130)
     }
 
     @ViewBuilder
@@ -29,69 +27,43 @@ struct LyricsView: View {
         let _ = frameDate
         let state = heardCaptureTime().map { controller.display(atCaptureTime: $0) }
 
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(spacing: 14) {
             if let lyrics = state?.lyrics {
-                if let current = lyrics.current {
-                    KaraokeLine(text: current, progress: lyrics.progress, highlightedCharacters: lyrics.highlightedCharacters)
-                } else if let countdown = lyrics.countdown {
-                    CountdownDots(remaining: countdown)
-                } else {
-                    Text("♪").font(.system(size: 30, weight: .bold)).foregroundStyle(.white.opacity(0.35))
+                Group {
+                    if let current = lyrics.current {
+                        KaraokeLine(text: current, progress: lyrics.progress, highlightedCharacters: lyrics.highlightedCharacters, fontSize: lineFontSize)
+                    } else if let countdown = lyrics.countdown {
+                        CountdownDots(remaining: countdown)
+                    } else {
+                        Image(systemName: "music.note")
+                            .font(.system(size: 30, weight: .semibold))
+                            .foregroundStyle(StageTheme.faintInk)
+                    }
                 }
+                .frame(height: lineFontSize * 1.4)
                 Text(lyrics.next ?? " ")
-                    .font(.system(size: 20, weight: .semibold))
-                    .foregroundStyle(.white.opacity(0.5))
+                    .font(StageTheme.rounded(lineFontSize * 0.52, .semibold))
+                    .foregroundStyle(StageTheme.secondaryInk.opacity(0.75))
                     .lineLimit(1)
                     .minimumScaleFactor(0.5)
             } else {
                 Text(statusMessage)
-                    .font(.callout)
-                    .foregroundStyle(.white.opacity(0.6))
-                    .frame(maxWidth: .infinity, alignment: .center)
-            }
-            footer(track: state?.track)
-        }
-    }
-
-    private func footer(track: TrackInfo?) -> some View {
-        HStack(spacing: 6) {
-            if let track {
-                Image(systemName: "music.note")
-                Text("\(track.title) — \(track.artist)").lineLimit(1)
-            }
-            Spacer()
-            // 자동 싱크: 적용 중인 가사 지연 · 최근 추정 신뢰도 · 선택한 가사 후보
-            let auto = controller.autoSync
-            if auto.candidateCount > 0 {
-                let confidence = auto.lastEstimate.map { String(format: "신뢰도 %.0f%% · %d줄", $0.confidence * 100, $0.lineCount) } ?? "측정 중"
-                Text(String(format: "자동 싱크 %+.2fs (%@) · 가사 %d/%d", -auto.appliedDelay, confidence, auto.candidateIndex + 1, auto.candidateCount))
-                    .monospacedDigit()
-            }
-            // 진단: 음악 앱 재생 위치 보고의 흔들림 (범위가 크면 앵커가 들쭉날쭉)
-            let d = controller.anchorDiagnostics
-            if d.count > 1, d.range > 0.15 {
-                Text(String(format: "위치 흔들림 %.2fs", d.range))
-                    .monospacedDigit()
-                    .foregroundStyle(Color.orange.opacity(0.8))
-            }
-            if case .ready(_, synced: false) = controller.status {
-                Text("싱크 가사 없음")
-            } else if case .ready = controller.status {
-                Text("가사: LRCLIB")
+                    .font(StageTheme.rounded(17, .medium))
+                    .foregroundStyle(StageTheme.secondaryInk)
+                    .multilineTextAlignment(.center)
             }
         }
-        .font(.caption)
-        .foregroundStyle(.white.opacity(0.4))
+        .frame(maxWidth: .infinity)
     }
 
     private var statusMessage: String {
         switch controller.status {
-        case .inactive: "가사 꺼짐"
-        case .unsupportedSource: "이 앱은 아직 가사 연동을 지원하지 않습니다 (지금은 음악 앱만)"
-        case .waitingForPlayer: "음악 앱에서 곡을 재생하면 가사가 표시됩니다"
+        case .inactive: " "
+        case .unsupportedSource: "가사는 지금 음악 앱에서만 나옵니다"
+        case .waitingForPlayer: "음악 앱에서 노래를 틀면 가사가 나옵니다"
         case let .loading(track): "가사를 찾는 중… \(track.title)"
-        case let .ready(track, synced): synced ? "곧 가사가 시작됩니다" : "\(track.title): 시간 정보가 있는 가사를 찾지 못했습니다"
-        case let .notFound(track): "가사를 찾지 못했습니다: \(track.title) — \(track.artist)"
+        case let .ready(_, synced): synced ? "곧 가사가 시작됩니다" : "이 곡은 시간이 맞춰진 가사가 없습니다"
+        case .notFound: "이 곡의 가사를 찾지 못했습니다"
         case let .failed(message): message
         }
     }
@@ -99,24 +71,25 @@ struct LyricsView: View {
 
 /// 왼쪽부터 색이 차오르는 한 줄
 private struct KaraokeLine: View {
-    static let fontSize: CGFloat = 30
     let text: String
     let progress: Double
     /// 음절 정렬 결과 (칠해진 글자 수). 있으면 글자 폭 기준으로 칠한다.
     let highlightedCharacters: Double?
+    var fontSize: CGFloat = 42
 
     /// 칠할 폭 비율 — 글자 수를 실제 글자 폭으로 환산 (한글·영문 폭 차이 반영, 축소 표시에도 비율은 그대로)
     private var widthFraction: Double {
         guard let highlightedCharacters else { return progress }
-        return TextWidthCache.shared.fraction(of: text, characters: highlightedCharacters, fontSize: Self.fontSize)
+        return TextWidthCache.shared.fraction(of: text, characters: highlightedCharacters, fontSize: fontSize)
     }
 
     var body: some View {
         let progress = widthFraction
         ZStack(alignment: .leading) {
-            Text(text).foregroundStyle(.white.opacity(0.9))
+            Text(text).foregroundStyle(StageTheme.ink)
             Text(text)
-                .foregroundStyle(Color(red: 0.25, green: 0.8, blue: 1.0))
+                .foregroundStyle(LinearGradient(colors: [StageTheme.sky, StageTheme.mint], startPoint: .leading, endPoint: .trailing))
+                .shadow(color: StageTheme.mint.opacity(0.45), radius: 10)
                 .mask(alignment: .leading) {
                     GeometryReader { proxy in
                         Rectangle().frame(width: proxy.size.width * progress)
@@ -124,9 +97,10 @@ private struct KaraokeLine: View {
                 }
                 .accessibilityHidden(true) // 색칠용 겹친 글자 — VoiceOver 가 같은 줄을 두 번 읽지 않게
         }
-        .font(.system(size: Self.fontSize, weight: .bold))
+        .font(StageTheme.rounded(fontSize, .heavy))
         .lineLimit(1)
-        .minimumScaleFactor(0.5)
+        .minimumScaleFactor(0.45)
+        .shadow(color: .black.opacity(0.35), radius: 6, y: 2)
     }
 }
 
@@ -152,7 +126,9 @@ private final class TextWidthCache {
     /// prefix[k] = 앞 k 글자의 폭
     private func prefixWidths(_ text: String, fontSize: CGFloat) -> [CGFloat] {
         if let cached = cache[text] { return cached }
-        let font = NSFont.systemFont(ofSize: fontSize, weight: .bold)
+        // 화면 글꼴과 같은 둥근 굵은 글꼴로 잰다 (폭이 다르면 색칠 위치가 글자와 어긋난다)
+        let base = NSFont.systemFont(ofSize: fontSize, weight: .heavy)
+        let font = base.fontDescriptor.withDesign(.rounded).flatMap { NSFont(descriptor: $0, size: fontSize) } ?? base
         let characters = Array(text)
         var widths: [CGFloat] = [0]
         for k in 1...max(characters.count, 1) where k <= characters.count {
@@ -170,9 +146,16 @@ private struct CountdownDots: View {
     let remaining: Double
 
     var body: some View {
-        let dots = min(3, max(1, Int(remaining.rounded(.up))))
-        Text(String(repeating: "● ", count: dots))
-            .font(.system(size: 26, weight: .bold))
-            .foregroundStyle(Color(red: 0.25, green: 0.8, blue: 1.0))
+        let lit = min(3, max(1, Int(remaining.rounded(.up))))
+        HStack(spacing: 14) {
+            ForEach(0..<3, id: \.self) { index in
+                Circle()
+                    .fill(index < lit ? StageTheme.pink : Color.white.opacity(0.12))
+                    .frame(width: 16, height: 16)
+                    .shadow(color: index < lit ? StageTheme.pink.opacity(0.6) : .clear, radius: 8)
+            }
+        }
+        .animation(.snappy, value: lit)
+        .accessibilityLabel("\(lit)초 뒤 가사 시작")
     }
 }

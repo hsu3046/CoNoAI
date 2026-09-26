@@ -6,11 +6,12 @@
 import SwiftUI
 
 struct PitchBarView: View {
-    static let background = Color(red: 0.05, green: 0.05, blue: 0.09)
     let timeline: PitchTimeline
     let position: () -> Double?
     /// 키 조절 반음 — 원곡 음정에 더해 "지금 들리는 키" 로 그린다
     var keyShift: Int = 0
+    /// 좌상단 진단 숫자 (설정 › 진단)
+    var showDiagnostics = false
 
     /// 재생선 왼쪽(지나간 부분)과 오른쪽(앞으로 부를 부분)에 보여줄 초
     private let pastSeconds = 1.5
@@ -28,8 +29,9 @@ struct PitchBarView: View {
                 draw(in: &context, size: size, frameDate: date)
             }
         }
-        .background(Self.background)
-        .clipShape(RoundedRectangle(cornerRadius: 10))
+        .background(RoundedRectangle(cornerRadius: 18).fill(Color.white.opacity(0.03)))
+        .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(Color.white.opacity(0.06), lineWidth: 0.5))
+        .clipShape(RoundedRectangle(cornerRadius: 18))
         .accessibilityLabel("음정 바")
     }
 
@@ -40,7 +42,7 @@ struct PitchBarView: View {
         drawCounter.count += 1
         guard let now = position() else {
             context.draw(
-                Text("재생이 시작되면 음정이 흐릅니다").font(.callout).foregroundStyle(.white.opacity(0.6)),
+                Text("곧 음정이 흐릅니다").font(StageTheme.rounded(14, .medium)).foregroundStyle(StageTheme.faintInk),
                 at: CGPoint(x: size.width / 2, y: size.height / 2)
             )
             return
@@ -70,16 +72,15 @@ struct PitchBarView: View {
             var line = Path()
             line.move(to: CGPoint(x: 0, y: lineY))
             line.addLine(to: CGPoint(x: size.width, y: lineY))
-            context.stroke(line, with: .color(.white.opacity(isC ? 0.18 : 0.05)), lineWidth: 1)
+            context.stroke(line, with: .color(.white.opacity(isC ? 0.12 : 0.035)), lineWidth: 1)
             if isC {
                 context.draw(
-                    Text("C\(midi / 12 - 1)").font(.caption2).foregroundStyle(.white.opacity(0.45)),
-                    at: CGPoint(x: 6, y: y(Double(midi))),
+                    Text("C\(midi / 12 - 1)").font(StageTheme.rounded(10, .semibold)).foregroundStyle(StageTheme.faintInk),
+                    at: CGPoint(x: 10, y: y(Double(midi))),
                     anchor: .leading
                 )
             }
         }
-
 
         // 분석 경계(미래 쪽) 근처에서 음표·곡선만 서서히 사라지게 하는 가로 그라데이션.
         // 덮개를 씌우면 격자선까지 지워져 선이 끊겨 보였다 → 음표·곡선의 채색 자체에만 적용한다.
@@ -90,27 +91,39 @@ struct PitchBarView: View {
             .linearGradient(Gradient(colors: [color, color.opacity(0)]), startPoint: fadeStart, endPoint: fadeEnd)
         }
 
-        // 음표 막대
+        // 음표 막대: 지난 음 흐리게 · 지금 부를 음 민트로 빛나게 · 다가오는 음 흰색
+        let playheadX = x(now)
         for note in notes {
             let start = Double(note.startFrame) * period
             let end = Double(note.endFrame) * period
             guard end > t0, start < t1 else { continue }
             let rect = CGRect(
                 x: x(start),
-                y: y(Double(note.midi)) - rowHeight / 2 + 1,
-                width: max(2, x(end) - x(start)),
-                height: max(3, rowHeight - 2)
+                y: y(Double(note.midi)) - rowHeight / 2 + 1.5,
+                width: max(3, x(end) - x(start)),
+                height: max(4, rowHeight - 3)
             )
-            let color: Color = end < now ? .white.opacity(0.3) : (start <= now ? .yellow : .white.opacity(0.9))
-            context.fill(Path(roundedRect: rect, cornerRadius: min(4, rect.height / 2)), with: fading(color))
+            let bar = Path(roundedRect: rect, cornerRadius: rect.height / 2)
+            if end < now {
+                context.fill(bar, with: .color(.white.opacity(0.16)))
+            } else if start <= now {
+                // 빛 번짐 → 본체
+                context.fill(Path(roundedRect: rect.insetBy(dx: -4, dy: -4), cornerRadius: rect.height / 2 + 4),
+                             with: .color(StageTheme.mint.opacity(0.22)))
+                context.fill(bar, with: .color(StageTheme.mint))
+            } else {
+                context.fill(bar, with: fading(.white.opacity(0.82)))
+            }
         }
 
-        // 원곡 보컬 음정 곡선 (무성·끊김에서 선을 끊는다)
+        // 원곡 보컬 음정 곡선 (무성·끊김에서 선을 끊는다) — 재생선까지만 그려 "지금 부르는 음" 을 따라간다
         var contour = Path()
         var previousIndex: Int?
+        var headPoint: CGPoint?
         for frame in snapshot.frames where frame.confidence >= segmenter.voicedThreshold && frame.pitchHz > 0 {
             let t = Double(frame.index) * period
             guard t >= t0 else { continue }
+            guard t <= now else { break }
             let point = CGPoint(x: x(t), y: y(NoteSegmenter.midi(fromHz: frame.pitchHz) + Double(keyShift)))
             if let previousIndex, frame.index - previousIndex <= 2 {
                 contour.addLine(to: point)
@@ -118,26 +131,33 @@ struct PitchBarView: View {
                 contour.move(to: point)
             }
             previousIndex = frame.index
+            headPoint = now - t < 0.08 ? point : nil
         }
-        context.stroke(contour, with: fading(.cyan.opacity(0.55)), lineWidth: 1.5)
+        context.stroke(contour, with: .color(StageTheme.pink.opacity(0.75)), style: StrokeStyle(lineWidth: 2.2, lineCap: .round, lineJoin: .round))
 
-        // 진단 표시 (좌상단)
-        context.draw(
-            Text(String(
-                format: "pos %.2fs · 분석 +%.2fs · 프레임 %d · 음표 %d · 그리기 #%d",
-                now, snapshot.knownUntil - now, snapshot.frames.count, notes.count, drawCounter.count
-            ))
-            .font(.caption2.monospacedDigit())
-            .foregroundStyle(.white.opacity(0.5)),
-            at: CGPoint(x: 40, y: 10),
-            anchor: .leading
-        )
-
-        // 재생선
+        // 재생선 (은은한 빛 + 선) 과 지금 원곡이 내는 음
         var playhead = Path()
-        playhead.move(to: CGPoint(x: x(now), y: 0))
-        playhead.addLine(to: CGPoint(x: x(now), y: size.height))
-        context.stroke(playhead, with: .color(.red), lineWidth: 2)
+        playhead.move(to: CGPoint(x: playheadX, y: 0))
+        playhead.addLine(to: CGPoint(x: playheadX, y: size.height))
+        context.stroke(playhead, with: .color(StageTheme.pink.opacity(0.18)), lineWidth: 8)
+        context.stroke(playhead, with: .color(StageTheme.pink.opacity(0.9)), lineWidth: 1.5)
+        if let headPoint {
+            context.fill(Path(ellipseIn: CGRect(x: playheadX - 9, y: headPoint.y - 9, width: 18, height: 18)), with: .color(StageTheme.pink.opacity(0.25)))
+            context.fill(Path(ellipseIn: CGRect(x: playheadX - 5, y: headPoint.y - 5, width: 10, height: 10)), with: .color(StageTheme.pink))
+        }
+
+        if showDiagnostics {
+            context.draw(
+                Text(String(
+                    format: "pos %.2fs · 분석 +%.2fs · 프레임 %d · 음표 %d · 그리기 #%d",
+                    now, snapshot.knownUntil - now, snapshot.frames.count, notes.count, drawCounter.count
+                ))
+                .font(.caption2.monospacedDigit())
+                .foregroundStyle(.white.opacity(0.5)),
+                at: CGPoint(x: 40, y: 12),
+                anchor: .leading
+            )
+        }
     }
 }
 

@@ -176,6 +176,11 @@ final class LyricsController {
         await nowPlaying.send(command)
     }
 
+    /// 지금 곡의 앨범 아트 바이트 (화면 조명 색용)
+    func currentArtworkData() async -> Data? {
+        await nowPlaying.artworkData()
+    }
+
     /// 캡처 시각 c 의 소리(= 들리는 소리)가 속한 곡. 화면 제목용 — 상태를 바꾸지 않는다.
     func track(atCaptureTime c: Double) -> TrackInfo? {
         clock.position(atCaptureTime: c).flatMap { tracks[$0.trackID] }

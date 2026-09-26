@@ -28,6 +28,21 @@ enum AppleMusicScript {
     }
 }
 
+extension AppleMusicScript {
+    /// 지금 곡의 앨범 아트 원본 바이트 (없으면 missing value). 음악 앱이 꺼져 있으면 켜지 않는다.
+    static let artwork = """
+    if application "Music" is running then
+        tell application "Music"
+            try
+                set playingTrack to current track
+                if (count of artworks of playingTrack) > 0 then return raw data of artwork 1 of playingTrack
+            end try
+        end tell
+    end if
+    return missing value
+    """
+}
+
 enum PlayerCommand: String, CaseIterable, Sendable {
     case play
     case pause

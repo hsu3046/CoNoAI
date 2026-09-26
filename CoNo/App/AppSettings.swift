@@ -1,0 +1,73 @@
+// CoNo — Copyright (C) 2026 KnowAI (https://knowai.space) — GPL-3.0-or-later
+//
+// 메인 화면과 설정 창이 함께 쓰는 사용자 설정 (UserDefaults 에 저장).
+// 실행 중인 엔진 값(키·가이드 보컬 등)은 엔진이 원본이고, 여기는 "다음 시작 때 쓸 값"과 기본값이다.
+
+import Foundation
+import Observation
+
+@MainActor
+@Observable
+final class AppSettings {
+    /// 캡처할 앱: "auto"(음악 앱 우선, 없으면 재생 중인 앱) | 번들 ID | "system"
+    var sourcePreference: String { didSet { store(sourcePreference, "sourcePreference") } }
+    var mode: ProcessingMode { didSet { store(mode.rawValue, "mode") } }
+    var delaySeconds: Double { didSet { store(delaySeconds, "delaySeconds") } }
+    var muteOriginal: Bool { didSet { store(muteOriginal, "muteOriginal") } }
+    var backend: InferenceBackend { didSet { store(backend.rawValue, "backend") } }
+    var stepSeconds: Double { didSet { store(stepSeconds, "stepSeconds") } }
+    var rightContextSeconds: Double { didSet { store(rightContextSeconds, "rightContextSeconds") } }
+    /// 음악 앱에서 노래가 나오면 바로 시작
+    var autoStart: Bool { didSet { store(autoStart, "autoStart") } }
+    /// 가이드 보컬 기본값 (0…0.5)
+    var guideVocalLevel: Double { didSet { store(guideVocalLevel, "guideVocalLevel") } }
+    /// 화면을 소리보다 늦출 시간 (블루투스 등)
+    var displayLatencyMilliseconds: Double { didSet { store(displayLatencyMilliseconds, "displayLatencyMilliseconds") } }
+    /// 음정 바에 진단 숫자 표시
+    var showPitchDiagnostics: Bool { didSet { store(showPitchDiagnostics, "showPitchDiagnostics") } }
+
+    static let autoSource = "auto"
+    static let systemSource = "system"
+
+    private let defaults: UserDefaults
+    private static let prefix = "space.knowai.cono.settings."
+
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
+        func value<T>(_ key: String, _ fallback: T) -> T { defaults.object(forKey: Self.prefix + key) as? T ?? fallback }
+        sourcePreference = value("sourcePreference", Self.autoSource)
+        mode = ProcessingMode(rawValue: value("mode", ProcessingMode.aiSeparation.rawValue)) ?? .aiSeparation
+        delaySeconds = value("delaySeconds", 3.5)
+        muteOriginal = value("muteOriginal", true)
+        backend = InferenceBackend(rawValue: value("backend", InferenceBackend.coreMLAll.rawValue)) ?? .coreMLAll
+        stepSeconds = value("stepSeconds", 1.0)
+        rightContextSeconds = value("rightContextSeconds", 1.0)
+        autoStart = value("autoStart", true)
+        guideVocalLevel = value("guideVocalLevel", 0.0)
+        displayLatencyMilliseconds = value("displayLatencyMilliseconds", 0.0)
+        showPitchDiagnostics = value("showPitchDiagnostics", false)
+    }
+
+    var separation: SeparationSettings {
+        SeparationSettings(backend: backend, stepSeconds: stepSeconds, rightContextSeconds: rightContextSeconds)
+    }
+
+    /// 지금 캡처할 소스. auto 면 음악 앱 → 재생 중인 앱 순.
+    func resolveSource(in sources: [AudioSource]) -> AudioSource? {
+        switch sourcePreference {
+        case Self.systemSource:
+            return sources.first { $0.kind == .systemWide }
+        case Self.autoSource:
+            let apps = sources.filter { $0.kind != .systemWide }
+            return apps.first { $0.bundleID == AppleMusicNowPlaying.bundleID && $0.isPlaying }
+                ?? apps.first { $0.isPlaying }
+                ?? apps.first { $0.bundleID == AppleMusicNowPlaying.bundleID }
+        default:
+            return sources.first { $0.bundleID == sourcePreference }
+        }
+    }
+
+    private func store(_ value: Any, _ key: String) {
+        defaults.set(value, forKey: Self.prefix + key)
+    }
+}

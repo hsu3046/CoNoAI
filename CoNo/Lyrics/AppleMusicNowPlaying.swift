@@ -59,6 +59,22 @@ final class AppleMusicNowPlaying: @unchecked Sendable {
         }
     }
 
+    /// 지금 곡의 앨범 아트 (이미지 파일 바이트). 없거나 실패하면 nil.
+    func artworkData() async -> Data? {
+        await withCheckedContinuation { continuation in
+            queue.async { [self] in
+                if artworkScript == nil { artworkScript = NSAppleScript(source: AppleMusicScript.artwork) }
+                var errorInfo: NSDictionary?
+                let result = artworkScript?.executeAndReturnError(&errorInfo)
+                let data = errorInfo == nil ? result?.data : nil
+                continuation.resume(returning: data.flatMap { $0.isEmpty ? nil : $0 })
+            }
+        }
+    }
+
+    /// 큐 전용
+    private var artworkScript: NSAppleScript?
+
     /// 큐 전용: 명령 스크립트 (명령마다 한 번 컴파일)
     private var commandScripts: [PlayerCommand: NSAppleScript] = [:]
 
