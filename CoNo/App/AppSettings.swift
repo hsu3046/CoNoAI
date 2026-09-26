@@ -27,6 +27,8 @@ final class AppSettings {
     var showPitchDiagnostics: Bool { didSet { store(showPitchDiagnostics, "showPitchDiagnostics") } }
     /// 음정 바 세로 범위를 곡 음역에 맞춰 자동으로 넓히고 좁힌다 (끄면 A2–A5 고정)
     var pitchAutoZoom: Bool { didSet { store(pitchAutoZoom, "pitchAutoZoom") } }
+    /// 내 목소리 — "내 키" 버튼이 곡을 이 목소리에 맞춘다
+    var myVoice: VoiceType { didSet { store(myVoice.rawValue, "myVoice") } }
     /// 음표 막대 외에 원곡 가수의 음정 곡선도 그린다
     var showPitchContour: Bool { didSet { store(showPitchContour, "showPitchContour") } }
 
@@ -52,6 +54,7 @@ final class AppSettings {
         showPitchDiagnostics = value("showPitchDiagnostics", false)
         pitchAutoZoom = value("pitchAutoZoom", true)
         showPitchContour = value("showPitchContour", true)
+        myVoice = VoiceType(rawValue: value("myVoice", VoiceType.male.rawValue)) ?? .male
     }
 
     var separation: SeparationSettings {

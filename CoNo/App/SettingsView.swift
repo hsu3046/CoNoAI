@@ -75,6 +75,17 @@ private struct GeneralSettings: View {
                     .foregroundStyle(.secondary)
             }
 
+            Section("내 목소리") {
+                Picker("내 목소리", selection: Binding(get: { settings.myVoice }, set: { settings.myVoice = $0 })) {
+                    Text("남성").tag(VoiceType.male)
+                    Text("여성").tag(VoiceType.female)
+                }
+                .pickerStyle(.segmented)
+                Text("도크의 '내 키' 를 누르면 원곡 음역을 재서 이 목소리가 편한 높이로 키를 옮깁니다. 원곡과 성별이 달라도 옥타브까지 고려합니다.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
             Section("음정 바") {
                 Toggle("음역에 맞춰 자동 확대·축소", isOn: Binding(get: { settings.pitchAutoZoom }, set: { settings.pitchAutoZoom = $0 }))
                 Text("끄면 A2–A5 범위로 고정합니다. 음 높이의 위치가 늘 같아 감을 잡기 쉽지만 음표가 얇아집니다.")

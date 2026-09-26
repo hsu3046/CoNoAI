@@ -23,9 +23,16 @@ targets:
         type: folder
         optional: true
         buildPhase: resources
+      # "지금 재생 중" 어댑터 스크립트 — /usr/bin/perl 이 번들의 MediaRemoteAdapter.framework 를 불러 쓴다
+      - path: ThirdParty/mediaremote-adapter/bin/mediaremote-adapter.pl
+        buildPhase: resources
     dependencies:
       - package: onnxruntime
         product: onnxruntime
+      # 링크하지 않고 번들(Contents/Frameworks)에 넣기만 한다 — 앱이 아니라 perl 이 불러 쓴다
+      - target: MediaRemoteAdapter
+        link: false
+        embed: true
     # 서명: 기본 ad-hoc, 개인 팀은 Support/Signing.local.xcconfig (커밋 안 함) 로 덮어쓴다
     configFiles:
       Debug: Support/Signing.xcconfig
@@ -47,6 +54,35 @@ targets:
         CURRENT_PROJECT_VERSION: 1
         ENABLE_HARDENED_RUNTIME: NO
         SWIFT_STRICT_CONCURRENCY: complete
+  # ThirdParty/mediaremote-adapter (BSD-3) — CMakeLists 와 같은 설정을 Xcode 로 옮긴 것
+  MediaRemoteAdapter:
+    type: framework
+    platform: macOS
+    sources:
+      - path: ThirdParty/mediaremote-adapter/src
+      - path: ThirdParty/mediaremote-adapter/include
+        headerVisibility: public
+    dependencies:
+      - sdk: Foundation.framework
+      - sdk: AppKit.framework
+      - sdk: UniformTypeIdentifiers.framework
+    settings:
+      base:
+        PRODUCT_NAME: MediaRemoteAdapter
+        PRODUCT_BUNDLE_IDENTIFIER: space.knowai.cono.MediaRemoteAdapter
+        GENERATE_INFOPLIST_FILE: YES
+        CLANG_ENABLE_OBJC_ARC: YES
+        # perl 스크립트가 프레임워크의 함수를 이름으로 부르므로 심볼을 숨기지 않는다
+        GCC_SYMBOLS_PRIVATE_EXTERN: NO
+        OTHER_CFLAGS: ["-fvisibility=default"]
+        HEADER_SEARCH_PATHS: ["$(SRCROOT)/ThirdParty/mediaremote-adapter/src", "$(SRCROOT)/ThirdParty/mediaremote-adapter/include"]
+        DEFINES_MODULE: NO
+        SKIP_INSTALL: YES
+        ENABLE_HARDENED_RUNTIME: NO
+        GCC_WARN_INHIBIT_ALL_WARNINGS: YES
+    configFiles:
+      Debug: Support/Signing.xcconfig
+      Release: Support/Signing.xcconfig
   CoNoTests:
     type: bundle.unit-test
     platform: macOS

@@ -3,7 +3,7 @@
 // 메인 화면 = 노래방 무대. 노래 부를 때 필요한 것만: 곡 제목·가수, 음정 바, 가사, 재생·키 도크.
 // 나머지(소스·처리 방식·지연·AI 설정·싱크·진단)는 설정 창(⌘,)에 있다.
 //
-// 단축키 (메인 창에서): Space 재생·일시정지 · ↑↓ 키 · 0 원키 · M 남자키 · F 여자키 · 1/2/3 반주·보컬·원곡 · [ ] 가사 싱크 · Return 시작
+// 단축키 (메인 창에서): Space 재생·일시정지 · ↑↓ 키 · 0 원키 · K 내 키 · 1/2/3 반주·보컬·원곡 · [ ] 가사 싱크 · Return 시작
 
 import AppKit
 import SwiftUI
@@ -60,6 +60,10 @@ struct KaraokeScreen: View {
             engine.displayLatencyMilliseconds = value
         }
         .onAppear { engine.guideVocalLevel = settings.guideVocalLevel }
+        .onChange(of: settings.myVoice) { _, voice in
+            // 내 키를 쓰는 중에 목소리를 바꾸면 바로 다시 맞춘다
+            if case .voice = engine.keyMode { engine.applyVoiceKey(voice) }
+        }
         .task {
             // 실행 중이 아닐 때 2초마다 소스 목록 갱신 (새로 재생을 시작한 앱 반영)
             var tick = 0
@@ -190,10 +194,8 @@ struct KaraokeScreen: View {
             case "0":
                 engine.resetKey()
                 show("원키")
-            case "m":
-                applyVoice(.male, title: "남자키")
-            case "f":
-                applyVoice(.female, title: "여자키")
+            case "k":
+                applyMyKey()
             case "1", "2", "3":
                 guard engine.runningMode == .aiSeparation else { return .ignored }
                 let output: SeparationOutput = press.characters == "1" ? .accompaniment : press.characters == "2" ? .vocals : .original
@@ -210,10 +212,11 @@ struct KaraokeScreen: View {
         return .handled
     }
 
-    private func applyVoice(_ voice: VoiceType, title: String) {
+    private func applyMyKey() {
         guard engine.runningMode == .aiSeparation else { return }
+        let voice = settings.myVoice
         engine.applyVoiceKey(voice)
-        show(engine.suggestedKey(for: voice).map { "\(title) \(StageTheme.keyLabel($0))" } ?? "\(title) — 음역 분석 중")
+        show(engine.suggestedKey(for: voice).map { "내 키 \(StageTheme.keyLabel($0))" } ?? "내 키 — 음역 분석 중")
     }
 
     private func nudgeLyrics(by seconds: Double) {
@@ -410,7 +413,7 @@ private struct IdleStage: View {
 
             statusLine
             Spacer()
-            Text("Space 재생·일시정지 · ↑↓ 키 · M 남자키 · F 여자키 · 1 2 3 반주·보컬·원곡 · [ ] 가사 싱크 · ⌘, 설정")
+            Text("Space 재생·일시정지 · ↑↓ 키 · K 내 키 · 0 원키 · 1 2 3 반주·보컬·원곡 · [ ] 가사 싱크 · ⌘, 설정")
                 .font(StageTheme.rounded(11, .medium))
                 .foregroundStyle(StageTheme.faintInk)
                 .padding(.bottom, 18)

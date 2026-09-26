@@ -82,6 +82,6 @@
   → 재개하면 얼린 지점부터 한 샘플도 빠지지 않고 이어진다. 버린 무음은 스트림 시각에 포함되지 않으므로 음정 바·가사 싱크가 그대로다.
 - 무음을 버리는 동안 `captureStreamPosition` 은 외삽하지 않는다 (가사 앵커가 미래로 튀지 않게).
 - 얼린 상태에서 소리가 1초 넘게 들어오면(음악 앱에서 직접 재생) 엔진이 얼림을 푼다.
-- 재생 제어: 음악 앱은 `AppleMusicScript.command`, 그 밖의 앱은 `MediaKey`(⏯ 합성, 손쉬운 사용 권한). 미디어 키는 토글이라 캡처 소리로 재생 여부를 확인한 뒤 보낸다.
+- 재생 제어: 음악 앱은 `AppleMusicScript.command`, 그 밖의 앱은 `MediaRemoteBridge`(번들의 mediaremote-adapter 를 `/usr/bin/perl` 로 실행 — "지금 재생 중" 이 캡처 중인 앱일 때만 명확한 멈춤/재생). 그것도 안 되면 `MediaKey`(⏯ 합성, 토글이라 캡처 소리로 재생 여부 확인 후).
 - 끝내기 `KaraokeEngine.finish()`: 출력 얼림 → 원곡 멈춤 → 캡처가 조용해질 때까지(최대 1초) → 정리.
 

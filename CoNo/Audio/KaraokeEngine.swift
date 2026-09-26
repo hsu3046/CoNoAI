@@ -101,7 +101,7 @@ final class KaraokeEngine {
         if next != keyShift { keyShift = next }
     }
 
-    // MARK: - 남자키·여자키
+    // MARK: - 내 키 (내 목소리에 맞춘 키)
 
     enum KeyMode: Equatable {
         /// 사용자가 ♭/♯ 로 직접 고른 키
@@ -124,7 +124,7 @@ final class KaraokeEngine {
         vocalRange.map { SmartKey.shift(forMedian: $0.medianMidi, toward: voice) }
     }
 
-    /// 남자키·여자키 버튼. 음역을 이미 알면 바로, 아니면 분석되는 대로 맞춘다.
+    /// 내 키 버튼 (설정의 내 목소리). 음역을 이미 알면 바로, 아니면 분석되는 대로 맞춘다.
     func applyVoiceKey(_ voice: VoiceType) {
         keyMode = .voice(voice)
         if let key = suggestedKey(for: voice) {
@@ -205,12 +205,33 @@ final class KaraokeEngine {
                     playbackMessage = error.localizedDescription
                 }
             }
-        } else if pipeline.isSourceAudible(within: 0.4) {
-            // 원곡이 소리를 내고 있을 때만 누른다 (토글이라 이미 멈춘 앱을 누르면 재생된다)
-            if !MediaKey.pressPlayPause() {
-                resumePipeline()
-                playbackMessage = Self.accessibilityMessage
+        } else {
+            let audible = pipeline.isSourceAudible(within: 0.4)
+            Task {
+                // 1) "지금 재생 중" 이 이 앱이면 명확한 멈춤 명령
+                if await sendToSource(.pause) { return }
+                // 2) 안 되면 ⏯ 미디어 키 — 토글이라 원곡이 소리를 내고 있을 때만
+                guard audible else { return }
+                if !MediaKey.pressPlayPause() {
+                    resumePipeline()
+                    playbackMessage = Self.accessibilityMessage
+                }
             }
+        }
+    }
+
+    /// 음악 앱이 아닌 앱에 "지금 재생 중" 경로로 명령. 재생 중인 앱이 캡처 중인 앱일 때만 보낸다
+    /// (다른 앱이 "지금 재생 중" 이면 엉뚱한 앱을 멈추거나 틀게 된다). 처리했으면 true.
+    private func sendToSource(_ command: PlayerCommand) async -> Bool {
+        guard let bridge = MediaRemoteBridge.shared,
+              let info = await bridge.current(),
+              info.belongs(to: runningSource?.bundleID)
+        else { return false }
+        switch command {
+        case .pause where !info.playing, .play where info.playing:
+            return true // 이미 원하는 상태
+        default:
+            return await bridge.send(command)
         }
     }
 
@@ -226,8 +247,13 @@ final class KaraokeEngine {
                     playbackMessage = error.localizedDescription
                 }
             }
-        } else if sourceSilent, !MediaKey.pressPlayPause() {
-            playbackMessage = Self.accessibilityMessage
+        } else {
+            Task {
+                if await sendToSource(.play) { return }
+                if sourceSilent, !MediaKey.pressPlayPause() {
+                    playbackMessage = Self.accessibilityMessage
+                }
+            }
         }
     }
 
@@ -242,7 +268,7 @@ final class KaraokeEngine {
         isPaused = true
         if controlsAppleMusic {
             _ = await lyrics.send(.pause)
-        } else if pipeline.isSourceAudible(within: 0.4) {
+        } else if await !sendToSource(.pause), pipeline.isSourceAudible(within: 0.4) {
             _ = MediaKey.pressPlayPause()
         }
         // 원곡이 0.15초 조용해지거나 1초가 지날 때까지 (멈추지 못해도 끝내기는 한다)

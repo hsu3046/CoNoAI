@@ -1,6 +1,6 @@
 // CoNo — Copyright (C) 2026 KnowAI (https://knowai.space) — GPL-3.0-or-later
 //
-// 하단 도크: 재생·일시정지 | 키 ♭/♯ | 원키·남자키·여자키 | 반주·보컬·원곡 (+ 가이드 보컬) | 끝내기.
+// 하단 도크: 재생·일시정지 | 키 ♭/♯ | 원키·내 키 | 반주·보컬·원곡 (+ 가이드 보컬) | 끝내기.
 // 노래방 리모컨처럼 큰 버튼 몇 개로 끝나게 한다. 단축키는 KaraokeScreen 이 받는다.
 
 import SwiftUI
@@ -96,12 +96,13 @@ struct ControlDock: View {
             chip(title: "원키", detail: nil, selected: engine.keyMode == .manual && engine.keyShift == 0, help: "원래 키로 (0)") {
                 engine.resetKey()
             }
-            voiceChip(.male, title: "남자키", shortcut: "M")
-            voiceChip(.female, title: "여자키", shortcut: "F")
+            myKeyChip
         }
     }
 
-    private func voiceChip(_ voice: VoiceType, title: String, shortcut: String) -> some View {
+    /// 내 키: 이 곡을 설정의 "내 목소리" 에 맞춘다 (곡이 바뀌어도 새 곡에 다시 맞춘다)
+    private var myKeyChip: some View {
+        let voice = settings.myVoice
         let selected = engine.keyMode == .voice(voice)
         let detail: String? = if !isAIMode {
             nil
@@ -110,14 +111,15 @@ struct ControlDock: View {
         } else {
             "분석 중"
         }
-        return chip(
-            title: title,
-            detail: detail,
-            selected: selected,
-            help: isAIMode
-                ? "원곡 보컬 음역을 재서 \(title)로 맞춥니다. 곡이 바뀌어도 새 곡에 다시 맞춥니다 (\(shortcut))"
-                : "AI 반주 모드에서 원곡 음역을 재서 맞출 수 있습니다"
-        ) {
+        let voiceName = voice == .male ? "남성" : "여성"
+        let help: String = if !isAIMode {
+            "AI 반주 모드에서 원곡 음역을 재서 맞출 수 있습니다"
+        } else if let range = engine.vocalRange, let key = engine.suggestedKey(for: voice) {
+            "원곡 음역 중심 \(StageTheme.noteName(range.medianMidi)) → \(voiceName)인 내게 맞춘 키 \(StageTheme.keyLabel(key)) (옥타브까지 고려해 가장 편한 높이) · K"
+        } else {
+            "원곡을 조금 더 들으면 \(voiceName)인 내게 맞는 키를 찾습니다 (내 목소리는 설정 › 일반) · K"
+        }
+        return chip(title: "내 키", detail: detail, selected: selected, help: help) {
             engine.applyVoiceKey(voice)
         }
         .disabled(!isAIMode)

@@ -23,6 +23,13 @@ enum StageTheme {
         .system(size: size, weight: weight, design: .rounded)
     }
 
+    /// MIDI → 음이름 (60 = C4)
+    static func noteName(_ midi: Double) -> String {
+        let names = ["C", "C♯", "D", "D♯", "E", "F", "F♯", "G", "G♯", "A", "A♯", "B"]
+        let n = Int(midi.rounded())
+        return "\(names[((n % 12) + 12) % 12])\(n / 12 - 1)"
+    }
+
     /// 키 표기: 0 = 원키, +2 = ♯2, −3 = ♭3
     static func keyLabel(_ key: Int) -> String {
         key == 0 ? "원키" : key > 0 ? "♯\(key)" : "♭\(-key)"

@@ -44,3 +44,10 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ## SwiftF0
 - Source: https://github.com/lars76/swift-f0 (commit 2ed0c83), MIT License, Copyright (c) 2025-2026 Lars Nieradzik
 - Used in: `CoNo/Resources/swift_f0.onnx` — 원본 `swift_f0/model.onnx` 의 pitch 출력에 Cast(float) 노드를 붙인 **수정본** (`scripts/convert_swiftf0.py`). 스트리밍 규칙(`CoNo/DSP/PitchFrameStream.swift`)은 원본 `PitchStream` 을 참고해 재구현.
+
+## mediaremote-adapter (bundled)
+
+- Source: https://github.com/ungive/mediaremote-adapter (commit 73f14ab), vendored unmodified in `ThirdParty/mediaremote-adapter`
+- License: BSD 3-Clause — full text in `ThirdParty/mediaremote-adapter/LICENSE`
+- Use: built into `MediaRemoteAdapter.framework` and run by `/usr/bin/perl` to read macOS Now Playing and send play/pause to non-Music apps
+
