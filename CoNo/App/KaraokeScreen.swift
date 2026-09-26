@@ -504,8 +504,8 @@ private struct IdleStage: View {
                     Image(nsImage: logo)
                         .resizable()
                         .interpolation(.high)
-                        .frame(width: 120, height: 120)
-                        .shadow(color: StageTheme.mint.opacity(0.35), radius: 24)
+                        .frame(width: 88, height: 88)
+                        .shadow(color: StageTheme.mint.opacity(0.35), radius: 18)
                         .accessibilityHidden(true)
                 }
                 Text("CoNo")
