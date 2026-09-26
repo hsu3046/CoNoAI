@@ -71,6 +71,12 @@ final class MediaRemoteBridge: Sendable {
         return process
     }
 
+    /// 지금 재생 중인 앱에서 곡 안 위치로 이동 (초). 성공하면 true.
+    func seek(toSeconds seconds: Double) async -> Bool {
+        // 어댑터 단위는 마이크로초 정수
+        await run(["seek", String(Int((max(0, seconds) * 1_000_000).rounded()))])?.status == 0
+    }
+
     /// perl 로 어댑터를 실행한다. 3초 안에 안 끝나면 끊는다 (MediaRemote 가 응답하지 않는 경우).
     private func run(_ arguments: [String]) async -> (status: Int32, data: Data)? {
         await withCheckedContinuation { continuation in

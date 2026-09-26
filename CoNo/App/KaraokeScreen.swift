@@ -137,10 +137,16 @@ struct KaraokeScreen: View {
                 }
             }
             .frame(minHeight: 180, maxHeight: .infinity)
+            .overlay { SeekingBadge(engine: engine) }
             .padding(.horizontal, 24)
             .padding(.top, 12)
 
-            LyricsView(controller: engine.lyrics, heardCaptureTime: { engine.heardCaptureTime() }, lineFontSize: isFullScreen ? 60 : 42)
+            LyricsView(
+                controller: engine.lyrics,
+                heardCaptureTime: { engine.heardCaptureTime() },
+                lineFontSize: isFullScreen ? 60 : 42,
+                onSkipInterlude: engine.canControlPlayback ? { engine.seek(toSongPosition: $0) } : nil
+            )
                 .padding(.horizontal, 32)
                 .padding(.vertical, 18)
 
@@ -151,6 +157,13 @@ struct KaraokeScreen: View {
                 .lineLimit(1)
                 .frame(height: 20)
                 .padding(.bottom, 6)
+
+            SongProgressBar(engine: engine)
+                .frame(maxWidth: 760)
+                .padding(.horizontal, 40)
+                .padding(.bottom, 12)
+                .opacity(controlsHidden ? 0 : 1)
+                .allowsHitTesting(!controlsHidden)
 
             ControlDock(engine: engine, settings: settings)
                 .padding(.bottom, 20)
@@ -193,6 +206,12 @@ struct KaraokeScreen: View {
         case .downArrow:
             engine.changeKey(by: -1)
             show("키 \(StageTheme.keyLabel(engine.keyShift))")
+        case .rightArrow:
+            guard let heard = engine.heardCaptureTime(), let target = engine.lyrics.interludeSkipTarget(atCaptureTime: heard) else {
+                return .ignored
+            }
+            engine.seek(toSongPosition: target)
+            show("간주 점프")
         default:
             switch press.characters.lowercased() {
             case "0":
@@ -374,6 +393,24 @@ private struct StatusPill: View {
     }
 }
 
+/// 이동 중: 새 위치의 소리가 닿을 때까지 (통계를 읽으므로 작은 뷰로)
+private struct SeekingBadge: View {
+    let engine: KaraokeEngine
+
+    var body: some View {
+        if engine.seekTarget != nil || engine.stats.isOutputMuted {
+            HStack(spacing: 8) {
+                ProgressView().controlSize(.small)
+                Text("이동 중…").font(StageTheme.rounded(15, .semibold))
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 9)
+            .glassCapsule()
+            .transition(.opacity)
+        }
+    }
+}
+
 // MARK: - 시작 전 화면
 
 private struct IdleStage: View {
@@ -420,7 +457,7 @@ private struct IdleStage: View {
 
             statusLine
             Spacer()
-            Text("Space 재생·일시정지 · ↑↓ 키 · K 내 키 · 0 원키 · 1 2 3 반주·보컬·원곡 · [ ] 가사 싱크 · ⌘, 설정")
+            Text("Space 재생·일시정지 · ↑↓ 키 · → 간주 점프 · K 내 키 · 0 원키 · 1 2 3 반주·보컬·원곡 · [ ] 가사 싱크 · ⌘, 설정")
                 .font(StageTheme.rounded(11, .medium))
                 .foregroundStyle(StageTheme.faintInk)
                 .padding(.bottom, 18)

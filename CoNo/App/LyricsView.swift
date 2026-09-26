@@ -13,6 +13,8 @@ struct LyricsView: View {
     let heardCaptureTime: () -> Double?
     /// 지금 줄 글자 크기 (전체화면에서 키운다)
     var lineFontSize: CGFloat = 42
+    /// 간주 점프 (곡 위치로 이동). nil 이면 버튼을 숨긴다.
+    var onSkipInterlude: ((Double) -> Void)?
     @State private var hovering = false
 
     var body: some View {
@@ -36,7 +38,8 @@ struct LyricsView: View {
     private func content(frameDate: Date) -> some View {
         // frameDate: 매 틱 다시 계산하게 하는 의존성 (값은 쓰지 않는다)
         let _ = frameDate
-        let state = heardCaptureTime().map { controller.display(atCaptureTime: $0) }
+        let heard = heardCaptureTime()
+        let state = heard.map { controller.display(atCaptureTime: $0) }
 
         VStack(spacing: 14) {
             if let lyrics = state?.lyrics {
@@ -45,6 +48,20 @@ struct LyricsView: View {
                         KaraokeLine(text: current, progress: lyrics.progress, highlightedCharacters: lyrics.highlightedCharacters, fontSize: lineFontSize)
                     } else if let countdown = lyrics.countdown {
                         CountdownDots(remaining: countdown)
+                    } else if let onSkipInterlude, let heard, let target = controller.interludeSkipTarget(atCaptureTime: heard) {
+                        // 긴 간주·전주: 노래방 기계의 간주 점프
+                        Button {
+                            onSkipInterlude(target)
+                        } label: {
+                            Label("간주 점프", systemImage: "forward.end.fill")
+                                .font(StageTheme.rounded(17, .semibold))
+                                .padding(.horizontal, 18)
+                                .padding(.vertical, 10)
+                                .glassCapsule()
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(StageTheme.ink)
+                        .help("다음 가사 3초 전으로 (→)")
                     } else {
                         Image(systemName: "music.note")
                             .font(.system(size: 30, weight: .semibold))

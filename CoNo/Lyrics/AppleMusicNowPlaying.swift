@@ -59,6 +59,17 @@ final class AppleMusicNowPlaying: @unchecked Sendable {
         }
     }
 
+    /// 곡 안 위치로 이동 (초)
+    func seek(to seconds: Double) async -> Result<Void, NowPlayingError> {
+        await withCheckedContinuation { continuation in
+            queue.async {
+                var errorInfo: NSDictionary?
+                NSAppleScript(source: AppleMusicScript.seek(to: seconds))?.executeAndReturnError(&errorInfo)
+                continuation.resume(returning: errorInfo.map { .failure(Self.error(from: $0)) } ?? .success(()))
+            }
+        }
+    }
+
     /// 지금 곡의 앨범 아트 (이미지 파일 바이트). 없거나 실패하면 nil.
     func artworkData() async -> Data? {
         await withCheckedContinuation { continuation in

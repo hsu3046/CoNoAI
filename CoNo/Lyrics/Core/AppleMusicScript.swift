@@ -43,6 +43,17 @@ extension AppleMusicScript {
     """
 }
 
+extension AppleMusicScript {
+    /// 곡 안 위치로 이동 (초). AppleScript 숫자는 로케일과 무관하게 소수점이 "." 이다.
+    static func seek(to seconds: Double) -> String {
+        """
+        if application "Music" is running then
+            tell application "Music" to set player position to \(String(format: "%.3f", max(0, seconds)))
+        end if
+        """
+    }
+}
+
 enum PlayerCommand: String, CaseIterable, Sendable {
     case play
     case pause

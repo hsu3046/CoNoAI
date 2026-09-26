@@ -279,6 +279,46 @@ final class KaraokeEngine {
         stop()
     }
 
+    // MARK: - 이동 (재생 위치)
+
+    /// 이동 중 목표 위치 (진행 막대가 도착 전 옛 위치로 되돌아가 보이지 않게). 새 위치의 소리가 들리면 nil.
+    private(set) var seekTarget: Double?
+    @ObservationIgnored private var seekStartedAt: ContinuousClock.Instant?
+    @ObservationIgnored private var seekTask: Task<Void, Never>?
+
+    /// 곡 안 위치로 이동. CoNo 는 원곡보다 몇 초 늦게 들려주므로, 누르는 순간 소리를 끄고
+    /// 새 위치의 소리가 출력에 닿으면 다시 켠다 (그 사이 옛 소리는 버리지 않고 흘려보내 싱크를 유지).
+    func seek(toSongPosition target: Double) {
+        guard canControlPlayback, let pipeline else { return }
+        let target = max(0, target)
+        seekTarget = target
+        seekStartedAt = .now
+        playbackMessage = nil
+        pipeline.muteOutputUntilFurtherNotice()
+        seekTask?.cancel()
+        seekTask = Task {
+            let moved = controlsAppleMusic ? await lyrics.seekAppleMusic(to: target) : await seekSource(to: target)
+            guard !Task.isCancelled else { return }
+            guard moved, let capture = captureTime(atHostTime: mach_absolute_time()) else {
+                pipeline.unmuteOutput()
+                seekTarget = nil
+                playbackMessage = "연결된 앱이 이동 명령을 받지 않았습니다"
+                return
+            }
+            // 지금 캡처되는 소리부터 새 위치 → 출력 스트림 시각으로 (+ 앱이 실제로 옮겨 가는 여유)
+            let streamOffset = runningMode == .aiSeparation ? (separationTiming?.streamOffset ?? 0) : 0
+            pipeline.muteOutput(untilStreamSeconds: capture + streamOffset + 0.3)
+        }
+    }
+
+    private func seekSource(to seconds: Double) async -> Bool {
+        guard let bridge = MediaRemoteBridge.shared,
+              let info = await bridge.current(),
+              info.belongs(to: runningSource?.bundleID)
+        else { return false }
+        return await bridge.seek(toSeconds: seconds)
+    }
+
     private static let accessibilityMessage =
         "다른 앱을 멈추려면 시스템 설정 › 개인정보 보호 및 보안 › 손쉬운 사용에서 CoNo 를 켜 주세요."
 
@@ -622,6 +662,8 @@ final class KaraokeEngine {
         runningSource = nil
         isPaused = false
         vocalRange = nil
+        seekTask?.cancel()
+        seekTarget = nil
         if isBusy { status = .idle }
     }
 
@@ -674,6 +716,13 @@ final class KaraokeEngine {
                     self.resumePipeline()
                     if justPaused, !self.controlsAppleMusic {
                         self.playbackMessage = "원곡 앱이 멈추지 않았습니다. 다른 앱이 '지금 재생 중' 으로 잡혀 있을 수 있어요."
+                    }
+                }
+                // 이동: 새 위치의 소리가 들리기 시작하면(소리 끄기가 풀리면) 목표 표시를 거둔다
+                if self.seekTarget != nil, let started = self.seekStartedAt {
+                    let elapsed = ContinuousClock.now - started
+                    if (elapsed > .milliseconds(500) && !self.stats.isOutputMuted) || elapsed > .seconds(15) {
+                        self.seekTarget = nil
                     }
                 }
                 tick += 1

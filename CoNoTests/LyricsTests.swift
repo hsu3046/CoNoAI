@@ -117,6 +117,14 @@ struct AppleMusicScriptTests {
         #expect(compiled, "AppleScript 컴파일 실패: \(error ?? [:])")
     }
 
+    @Test func seekScriptCompiles() {
+        let script = NSAppleScript(source: AppleMusicScript.seek(to: 83.25))
+        var error: NSDictionary?
+        let compiled = script?.compileAndReturnError(&error) ?? false
+        #expect(compiled, "seek 컴파일 실패: \(error ?? [:])")
+        #expect(AppleMusicScript.seek(to: 83.25).contains("83.250"))
+    }
+
     @Test func artworkScriptCompiles() {
         let script = NSAppleScript(source: AppleMusicScript.artwork)
         var error: NSDictionary?

@@ -193,6 +193,32 @@ final class LyricsController {
         await provider?.artworkData()
     }
 
+    /// 음악 앱에서 곡 안 위치로 이동
+    func seekAppleMusic(to seconds: Double) async -> Bool {
+        if case .success = await appleMusic.seek(to: seconds) { return true }
+        return false
+    }
+
+    /// 들리는 소리의 곡 위치와 곡 길이 (진행 막대용) — 상태를 바꾸지 않는다
+    func playback(atCaptureTime c: Double) -> (position: Double, duration: Double)? {
+        guard let position = clock.position(atCaptureTime: c), let track = tracks[position.trackID], track.duration > 0 else { return nil }
+        return (min(max(position.seconds, 0), track.duration), track.duration)
+    }
+
+    /// 간주 점프: 지금 간주(또는 전주)이고 다음 가사까지 8초 넘게 남았으면, 다음 줄 3초 전의 곡 위치.
+    /// 가사 시각 = 곡 위치 + 미세조정 − 지연 이므로 곡 위치 = 가사 시각 − 미세조정 + 지연.
+    func interludeSkipTarget(atCaptureTime c: Double) -> Double? {
+        guard let position = clock.position(atCaptureTime: c), position.isPlaying,
+              let entry = lyricsByTrack[position.trackID], let trackLyrics = entry, let lyrics = trackLyrics.lyrics
+        else { return nil }
+        let delay = displayCommits[position.trackID]?.delay ?? trackLyrics.appliedDelay
+        let t = position.seconds + offsetSeconds - delay
+        guard lyrics.lineIndex(at: t) == nil, let next = lyrics.nextLineIndex(after: t) else { return nil }
+        let nextStart = lyrics.lines[next].start
+        guard nextStart - t > 8 else { return nil }
+        return nextStart - offsetSeconds + delay - 3
+    }
+
     /// 캡처 시각 c 의 소리(= 들리는 소리)가 속한 곡. 화면 제목용 — 상태를 바꾸지 않는다.
     func track(atCaptureTime c: Double) -> TrackInfo? {
         clock.position(atCaptureTime: c).flatMap { tracks[$0.trackID] }

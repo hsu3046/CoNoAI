@@ -40,6 +40,8 @@ struct PipelineStats: Sendable {
     var outputPeak: Float = 0
     var bufferedSeconds: Double = 0
     var isPrimed = false
+    /// 이동 뒤 새 위치의 소리를 기다리며 소리를 끄는 중
+    var isOutputMuted = false
     var underruns = 0
     var captureOverflows = 0
     var capturedSeconds: Double = 0
@@ -140,6 +142,13 @@ final class DelayPipeline: @unchecked Sendable {
     private let captureDropping = Atomic<Bool>(false)
     /// 일시정지 중에 들어온 소리 프레임 수 (음악 앱이 안 멈췄거나 다른 곳에서 재생을 다시 누른 것 감지)
     private let pausedAudioFrames = Atomic<Int>(0)
+    /// 이동(seek) 뒤 새 위치의 소리가 출력에 닿을 때까지 소리를 끈다: 이 출력 프레임 전까지 무음 (Int.min = 끄지 않음).
+    /// 링은 평소처럼 읽어 흘려보내므로 스트림 시각은 그대로다 (음정 바·가사 싱크 유지).
+    private let muteUntilFrame = Atomic<Int>(Int.min)
+    /// 재생 스레드가 매 콜백 갱신: 지금 소리를 끄고 있는지 (UI "이동 중")
+    private let outputMutedFlag = Atomic<Bool>(false)
+    /// 재생 스레드 전용: 직전 콜백이 꺼져 있었는지 (끄는 순간만 페이드아웃)
+    private var playbackWasMuted = false
     /// 이보다 작으면 디지털 무음으로 본다
     private static let silencePeak: Float = 1e-5
     /// 캡처에 마지막으로 소리가 있던 호스트 시각 (원곡이 지금 재생 중인지 — 미디어 키는 토글이라 보내기 전에 확인)
@@ -414,10 +423,25 @@ final class DelayPipeline: @unchecked Sendable {
         } else if playbackIsPrimed {
             playbackFrozen = false
             got = playbackRing.read(into: playScratch, count: samples)
-            if playbackNeedsFadeIn, got > 0 {
+            let muted = playedFrames < muteUntilFrame.load(ordering: .relaxed)
+            if muted {
+                // 켜져 있다가 꺼지는 콜백만 앞부분을 페이드아웃, 나머지는 무음. 다시 켜질 때 페이드인.
+                let fade = playbackWasMuted ? 0 : min(got / Self.channels, Self.edgeFadeFrames)
+                for i in 0..<fade {
+                    let gain = 1 - Float(i + 1) / Float(fade + 1)
+                    playScratch[i * 2] *= gain
+                    playScratch[i * 2 + 1] *= gain
+                }
+                if got > fade * Self.channels {
+                    (playScratch + fade * Self.channels).update(repeating: 0, count: got - fade * Self.channels)
+                }
+                playbackNeedsFadeIn = true
+            } else if playbackNeedsFadeIn, got > 0 {
                 Self.applyEdgeFade(playScratch, frames: got / Self.channels, fadeIn: true)
                 playbackNeedsFadeIn = false
             }
+            playbackWasMuted = muted
+            outputMutedFlag.store(muted, ordering: .relaxed)
             if got < samples {
                 // 언더런: 남은 소리 끝을 페이드아웃해 무음으로 뚝 끊기는 클릭을 줄이고, 다시 채워지면 페이드인
                 Self.applyEdgeFade(playScratch, frames: got / Self.channels, fadeIn: false)
@@ -532,6 +556,22 @@ final class DelayPipeline: @unchecked Sendable {
     // MARK: - Stats (UI 스레드)
 
     /// 피크는 읽으면서 0 으로 리셋한다 (UI 폴링 주기 동안의 최댓값).
+    // MARK: - 이동 중 소리 끄기 (UI 스레드)
+
+    /// 이동 명령을 보내는 동안: 도착 지점을 모르니 일단 계속 끈다
+    func muteOutputUntilFurtherNotice() {
+        muteUntilFrame.store(Int.max, ordering: .relaxed)
+    }
+
+    /// 출력 스트림 이 시각(초)부터 다시 소리를 낸다
+    func muteOutput(untilStreamSeconds seconds: Double) {
+        muteUntilFrame.store(Int(seconds * outputSampleRate), ordering: .relaxed)
+    }
+
+    func unmuteOutput() {
+        muteUntilFrame.store(Int.min, ordering: .relaxed)
+    }
+
     // MARK: - 일시정지 (UI 스레드)
 
     var isPaused: Bool { pauseRequested.load(ordering: .relaxed) }
@@ -559,6 +599,7 @@ final class DelayPipeline: @unchecked Sendable {
             outputPeak: Float(bitPattern: outputPeakBits.exchange(0, ordering: .relaxed)),
             bufferedSeconds: Double(playbackRing.availableToRead / Self.channels) / outputSampleRate,
             isPrimed: primedFlag.load(ordering: .relaxed),
+            isOutputMuted: outputMutedFlag.load(ordering: .relaxed),
             underruns: underrunCount.load(ordering: .relaxed),
             captureOverflows: overflowCount.load(ordering: .relaxed),
             capturedSeconds: Double(capturedFrameCount.load(ordering: .relaxed)) / inputSampleRate,
