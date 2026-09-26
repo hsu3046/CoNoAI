@@ -109,8 +109,7 @@ struct KaraokeScreen: View {
     private var runningStage: some View {
         VStack(spacing: 0) {
             StageHeader(engine: engine, artworks: artworks, controlsHidden: controlsHidden)
-                .padding(.leading, isFullScreen ? 24 : 84) // 제목 표시줄을 숨겨 창 단추(빨강·노랑·초록)가 왼쪽 위에 겹친다
-                .padding(.trailing, 20)
+                .padding(.horizontal, 24) // 음정 바 가장자리와 맞춘다
                 .padding(.top, 10)
 
             Group {
@@ -241,14 +240,12 @@ private struct StageHeader: View {
     var controlsHidden = false
 
     var body: some View {
-        ZStack {
+        // 양옆 요소는 제목 아랫줄 높이에 둔다 — 제목 표시줄을 숨겨 왼쪽 위에 창 단추(빨강·노랑·초록)가 있어서
+        ZStack(alignment: .bottom) {
             HStack(spacing: 10) {
                 sourceChip
                 Spacer()
                 StatusPill(engine: engine)
-                iconButton("arrow.up.left.and.arrow.down.right", help: "전체화면 (⌃⌘F)") {
-                    NSApp.keyWindow?.toggleFullScreen(nil)
-                }
                 SettingsLink {
                     Image(systemName: "gearshape")
                         .font(.system(size: 14, weight: .semibold))
@@ -292,39 +289,22 @@ private struct StageHeader: View {
         LyricsController.supports(bundleID: engine.runningSource?.bundleID) ? "음악 앱에서 노래를 틀어 주세요" : "가사는 음악 앱에서만 나옵니다"
     }
 
+    /// 연결된 앱 (소리를 가져오는 앱)
     private var sourceChip: some View {
         HStack(spacing: 6) {
+            Text("연결된 앱").foregroundStyle(StageTheme.faintInk)
             if let url = engine.runningSource?.bundleURL {
                 Image(nsImage: NSWorkspace.shared.icon(forFile: url.path)).resizable().frame(width: 16, height: 16)
             }
-            Text(modeLabel).font(StageTheme.rounded(12, .medium))
+            Text(engine.runningSource?.name ?? "").foregroundStyle(StageTheme.secondaryInk)
         }
+        .font(StageTheme.rounded(12, .medium))
+        .lineLimit(1)
         .padding(.horizontal, 10)
         .padding(.vertical, 5)
-        .foregroundStyle(StageTheme.secondaryInk)
         .overlay(Capsule().strokeBorder(Color.white.opacity(0.14), lineWidth: 0.5))
     }
 
-    private var modeLabel: String {
-        switch engine.runningMode {
-        case .aiSeparation: "AI 반주"
-        case .centerCancel: "간이 반주"
-        case .passthrough: "원곡 그대로"
-        case nil: ""
-        }
-    }
-
-    private func iconButton(_ symbol: String, help: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Image(systemName: symbol)
-                .font(.system(size: 13, weight: .semibold))
-                .frame(width: 30, height: 30)
-                .background(Circle().fill(Color.white.opacity(0.08)))
-        }
-        .buttonStyle(.plain)
-        .help(help)
-        .accessibilityLabel(help)
-    }
 }
 
 // MARK: - 자주 바뀌는 값 (50 ms 통계) 을 읽는 작은 뷰들 — 화면 전체가 초당 20번 다시 그려지지 않게
@@ -371,7 +351,16 @@ private struct StatusPill: View {
             Text(label).font(StageTheme.rounded(11, .bold))
         }
         .foregroundStyle(color)
-        .help(String(format: "원곡보다 %.1f초 늦게 들립니다 (AI 분리·음정 미리보기 여유)", stats.bufferedSeconds))
+        .help(String(format: "%@ · 원곡보다 %.1f초 늦게 들립니다 (AI 분리·음정 미리보기 여유)", modeLabel, stats.bufferedSeconds))
+    }
+
+    private var modeLabel: String {
+        switch engine.runningMode {
+        case .aiSeparation: "AI 반주"
+        case .centerCancel: "간이 반주"
+        case .passthrough: "원곡 그대로"
+        case nil: ""
+        }
     }
 }
 
