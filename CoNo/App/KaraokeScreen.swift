@@ -268,22 +268,22 @@ private struct StageHeader: View {
                         Image(nsImage: artwork.image)
                             .resizable()
                             .aspectRatio(contentMode: .fill)
-                            .frame(width: 46, height: 46)
-                            .clipShape(RoundedRectangle(cornerRadius: 8))
+                            .frame(width: 58, height: 58)
+                            .clipShape(RoundedRectangle(cornerRadius: 10))
                             .shadow(color: artwork.primary.opacity(0.5), radius: 10)
                             .transition(.opacity)
                     }
                     VStack(alignment: artworks.artwork(for: track?.id) == nil ? .center : .leading, spacing: 2) {
                         Text(track?.title ?? engine.runningSource?.name ?? "")
-                            .font(StageTheme.rounded(24))
+                            .font(StageTheme.rounded(30))
                             .lineLimit(1)
                         Text(track?.artist ?? subtitle)
-                            .font(StageTheme.rounded(14, .medium))
+                            .font(StageTheme.rounded(17, .medium))
                             .foregroundStyle(StageTheme.secondaryInk)
                             .lineLimit(1)
                     }
                 }
-                .frame(maxWidth: 520)
+                .frame(maxWidth: 620)
                 .animation(.easeInOut, value: track?.id)
             }
         }
