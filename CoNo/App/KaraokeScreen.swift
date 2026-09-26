@@ -266,6 +266,7 @@ private struct StageHeader: View {
                 Spacer()
                 StatusPill(engine: engine)
                     .padding(.trailing, 10)
+                ShortcutsButton()
                 SettingsLink {
                     Image(systemName: "gearshape")
                         .font(.system(size: 14, weight: .semibold))
@@ -498,10 +499,19 @@ private struct IdleStage: View {
         VStack(spacing: 22) {
             Spacer()
             VStack(spacing: 8) {
+                // 앱 아이콘의 마이크·링 (배경 투명)
+                if let logo = NSImage(named: "StageLogo") {
+                    Image(nsImage: logo)
+                        .resizable()
+                        .interpolation(.high)
+                        .frame(width: 120, height: 120)
+                        .shadow(color: StageTheme.mint.opacity(0.35), radius: 24)
+                        .accessibilityHidden(true)
+                }
                 Text("CoNo")
                     .font(StageTheme.rounded(72, .heavy))
                     .foregroundStyle(LinearGradient(colors: [StageTheme.sky, StageTheme.mint, StageTheme.pink], startPoint: .leading, endPoint: .trailing))
-                Text("듣던 노래가 그대로 노래방이 됩니다")
+                Text("코인 노래방 No! 집에서 나만의 노래방 즐기기")
                     .font(StageTheme.rounded(17, .medium))
                     .foregroundStyle(StageTheme.secondaryInk)
             }
@@ -519,9 +529,10 @@ private struct IdleStage: View {
                 }
                 .font(StageTheme.rounded(18))
                 .foregroundStyle(StageTheme.night)
-                .padding(.horizontal, 30)
+                .frame(width: Self.controlWidth)
                 .padding(.vertical, 14)
                 .background(Capsule().fill(StageTheme.mint))
+                .contentShape(Capsule())
             }
             .buttonStyle(.plain)
             .disabled(source == nil || engine.isBusy || engine.isModelLoading)
@@ -530,13 +541,16 @@ private struct IdleStage: View {
 
             statusLine
             Spacer()
-            Text("Space 재생·일시정지 · ↑↓ 키 · → 간주 점프 · K 내 키 · 0 원키 · 1 2 3 반주·보컬·원곡 · [ ] 가사 싱크 · ⌘, 설정")
-                .font(StageTheme.rounded(11, .medium))
-                .foregroundStyle(StageTheme.faintInk)
-                .padding(.bottom, 18)
         }
         .padding(.horizontal, 40)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .overlay(alignment: .topTrailing) {
+            ShortcutsButton().padding(.top, 16).padding(.trailing, 24)
+        }
     }
+
+    /// 앱 선택 칸과 시작 버튼의 폭 (같은 폭으로 세워 둔다)
+    static let controlWidth: CGFloat = 300
 
     private var sourcePicker: some View {
         Menu {
@@ -556,11 +570,14 @@ private struct IdleStage: View {
                     Image(systemName: "hifispeaker.2")
                 }
                 Text(source.map { "\($0.name)\($0.isPlaying ? " · 재생 중" : "")" } ?? "음악 앱에서 노래를 틀어 주세요")
-                    .font(StageTheme.rounded(14, .medium))
+                    .font(StageTheme.rounded(15, .medium))
+                    .lineLimit(1)
+                Spacer(minLength: 4)
                 Image(systemName: "chevron.down").font(.system(size: 10, weight: .bold))
             }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 8)
+            .padding(.horizontal, 18)
+            .frame(width: Self.controlWidth)
+            .padding(.vertical, 11)
             .foregroundStyle(StageTheme.ink)
             .glassCapsule()
         }
@@ -583,6 +600,60 @@ private struct IdleStage: View {
             Text("앱 목록을 읽지 못했습니다: \(error)").font(.callout).foregroundStyle(.orange)
         } else {
             Text(" ").font(.callout)
+        }
+    }
+}
+
+// MARK: - 단축키 안내
+
+/// ⌨ 버튼: 누르면 단축키 목록 (메인 창에서만 동작하는 키)
+private struct ShortcutsButton: View {
+    @State private var showing = false
+
+    private static let shortcuts: [(keys: String, action: String)] = [
+        ("Space", "재생 · 일시정지"),
+        ("↑  ↓", "키 반음 올리기 · 내리기"),
+        ("K", "내 키 (내 목소리에 맞추기)"),
+        ("0", "원키"),
+        ("1  2  3", "반주 · 보컬 · 원곡"),
+        ("→", "간주 점프"),
+        ("[  ]", "가사 싱크 늦추기 · 앞당기기"),
+        ("Return", "노래 시작 (시작 화면)"),
+        ("⌘ ,", "설정"),
+        ("⌃ ⌘ F", "전체 화면"),
+    ]
+
+    var body: some View {
+        Button {
+            showing.toggle()
+        } label: {
+            Image(systemName: "keyboard")
+                .font(.system(size: 13, weight: .semibold))
+                .frame(width: 30, height: 30)
+                .background(Circle().fill(Color.white.opacity(0.08)))
+        }
+        .buttonStyle(.plain)
+        .help("단축키")
+        .accessibilityLabel("단축키")
+        .popover(isPresented: $showing, arrowEdge: .bottom) {
+            VStack(alignment: .leading, spacing: 10) {
+                Text("단축키").font(.headline)
+                Grid(alignment: .leading, horizontalSpacing: 16, verticalSpacing: 7) {
+                    ForEach(Self.shortcuts, id: \.keys) { item in
+                        GridRow {
+                            Text(item.keys)
+                                .font(.system(.callout, design: .rounded).weight(.semibold))
+                                .monospaced()
+                                .padding(.horizontal, 7)
+                                .padding(.vertical, 2)
+                                .background(RoundedRectangle(cornerRadius: 5).fill(.quaternary))
+                            Text(item.action).font(.callout)
+                        }
+                    }
+                }
+                Text("노래방 화면이 앞에 있을 때 동작합니다.").font(.caption).foregroundStyle(.secondary)
+            }
+            .padding(16)
         }
     }
 }
