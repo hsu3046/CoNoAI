@@ -43,10 +43,25 @@ actor LRCLIBClient {
         configuration.timeoutIntervalForRequest = 10
         configuration.httpAdditionalHeaders = ["User-Agent": Self.userAgent]
         session = URLSession(configuration: configuration)
-        cacheDirectory = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first?
-            .appendingPathComponent("space.knowai.cono/lyrics-v3", isDirectory: true) // v3: 영상 곡은 길이 조건을 푼 검색 (v2 의 "못 찾음" 을 버린다)
+        cacheDirectory = Self.cacheRoot?
+            .appendingPathComponent("lyrics-v3", isDirectory: true) // v3: 영상 곡은 길이 조건을 푼 검색 (v2 의 "못 찾음" 을 버린다)
         if let cacheDirectory {
             try? FileManager.default.createDirectory(at: cacheDirectory, withIntermediateDirectories: true)
+        }
+    }
+
+    private static var cacheRoot: URL? {
+        FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first?
+            .appendingPathComponent("space.knowai.cono", isDirectory: true)
+    }
+
+    /// 가사 캐시를 모두 지운다 (옛 형식 lyrics-v* 포함). 다음 재생 때 다시 받는다.
+    static func clearCache() {
+        guard let root = cacheRoot,
+              let items = try? FileManager.default.contentsOfDirectory(at: root, includingPropertiesForKeys: nil)
+        else { return }
+        for item in items where item.lastPathComponent.hasPrefix("lyrics") {
+            try? FileManager.default.removeItem(at: item)
         }
     }
 

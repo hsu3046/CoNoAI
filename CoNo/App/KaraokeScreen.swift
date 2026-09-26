@@ -118,14 +118,7 @@ struct KaraokeScreen: View {
 
             Group {
                 if let timeline = engine.pitchTimeline {
-                    PitchBarView(
-                        timeline: timeline,
-                        position: { engine.displayPosition() },
-                        keyShift: engine.keyShift,
-                        showDiagnostics: settings.showPitchDiagnostics,
-                        autoZoom: settings.pitchAutoZoom,
-                        showContour: settings.showPitchContour
-                    )
+                    PitchBarStage(engine: engine, settings: settings, timeline: timeline)
                 } else {
                     VStack(spacing: 8) {
                         Image(systemName: "waveform").font(.system(size: 28)).foregroundStyle(StageTheme.faintInk)
@@ -321,6 +314,62 @@ private struct StageHeader: View {
         SourceChip(engine: engine)
     }
 
+}
+
+/// 음정 바 + 위에 마우스를 올리면 나오는 표시 스위치 (자동 줌 · 원곡 곡선)
+private struct PitchBarStage: View {
+    let engine: KaraokeEngine
+    let settings: AppSettings
+    let timeline: PitchTimeline
+    @State private var hovering = false
+
+    var body: some View {
+        PitchBarView(
+            timeline: timeline,
+            position: { engine.displayPosition() },
+            keyShift: engine.keyShift,
+            showDiagnostics: settings.showPitchDiagnostics,
+            autoZoom: settings.pitchAutoZoom,
+            showContour: settings.showPitchContour
+        )
+        .overlay(alignment: .topTrailing) {
+            if hovering {
+                HStack(spacing: 6) {
+                    toggle(
+                        "자동 줌", symbol: "arrow.up.and.down", isOn: settings.pitchAutoZoom,
+                        help: "음역에 맞춰 세로 범위를 자동으로 넓히고 좁힙니다. 끄면 A2–A5 고정 (높이 감을 잡기 쉬움)"
+                    ) { settings.pitchAutoZoom.toggle() }
+                    toggle(
+                        "원곡 곡선", symbol: "scribble.variable", isOn: settings.showPitchContour,
+                        help: "원곡 가수가 실제로 부른 음정을 분홍 선으로 겹쳐 그립니다"
+                    ) { settings.showPitchContour.toggle() }
+                }
+                .padding(10)
+                .transition(.opacity)
+            }
+        }
+        .onHover { inside in
+            withAnimation(.easeOut(duration: 0.2)) { hovering = inside }
+        }
+    }
+
+    private func toggle(_ title: String, symbol: String, isOn: Bool, help: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 5) {
+                Image(systemName: symbol).font(.system(size: 11, weight: .semibold))
+                Text(title).font(StageTheme.rounded(12, .semibold))
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .foregroundStyle(isOn ? StageTheme.night : StageTheme.secondaryInk)
+            .background(Capsule().fill(isOn ? StageTheme.ink : Color.black.opacity(0.35)))
+            .overlay(Capsule().strokeBorder(Color.white.opacity(isOn ? 0 : 0.12), lineWidth: 1))
+        }
+        .buttonStyle(.plain)
+        .help(help)
+        .accessibilityLabel(title)
+        .accessibilityAddTraits(isOn ? .isSelected : [])
+    }
 }
 
 /// 연결된 앱 칩. 끝의 ⏏ 를 포함해 칩 전체가 "연결 끊기" 버튼이고, 마우스를 올리면 붉게 바뀐다.

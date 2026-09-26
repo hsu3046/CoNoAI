@@ -35,6 +35,13 @@ struct LearnedLyricsDelays {
         return Learned(delay: delay, candidateID: value["candidateID"] as? Int, legacyIndex: value["candidate"] as? Int)
     }
 
+    /// 곡별로 기억한 가사 지연을 모두 지운다
+    func removeAll() {
+        for key in defaults.dictionaryRepresentation().keys where key.hasPrefix(Self.prefix) {
+            defaults.removeObject(forKey: key)
+        }
+    }
+
     func store(delay: Double, candidateID: Int, for track: TrackInfo) {
         defaults.set(["delay": delay, "candidateID": candidateID], forKey: key(for: track))
     }

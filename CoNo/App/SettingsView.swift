@@ -1,8 +1,10 @@
 // CoNo — Copyright (C) 2026 KnowAI (https://knowai.space) — GPL-3.0-or-later
 //
-// 설정 창 (⌘,): 일반 · 소리 · AI 분리 · 싱크 · 진단.
-// 메인 화면에서 뺀 조절·진단은 모두 여기에 있다. 실행 중에 못 바꾸는 항목은 잠그고 이유를 적는다.
+// 설정 창 (⌘,): 일반 · 소리 · 가사 · AI 엔진 · 진단 · 정보.
+// 노래 부르는 중에 쓰는 조절(키·반주/보컬·가사 싱크·음정 바 표시)은 메인 화면에, 나머지는 여기.
+// 실행 중에 못 바꾸는 항목은 잠그고 이유를 적는다.
 
+import AppKit
 import SwiftUI
 
 struct SettingsView: View {
@@ -16,15 +18,17 @@ struct SettingsView: View {
                 .tabItem { Label("일반", systemImage: "gearshape") }
             SoundSettings(engine: engine, settings: settings)
                 .tabItem { Label("소리", systemImage: "speaker.wave.2") }
+            LyricsSettings(engine: engine, settings: settings)
+                .tabItem { Label("가사", systemImage: "text.quote") }
             SeparationSettingsTab(engine: engine, settings: settings)
-                .tabItem { Label("AI 분리", systemImage: "cpu") }
-            SyncSettings(engine: engine, settings: settings)
-                .tabItem { Label("싱크", systemImage: "metronome") }
+                .tabItem { Label("AI 엔진", systemImage: "cpu") }
             DiagnosticsSettings(engine: engine, settings: settings)
                 .tabItem { Label("진단", systemImage: "stethoscope") }
+            AboutSettings()
+                .tabItem { Label("정보", systemImage: "info.circle") }
         }
-        .frame(width: 560)
-        .frame(minHeight: 420)
+        .frame(width: 580)
+        .frame(minHeight: 460)
     }
 }
 
@@ -34,10 +38,20 @@ private struct LockedWhileRunning: View {
 
     var body: some View {
         if engine.isBusy {
-            Label("노래방이 켜져 있는 동안은 바꿀 수 없습니다. 끝낸 뒤 다시 시작하면 반영됩니다.", systemImage: "lock")
+            Label("노래방이 켜져 있는 동안은 바꿀 수 없어요. 끝낸 뒤 다시 시작하면 반영됩니다.", systemImage: "lock")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
+    }
+}
+
+/// 설명 한 줄 (회색 작은 글씨)
+private struct Caption: View {
+    let text: String
+    init(_ text: String) { self.text = text }
+
+    var body: some View {
+        Text(text).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
     }
 }
 
@@ -50,29 +64,27 @@ private struct GeneralSettings: View {
 
     var body: some View {
         Form {
-            Section {
-                Picker("캡처할 앱", selection: Binding(get: { settings.sourcePreference }, set: { settings.sourcePreference = $0 })) {
-                    Text("자동 (음악 앱 우선, 없으면 재생 중인 앱)").tag(AppSettings.autoSource)
+            Section("연결") {
+                Picker("연결할 앱", selection: Binding(get: { settings.sourcePreference }, set: { settings.sourcePreference = $0 })) {
+                    Text("자동 — 음악 앱 우선, 없으면 지금 재생 중인 앱").tag(AppSettings.autoSource)
                     ForEach(catalog.sources.filter { $0.kind != .systemWide && $0.bundleID != nil }) { app in
                         Text(app.isPlaying ? "\(app.name) · 재생 중" : app.name).tag(app.bundleID ?? "")
                     }
                     if ![AppSettings.autoSource, AppSettings.systemSource].contains(settings.sourcePreference),
                        !catalog.sources.contains(where: { $0.bundleID == settings.sourcePreference }) {
-                        Text("\(settings.sourcePreference) (실행 중 아님)").tag(settings.sourcePreference)
+                        Text("\(settings.sourcePreference) (지금 실행 중 아님)").tag(settings.sourcePreference)
                     }
-                    Text("시스템 전체 (CoNo 제외)").tag(AppSettings.systemSource)
+                    Text("시스템 전체 — 곡 정보·가사·재생 제어 없음").tag(AppSettings.systemSource)
                 }
-                Toggle("원본 소리 끄기", isOn: Binding(get: { settings.muteOriginal }, set: { settings.muteOriginal = $0 }))
-                Text("끄지 않으면 원곡과 CoNo 반주가 겹쳐 들립니다 (에코 확인용).").font(.caption).foregroundStyle(.secondary)
+                Toggle("원곡 소리 끄기", isOn: Binding(get: { settings.muteOriginal }, set: { settings.muteOriginal = $0 }))
+                Caption("끄면 원곡과 CoNo 소리가 겹쳐 들려요. 보통은 켜 두세요.")
                 LockedWhileRunning(engine: engine)
             }
             .disabled(engine.isBusy)
 
             Section {
-                Toggle("음악 앱에서 노래가 나오면 바로 시작", isOn: Binding(get: { settings.autoStart }, set: { settings.autoStart = $0 }))
-                Text("CoNo 를 열어 둔 채 음악 앱에서 재생하면 자동으로 노래방이 켜집니다. 직접 끝낸 뒤에는 다시 켜지지 않습니다.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                Toggle("노래가 나오면 자동으로 시작", isOn: Binding(get: { settings.autoStart }, set: { settings.autoStart = $0 }))
+                Caption("CoNo 를 열어 둔 채 음악 앱(또는 위에서 고른 앱)에서 재생하면 바로 노래방이 켜집니다. 직접 끝낸 뒤에는 그 곡이 멈출 때까지 다시 켜지지 않아요.")
             }
 
             Section("내 목소리") {
@@ -81,32 +93,53 @@ private struct GeneralSettings: View {
                     Text("여성").tag(VoiceType.female)
                 }
                 .pickerStyle(.segmented)
-                Text("도크의 '내 키' 를 누르면 원곡 음역을 재서 이 목소리가 편한 높이로 키를 옮깁니다. 원곡과 성별이 달라도 옥타브까지 고려합니다.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                Caption("'내 키' 를 누르면 원곡 보컬의 음역을 재서 이 목소리가 편한 높이로 키를 옮깁니다. 원곡 가수와 성별이 달라도 옥타브까지 고려해요.")
             }
 
-            Section("음정 바") {
-                Toggle("음역에 맞춰 자동 확대·축소", isOn: Binding(get: { settings.pitchAutoZoom }, set: { settings.pitchAutoZoom = $0 }))
-                Text("끄면 A2–A5 범위로 고정합니다. 음 높이의 위치가 늘 같아 감을 잡기 쉽지만 음표가 얇아집니다.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                Toggle("원곡 음정 곡선 표시", isOn: Binding(get: { settings.showPitchContour }, set: { settings.showPitchContour = $0 }))
-                Text("음표 막대 위에 원곡 가수가 실제로 부른 음정(분홍 선)을 겹쳐 그립니다.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-
-            Section("가사와 재생 제어") {
-                Text("가사·곡 정보는 지금 음악 앱(Apple Music)에서만 나옵니다. 처음 쓸 때 '자동화' 권한을 허용해 주세요.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                Text("다른 앱(브라우저의 YouTube Music 등)은 ⏯ 미디어 키로 멈추고 이어 틉니다. 처음 한 번 '손쉬운 사용' 권한이 필요하고, macOS 가 '지금 재생 중' 으로 보는 앱에 전달됩니다.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+            Section("권한") {
+                PermissionRow(
+                    title: "화면 및 시스템 오디오 녹음",
+                    detail: "연결된 앱의 소리를 가져옵니다. 없으면 무음만 들어와요. (필수)",
+                    pane: "Privacy_ScreenCapture"
+                )
+                PermissionRow(
+                    title: "자동화 › 음악",
+                    detail: "Apple Music 의 곡 정보·재생 위치를 읽고 재생·일시정지·이동을 합니다.",
+                    pane: "Privacy_Automation"
+                )
+                PermissionRow(
+                    title: "손쉬운 사용",
+                    detail: "다른 앱을 멈출 때 예비 수단(⏯ 미디어 키)으로만 씁니다. 보통은 필요 없어요.",
+                    pane: "Privacy_Accessibility"
+                )
             }
         }
         .formStyle(.grouped)
+    }
+}
+
+/// 권한 한 줄: 이름 · 쓰임 · 시스템 설정 열기
+private struct PermissionRow: View {
+    let title: String
+    let detail: String
+    /// 시스템 설정 › 개인정보 보호 및 보안 의 패널 이름
+    let pane: String
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                Caption(detail)
+            }
+            Spacer()
+            Button("열기") {
+                if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?\(pane)") {
+                    NSWorkspace.shared.open(url)
+                }
+            }
+            .controlSize(.small)
+            .help("시스템 설정에서 \(title) 열기")
+        }
     }
 }
 
@@ -119,12 +152,13 @@ private struct SoundSettings: View {
     var body: some View {
         Form {
             Section {
-                Picker("처리 방식", selection: Binding(get: { settings.mode }, set: { settings.mode = $0 })) {
+                Picker("반주 만들기", selection: Binding(get: { settings.mode }, set: { settings.mode = $0 })) {
                     Text("AI 반주").tag(ProcessingMode.aiSeparation)
-                    Text("간이 반주 (L−R)").tag(ProcessingMode.centerCancel)
+                    Text("간이 반주").tag(ProcessingMode.centerCancel)
                     Text("원곡 그대로").tag(ProcessingMode.passthrough)
                 }
                 .pickerStyle(.segmented)
+                Caption("AI 반주: 목소리를 AI 로 지우고 음정 바·내 키·가사 자동 싱크가 동작합니다. 간이 반주: 가운데 소리를 빼는 옛 방식(AI 없음). 원곡 그대로: 비교·점검용.")
 
                 LabeledContent("지연") {
                     HStack {
@@ -132,14 +166,12 @@ private struct SoundSettings: View {
                         Text(String(format: "%.1f초", settings.delaySeconds)).monospacedDigit().frame(width: 44, alignment: .trailing)
                     }
                 }
-                Text("AI 가 목소리를 지우고 다음 음정을 미리 보여 줄 여유입니다. 원곡보다 이만큼 늦게 들립니다.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                Caption("CoNo 는 원곡보다 이만큼 늦게 들려줍니다. 그 사이 AI 가 목소리를 지우고 다음 음정을 미리 보여 줘요. 짧을수록 이동·재개가 빠르지만 너무 짧으면 소리가 끊깁니다.")
                 if settings.mode == .aiSeparation {
                     let recommended = engine.recommendedDelay(for: settings.separation)
                     if settings.delaySeconds < recommended {
                         HStack {
-                            Text(String(format: "권장 %.1f초보다 짧아 소리가 끊길 수 있습니다", recommended))
+                            Text(String(format: "이 Mac 의 권장값 %.1f초보다 짧아 소리가 끊길 수 있어요", recommended))
                                 .font(.caption)
                                 .foregroundStyle(.orange)
                             Button("권장값으로") { settings.delaySeconds = min(8, (recommended * 2).rounded(.up) / 2) }
@@ -151,8 +183,8 @@ private struct SoundSettings: View {
             }
             .disabled(engine.isBusy)
 
-            Section("AI 반주") {
-                LabeledContent("가이드 보컬 기본값") {
+            Section("가이드 보컬") {
+                LabeledContent("시작할 때 양") {
                     HStack {
                         Slider(value: Binding(get: { settings.guideVocalLevel }, set: { value in
                             settings.guideVocalLevel = value
@@ -161,13 +193,14 @@ private struct SoundSettings: View {
                         Text(String(format: "%.0f%%", settings.guideVocalLevel * 100)).monospacedDigit().frame(width: 44, alignment: .trailing)
                     }
                 }
+                Caption("반주에 원곡 목소리를 살짝 섞어 부를 줄을 들려줍니다. 노래하는 중에는 도크의 마이크 슬라이더로 바꿔요.")
             }
         }
         .formStyle(.grouped)
     }
 }
 
-// MARK: - AI 분리
+// MARK: - AI 엔진
 
 private struct SeparationSettingsTab: View {
     let engine: KaraokeEngine
@@ -176,7 +209,7 @@ private struct SeparationSettingsTab: View {
     var body: some View {
         Form {
             Section {
-                Picker("추론", selection: Binding(get: { settings.backend }, set: { settings.backend = $0 })) {
+                Picker("계산 장치", selection: Binding(get: { settings.backend }, set: { settings.backend = $0 })) {
                     ForEach(InferenceBackend.allCases) { Text($0.label).tag($0) }
                 }
                 LabeledContent("갱신 간격") {
@@ -185,21 +218,22 @@ private struct SeparationSettingsTab: View {
                         Text(String(format: "%.2f초", settings.stepSeconds)).monospacedDigit().frame(width: 52, alignment: .trailing)
                     }
                 }
-                .help("몇 초마다 새로 분리할지. 추론 1회 시간보다 길어야 끊기지 않습니다.")
-                LabeledContent("뒤 문맥") {
+                .help("몇 초마다 새로 분리할지. 한 번 계산하는 시간보다 길어야 끊기지 않습니다.")
+                LabeledContent("미리 듣는 길이") {
                     HStack {
                         Slider(value: Binding(get: { settings.rightContextSeconds }, set: { settings.rightContextSeconds = $0 }), in: 0.25...2.5, step: 0.25)
                         Text(String(format: "%.2f초", settings.rightContextSeconds)).monospacedDigit().frame(width: 52, alignment: .trailing)
                     }
                 }
-                .help("모델에게 보여줄 '앞으로 나올 소리' 길이. 길수록 품질이 좋아지고 지연이 늘어납니다.")
+                .help("AI 에게 보여 줄 '앞으로 나올 소리' 길이. 길수록 목소리가 깨끗이 지워지지만 지연이 늘어납니다.")
+                Caption("대부분은 기본값(자동 · 1초 · 1초)이 가장 좋습니다. 소리가 끊기면 갱신 간격을 늘리거나 소리 탭의 지연을 권장값으로 맞춰 보세요.")
                 LockedWhileRunning(engine: engine)
             }
             .disabled(engine.isBusy)
 
-            Section("모델") {
+            Section("AI 모델") {
                 HStack(alignment: .firstTextBaseline) {
-                    Button("모델 준비 · 속도 측정") {
+                    Button("불러오고 속도 재기") {
                         Task { await engine.prepareModel(backend: settings.backend) }
                     }
                     .disabled(engine.isModelLoading || engine.isBusy)
@@ -219,11 +253,11 @@ private struct ModelStateLabel: View {
     var body: some View {
         switch engine.modelState {
         case .notLoaded:
-            Text("노래방을 시작하면 자동으로 불러옵니다.").font(.caption).foregroundStyle(.secondary)
+            Text("노래방을 시작하면 자동으로 불러옵니다. 미리 불러 두면 첫 시작이 빨라져요.").font(.caption).foregroundStyle(.secondary)
         case let .loading(backend):
             HStack(spacing: 6) {
                 ProgressView().controlSize(.small)
-                Text("\(backend.label) 불러오는 중… (CoreML 첫 로드는 컴파일로 오래 걸릴 수 있음)").font(.caption)
+                Text("\(backend.label) 불러오는 중… (처음 한 번은 준비에 수십 초 걸릴 수 있어요)").font(.caption)
             }
         case let .ready(benchmark):
             let ratio = benchmark.steadyInferenceMilliseconds / (stepSeconds * 1000)
@@ -255,28 +289,16 @@ private struct ModelStateLabel: View {
     }
 }
 
-// MARK: - 싱크
+// MARK: - 가사
 
-private struct SyncSettings: View {
+private struct LyricsSettings: View {
     let engine: KaraokeEngine
     let settings: AppSettings
+    @State private var cleared = false
 
     var body: some View {
         Form {
-            Section("화면") {
-                LabeledContent("화면 싱크") {
-                    HStack {
-                        Slider(value: Binding(get: { settings.displayLatencyMilliseconds }, set: { settings.displayLatencyMilliseconds = $0 }), in: -300...500, step: 10)
-                            .accessibilityLabel("화면 싱크")
-                        Text(String(format: "%+.0f ms", settings.displayLatencyMilliseconds)).monospacedDigit().frame(width: 64, alignment: .trailing)
-                    }
-                }
-                Text("음정 바·가사가 소리보다 빠르면 +로 늦춥니다. 블루투스 이어폰은 보통 +150~250 ms.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-
-            Section("가사") {
+            Section("싱크") {
                 LabeledContent("가사 미세조정") {
                     HStack {
                         Slider(value: Binding(get: { engine.lyrics.offsetSeconds }, set: { engine.lyrics.offsetSeconds = $0 }),
@@ -285,10 +307,32 @@ private struct SyncSettings: View {
                         Text(String(format: "%+.2f초", engine.lyrics.offsetSeconds)).monospacedDigit().frame(width: 64, alignment: .trailing)
                     }
                 }
-                Text("자동 싱크 위에 더합니다. 가사가 노래보다 늦으면 +, 빠르면 −. 메인 화면에서 [ ] 키로도 조절합니다.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                Caption("자동 싱크 위에 더하는 값이에요. 가사가 노래보다 늦으면 +, 빠르면 −. 노래하는 중에는 가사 위에 마우스를 올리거나 [ ] 키로 바꿉니다.")
                 AutoSyncInfoView(controller: engine.lyrics)
+
+                LabeledContent("화면 싱크") {
+                    HStack {
+                        Slider(value: Binding(get: { settings.displayLatencyMilliseconds }, set: { settings.displayLatencyMilliseconds = $0 }), in: -300...500, step: 10)
+                            .accessibilityLabel("화면 싱크")
+                        Text(String(format: "%+.0f ms", settings.displayLatencyMilliseconds)).monospacedDigit().frame(width: 64, alignment: .trailing)
+                    }
+                }
+                Caption("음정 바와 가사가 소리보다 앞서 보이면 + 로 늦춥니다. 블루투스 이어폰·스피커는 보통 +150~250 ms.")
+            }
+
+            Section("가사 출처") {
+                Caption("시간이 맞춰진 가사는 LRCLIB(커뮤니티 가사 DB)에서 찾습니다. 곡 정보는 음악 앱은 직접, 그 밖의 앱(브라우저의 YouTube 등)은 macOS '지금 재생 중' 으로 받아요. 영상 제목은 '가수 - 곡' 형태로 다듬어 찾습니다.")
+                HStack {
+                    Button("가사 캐시·기억한 싱크 지우기") {
+                        LRCLIBClient.clearCache()
+                        LearnedLyricsDelays().removeAll()
+                        cleared = true
+                    }
+                    if cleared {
+                        Text("지웠습니다. 다음 곡부터 새로 찾아요.").font(.caption).foregroundStyle(.secondary)
+                    }
+                }
+                Caption("가사가 엉뚱하거나 계속 어긋날 때 써 보세요. 곡마다 맞춰 둔 가사 싱크도 함께 지워집니다.")
             }
         }
         .formStyle(.grouped)
@@ -332,6 +376,7 @@ private struct DiagnosticsSettings: View {
         Form {
             Section {
                 Toggle("음정 바에 진단 숫자 표시", isOn: Binding(get: { settings.showPitchDiagnostics }, set: { settings.showPitchDiagnostics = $0 }))
+                Caption("재생 위치·분석 여유·프레임 수를 음정 바 왼쪽 위에 보여 줍니다.")
                 HStack {
                     Button("최근 30초 녹음 저장") { engine.saveDiagnosticRecording() }
                         .disabled(!engine.isRunning)
@@ -339,9 +384,7 @@ private struct DiagnosticsSettings: View {
                         Text(message).font(.caption).foregroundStyle(.secondary).textSelection(.enabled).lineLimit(1)
                     }
                 }
-                Text("틱 소리가 들린 직후 누르세요. CoNo 가 받은 소리와 내보낸 소리를 ~/Downloads 에 각각 저장합니다.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                Caption("'틱' 하는 잡음이 들린 직후 누르세요. CoNo 가 받은 소리와 내보낸 소리를 다운로드 폴더에 각각 저장합니다. 문제를 알려 주실 때 함께 보내 주시면 원인을 찾는 데 도움이 돼요.")
             }
 
             if engine.isRunning {
@@ -350,7 +393,7 @@ private struct DiagnosticsSettings: View {
                 }
             } else {
                 Section("모니터") {
-                    Text("노래방이 켜져 있을 때 버퍼·끊김·오디오 장치·추론 시간을 보여 줍니다.").font(.caption).foregroundStyle(.secondary)
+                    Caption("노래방이 켜져 있을 때 버퍼·끊김·오디오 장치·AI 계산 시간을 보여 줍니다.")
                 }
             }
         }
@@ -388,7 +431,7 @@ private struct MonitorView: View {
                 if engine.runningMode == .aiSeparation {
                     let inference = engine.inferenceStats
                     GridRow {
-                        Text("추론").foregroundStyle(.secondary)
+                        Text("AI 계산").foregroundStyle(.secondary)
                         Text(String(format: "최근 %.0f · 평균 %.0f · 최대 %.0f ms (%d회)",
                                     inference.lastMilliseconds, inference.averageMilliseconds,
                                     inference.maxMilliseconds, inference.count))
@@ -463,3 +506,44 @@ private struct LevelBar: View {
         }
     }
 }
+
+// MARK: - 정보
+
+private struct AboutSettings: View {
+    private var version: String {
+        let info = Bundle.main.infoDictionary
+        let short = info?["CFBundleShortVersionString"] as? String ?? "?"
+        let build = info?["CFBundleVersion"] as? String ?? "?"
+        return "\(short) (\(build))"
+    }
+
+    var body: some View {
+        Form {
+            Section {
+                HStack(spacing: 14) {
+                    Image(nsImage: NSApp.applicationIconImage).resizable().frame(width: 56, height: 56)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("CoNo").font(.title2.bold())
+                        Text("듣던 노래가 그대로 노래방이 됩니다").foregroundStyle(.secondary)
+                        Text("버전 \(version)").font(.caption).foregroundStyle(.secondary).monospacedDigit()
+                    }
+                }
+                .padding(.vertical, 4)
+            }
+
+            Section("만든 곳") {
+                LabeledContent("KnowAI") { Link("knowai.space", destination: URL(string: "https://knowai.space")!) }
+                LabeledContent("소스 코드") { Link("github.com/hsu3046/CoNoAI", destination: URL(string: "https://github.com/hsu3046/CoNoAI")!) }
+                LabeledContent("라이선스") { Text("GNU GPL v3") }
+            }
+
+            Section("함께 쓰는 것") {
+                Caption("목소리 분리: UVR MDX-Net Karaoke 2 · 음정 검출: SwiftF0 · 추론: ONNX Runtime · 가사: LRCLIB · 지금 재생 중: mediaremote-adapter")
+                Link("오픈소스 고지 보기", destination: URL(string: "https://github.com/hsu3046/CoNoAI/blob/main/THIRD_PARTY_NOTICES.md")!)
+                Caption("소리는 이 Mac 안에서만 처리되고 밖으로 보내지 않아요 (진단 녹음은 직접 저장할 때만 다운로드 폴더에). 인터넷으로는 가사만 찾습니다.")
+            }
+        }
+        .formStyle(.grouped)
+    }
+}
+
