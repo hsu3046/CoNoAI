@@ -124,11 +124,12 @@ CoNoAI is an early preview.
 - [x] Lyrics, pitch bar and playback control for browsers and other music apps
 - [x] Lyrics for music videos and live versions (title cleanup, wide auto sync)
 - [x] "My key", guide vocal, pause/seek, interlude skip
-- [ ] Microphone scoring with an octave-tolerant mode and a strict "one miss and you're out" mode
+- [x] More lyric sources: NetEase, AMLL TTML DB and optional Apple Music syllable lyrics
+- [x] Signed and notarized release build
+- [ ] Live "am I on pitch?" view on the pitch bar and microphone scoring — works with speakers, not just headphones
 - [ ] Find and fix the intermittent click
 - [ ] Optional forced-alignment model for word-perfect lyric timing
 - [ ] Follow output device changes without stopping
-- [ ] Signed and notarized release build
 
 ---
 
