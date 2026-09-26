@@ -14,6 +14,8 @@ enum StageTheme {
     static let sky = Color(red: 0.36, green: 0.78, blue: 1.0)
     /// 원곡 가수의 목소리·재생선
     static let pink = Color(red: 1.0, green: 0.56, blue: 0.69)
+    /// 노래방 끝내기 (연결 해제)
+    static let stopRed = Color(red: 1.0, green: 0.42, blue: 0.42)
     static let night = Color(red: 0.045, green: 0.05, blue: 0.10)
     static let dusk = Color(red: 0.09, green: 0.05, blue: 0.16)
 

@@ -11,7 +11,7 @@ struct CoNoApp: App {
     var body: some Scene {
         Window("CoNo", id: "main") {
             KaraokeScreen(engine: engine, catalog: catalog, settings: settings)
-                .frame(minWidth: 940, minHeight: 600)
+                .frame(minWidth: 1040, minHeight: 600)
                 .preferredColorScheme(.dark)
         }
         .windowStyle(.hiddenTitleBar)

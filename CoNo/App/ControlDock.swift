@@ -12,7 +12,7 @@ struct ControlDock: View {
     private var isAIMode: Bool { engine.runningMode == .aiSeparation }
 
     var body: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: 18) {
             playButton
             divider
             keyStepper
@@ -29,7 +29,8 @@ struct ControlDock: View {
             divider
             stopButton
         }
-        .padding(.horizontal, 14)
+        .padding(.leading, 12)
+        .padding(.trailing, 10)
         .padding(.vertical, 10)
         .glassCapsule()
         .buttonStyle(.plain)
@@ -37,7 +38,7 @@ struct ControlDock: View {
     }
 
     private var divider: some View {
-        Rectangle().fill(Color.white.opacity(0.12)).frame(width: 0.5, height: 28)
+        Rectangle().fill(Color.white.opacity(0.12)).frame(width: 0.5, height: 28).padding(.horizontal, 2)
     }
 
     // MARK: 재생
@@ -197,16 +198,24 @@ struct ControlDock: View {
 
     // MARK: 끝내기
 
+    /// 곡 재생·정지와 헷갈리지 않게: 전원 아이콘 + 글자 + 붉은 색 (연결을 끊고 노래방을 닫는 동작)
     private var stopButton: some View {
         Button {
             Task { await engine.finish() }
         } label: {
-            Image(systemName: "stop.fill")
-                .font(.system(size: 12, weight: .bold))
-                .frame(width: 32, height: 32)
-                .background(Circle().fill(Color.white.opacity(0.1)))
+            HStack(spacing: 5) {
+                Image(systemName: "power")
+                    .font(.system(size: 12, weight: .bold))
+                Text("끝내기")
+                    .font(StageTheme.rounded(12, .semibold))
+            }
+            .foregroundStyle(StageTheme.stopRed)
+            .padding(.horizontal, 12)
+            .frame(height: 32)
+            .background(Capsule().fill(StageTheme.stopRed.opacity(0.14)))
+            .overlay(Capsule().strokeBorder(StageTheme.stopRed.opacity(0.35), lineWidth: 0.5))
         }
-        .help("노래방 끝내기 (원곡도 함께 멈춥니다)")
+        .help("노래방 끝내기 — 연결된 앱과의 연결을 끊고 원곡도 멈춥니다")
         .accessibilityLabel("노래방 끝내기")
     }
 }
