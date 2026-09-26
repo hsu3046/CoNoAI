@@ -1,4 +1,4 @@
-// CoNo — Copyright (C) 2026 KnowAI (https://knowai.space) — GPL-3.0-or-later
+// CoNo — Copyright (C) 2026 AIB Inc. (https://www.aib.vote) — GPL-3.0-or-later
 //
 // 프로세스 전체에서 하나만 쓰는 ONNX Runtime 환경 (여러 모델이 공유).
 

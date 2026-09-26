@@ -1,4 +1,4 @@
-// CoNo — Copyright (C) 2026 KnowAI (https://knowai.space) — GPL-3.0-or-later
+// CoNo — Copyright (C) 2026 AIB Inc. (https://www.aib.vote) — GPL-3.0-or-later
 //
 // 하단 도크: 재생·일시정지 | 키 ♭/♯ | 원키·내 키 | 반주·보컬·원곡 (+ 가이드 보컬). 끝내기는 헤더의 연결된 앱 칩.
 // 노래방 리모컨처럼 큰 버튼 몇 개로 끝나게 한다. 단축키는 KaraokeScreen 이 받는다.

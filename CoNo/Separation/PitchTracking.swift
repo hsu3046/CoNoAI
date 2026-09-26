@@ -1,4 +1,4 @@
-// CoNo — Copyright (C) 2026 KnowAI (https://knowai.space) — GPL-3.0-or-later
+// CoNo — Copyright (C) 2026 AIB Inc. (https://www.aib.vote) — GPL-3.0-or-later
 //
 // 분리된 보컬 → (16 kHz 모노) → SwiftF0 스트리밍 → PitchTimeline.
 //

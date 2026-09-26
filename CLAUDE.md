@@ -3,6 +3,10 @@
 스트리밍 앱 소리를 가로채 홈 노래방으로 바꾸는 macOS 네이티브 앱 (Swift 6 / SwiftUI / Core Audio).
 구조는 docs/ARCHITECTURE.md, 결정 근거는 docs/DECISIONS.md.
 
+## 저작권
+- 저작권자·만든 곳은 **AIB Inc. (https://www.aib.vote)** — 전역 기본값(KnowAI)이 아니다. 새 파일 머리 주석: `// CoNo — Copyright (C) 2026 AIB Inc. (https://www.aib.vote) — GPL-3.0-or-later`. 라이선스는 GPL v3.
+- 내부 식별자 `space.knowai.cono`(번들 ID·UserDefaults 접두어·캐시 폴더)는 바꾸지 않는다 — 바꾸면 사용자가 허용한 권한·설정이 모두 초기화된다.
+
 ## 빌드
 - `project.yml` 이 원본. `CoNo.xcodeproj` 는 `xcodegen generate` 생성물 (커밋 금지). 빌드 설정은 project.yml 에서만 바꾼다.
 

@@ -1,4 +1,4 @@
-// CoNo — Copyright (C) 2026 KnowAI (https://knowai.space) — GPL-3.0-or-later
+// CoNo — Copyright (C) 2026 AIB Inc. (https://www.aib.vote) — GPL-3.0-or-later
 //
 // 프레임 단위 음정 곡선 → 노래방 음정 바용 음표(반음 단위 막대).
 //   1) 신뢰도 ≥ 0.5 인 프레임만 유성음 → MIDI 음높이(실수)

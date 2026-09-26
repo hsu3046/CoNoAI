@@ -1,4 +1,4 @@
-// CoNo — Copyright (C) 2026 KnowAI (https://knowai.space) — GPL-3.0-or-later
+// CoNo — Copyright (C) 2026 AIB Inc. (https://www.aib.vote) — GPL-3.0-or-later
 //
 // 곡별 앨범 아트와 거기서 뽑은 무대 조명 색. 곡이 바뀌면 한 번 가져와 곡 ID 로 기억한다.
 // (지금 캡처되는 곡 기준으로 미리 가져와 두고, 화면은 "들리는 곡" 의 것을 쓴다)

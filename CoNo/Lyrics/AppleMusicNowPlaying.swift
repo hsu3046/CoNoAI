@@ -1,4 +1,4 @@
-// CoNo — Copyright (C) 2026 KnowAI (https://knowai.space) — GPL-3.0-or-later
+// CoNo — Copyright (C) 2026 AIB Inc. (https://www.aib.vote) — GPL-3.0-or-later
 //
 // Apple Music 앱의 현재 곡·재생 위치를 공식 스크립팅(AppleScript)으로 읽는다.
 // (macOS 15.4+ 는 서드파티의 MediaRemote "지금 재생 중" 조회를 막았다 — docs/DECISIONS.md)

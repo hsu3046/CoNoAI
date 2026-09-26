@@ -1,4 +1,4 @@
-// CoNo — Copyright (C) 2026 KnowAI (https://knowai.space) — GPL-3.0-or-later
+// CoNo — Copyright (C) 2026 AIB Inc. (https://www.aib.vote) — GPL-3.0-or-later
 //
 // 메인 화면과 설정 창이 함께 쓰는 사용자 설정 (UserDefaults 에 저장).
 // 실행 중인 엔진 값(키·가이드 보컬 등)은 엔진이 원본이고, 여기는 "다음 시작 때 쓸 값"과 기본값이다.

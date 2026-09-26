@@ -1,4 +1,4 @@
-// CoNo — Copyright (C) 2026 KnowAI (https://knowai.space) — GPL-3.0-or-later
+// CoNo — Copyright (C) 2026 AIB Inc. (https://www.aib.vote) — GPL-3.0-or-later
 //
 // 진단 녹음: 처리기에 들어간 소리(입력, 탭 레이트)와 나온 소리(출력, 장치 레이트)를 최근 N초씩 들고 있다가
 // 요청하면 WAV 로 저장한다. 틱 소리가 "원본에 이미 있는지 / CoNo 처리에서 생기는지 / 출력 이후인지" 를 가르기 위함.

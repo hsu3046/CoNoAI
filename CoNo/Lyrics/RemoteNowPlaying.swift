@@ -1,4 +1,4 @@
-// CoNo — Copyright (C) 2026 KnowAI (https://knowai.space) — GPL-3.0-or-later
+// CoNo — Copyright (C) 2026 AIB Inc. (https://www.aib.vote) — GPL-3.0-or-later
 //
 // 음악 앱이 아닌 앱(브라우저의 YouTube 등)의 곡 정보·재생 위치. macOS "지금 재생 중" 을
 // mediaremote-adapter `stream` (오래 사는 perl 프로세스 하나) 으로 받아, 연결된 앱의 것만 쓴다.

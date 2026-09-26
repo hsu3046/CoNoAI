@@ -1,4 +1,4 @@
-// CoNo — Copyright (C) 2026 KnowAI (https://knowai.space) — GPL-3.0-or-later
+// CoNo — Copyright (C) 2026 AIB Inc. (https://www.aib.vote) — GPL-3.0-or-later
 //
 // 설정 창 (⌘,): 일반 · 소리 · 가사 · AI 엔진 · 진단 · 정보.
 // 노래 부르는 중에 쓰는 조절(키·반주/보컬·가사 싱크·음정 바 표시)은 메인 화면에, 나머지는 여기.

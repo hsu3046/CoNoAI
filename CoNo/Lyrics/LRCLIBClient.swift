@@ -1,4 +1,4 @@
-// CoNo — Copyright (C) 2026 KnowAI (https://knowai.space) — GPL-3.0-or-later
+// CoNo — Copyright (C) 2026 AIB Inc. (https://www.aib.vote) — GPL-3.0-or-later
 //
 // LRCLIB (https://lrclib.net, 무료·API 키 없음) 싱크 가사 조회.
 // 실측(2026-09-25, 12곡)에서 본 성질:
@@ -36,7 +36,7 @@ actor LRCLIBClient {
     /// 못 찾았거나 일반 가사만 있던 결과를 다시 묻기까지의 시간 (싱크 가사가 새로 등록될 수 있으므로)
     private let incompleteResultTTL: TimeInterval = 24 * 60 * 60
     private static let baseURL = URL(string: "https://lrclib.net/api")!
-    private static let userAgent = "CoNo/0.1 (https://knowai.space)"
+    private static let userAgent = "CoNo/0.1 (https://www.aib.vote)"
 
     init() {
         let configuration = URLSessionConfiguration.ephemeral

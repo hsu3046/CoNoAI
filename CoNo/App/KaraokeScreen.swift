@@ -1,4 +1,4 @@
-// CoNo — Copyright (C) 2026 KnowAI (https://knowai.space) — GPL-3.0-or-later
+// CoNo — Copyright (C) 2026 AIB Inc. (https://www.aib.vote) — GPL-3.0-or-later
 //
 // 메인 화면 = 노래방 무대. 노래 부를 때 필요한 것만: 곡 제목·가수, 음정 바, 가사, 재생·키 도크.
 // 나머지(소스·처리 방식·지연·AI 설정·싱크·진단)는 설정 창(⌘,)에 있다.

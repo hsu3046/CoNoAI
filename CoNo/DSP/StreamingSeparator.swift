@@ -1,4 +1,4 @@
-// CoNo — Copyright (C) 2026 KnowAI (https://knowai.space) — GPL-3.0-or-later
+// CoNo — Copyright (C) 2026 AIB Inc. (https://www.aib.vote) — GPL-3.0-or-later
 //
 // 고정 길이 창만 받는 분리 모델을 연속 스트림에 쓰기 위한 슬라이딩 윈도우.
 //

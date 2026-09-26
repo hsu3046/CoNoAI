@@ -1,4 +1,4 @@
-// CoNo — Copyright (C) 2026 KnowAI (https://knowai.space) — GPL-3.0-or-later
+// CoNo — Copyright (C) 2026 AIB Inc. (https://www.aib.vote) — GPL-3.0-or-later
 //
 // UI 가 쓰는 파사드: 탭 세션 + 지연 파이프라인 + (AI 모드) 분리 모델을 묶어 시작/정지하고 통계를 갱신한다.
 

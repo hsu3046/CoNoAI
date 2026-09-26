@@ -1,4 +1,4 @@
-// CoNo — Copyright (C) 2026 KnowAI (https://knowai.space) — GPL-3.0-or-later
+// CoNo — Copyright (C) 2026 AIB Inc. (https://www.aib.vote) — GPL-3.0-or-later
 //
 // 브라우저 영상(YouTube 등)의 "지금 재생 중" 제목·가수를 노래 제목·가수로 다듬는다.
 // 영상은 가수 칸에 채널명이, 제목 칸에 "가수 - 곡 (Official MV)" 가 오는 경우가 많다.

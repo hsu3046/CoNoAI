@@ -1,4 +1,4 @@
-// CoNo — Copyright (C) 2026 KnowAI (https://knowai.space) — GPL-3.0-or-later
+// CoNo — Copyright (C) 2026 AIB Inc. (https://www.aib.vote) — GPL-3.0-or-later
 //
 // Core Audio 프로퍼티 읽기 헬퍼.
 // insidegui/AudioCap (Copyright (c) 2024 Guilherme Rambo, BSD-2-Clause) 의

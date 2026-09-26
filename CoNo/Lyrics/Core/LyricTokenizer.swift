@@ -1,4 +1,4 @@
-// CoNo — Copyright (C) 2026 KnowAI (https://knowai.space) — GPL-3.0-or-later
+// CoNo — Copyright (C) 2026 AIB Inc. (https://www.aib.vote) — GPL-3.0-or-later
 //
 // 가사 한 줄 → 노래 단위(음절) 목록.
 //   한글 음절·가나·한자: 한 글자 = 한 단위 (대개 한 음표에 한 글자)

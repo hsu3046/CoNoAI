@@ -1,4 +1,4 @@
-// CoNo — Copyright (C) 2026 KnowAI (https://knowai.space) — GPL-3.0-or-later
+// CoNo — Copyright (C) 2026 AIB Inc. (https://www.aib.vote) — GPL-3.0-or-later
 //
 // 캡처 대상(앱) 목록.
 // 브라우저·Electron 앱은 소리를 메인 프로세스가 아니라 헬퍼 프로세스

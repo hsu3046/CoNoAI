@@ -1,4 +1,4 @@
-// CoNo — Copyright (C) 2026 KnowAI (https://knowai.space) — GPL-3.0-or-later
+// CoNo — Copyright (C) 2026 AIB Inc. (https://www.aib.vote) — GPL-3.0-or-later
 //
 // 일본어 가사의 한자 읽기 → 글자별 모라(박자) 수.
 // 한자는 한 글자가 여러 박자다 (誰=だれ 2, 想=おも 2). 이를 모르면 음절 정렬이 중간에서 밀린다.

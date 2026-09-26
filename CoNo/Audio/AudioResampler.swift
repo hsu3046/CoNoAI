@@ -1,4 +1,4 @@
-// CoNo — Copyright (C) 2026 KnowAI (https://knowai.space) — GPL-3.0-or-later
+// CoNo — Copyright (C) 2026 AIB Inc. (https://www.aib.vote) — GPL-3.0-or-later
 //
 // 스트리밍 샘플레이트 변환 (AVAudioConverter, 플래너 1~2채널). 워커 스레드 전용 — IO 스레드에서 쓰지 말 것.
 

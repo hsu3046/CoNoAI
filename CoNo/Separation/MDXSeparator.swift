@@ -1,4 +1,4 @@
-// CoNo — Copyright (C) 2026 KnowAI (https://knowai.space) — GPL-3.0-or-later
+// CoNo — Copyright (C) 2026 AIB Inc. (https://www.aib.vote) — GPL-3.0-or-later
 //
 // UVR MDX-Net ONNX 모델 래퍼 (ONNX Runtime + 선택적 CoreML 실행 공급자).
 // 전처리·후처리는 python-audio-separator (MIT) 의 MDXSeparator.run_model 과 같은 순서를 따른다:

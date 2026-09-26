@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# CoNo — Copyright (C) 2026 KnowAI — GPL-3.0-or-later
+# CoNo — Copyright (C) 2026 AIB Inc. — GPL-3.0-or-later
 # 보컬 분리 모델을 Models/ 로 받는다 (Models/ 는 커밋하지 않는다).
 # 모델: UVR-MDX-NET Karaoke 2 (github.com/TRvlvr/model_repo). 가중치 라이선스 미명시 → 배포 전 확인 필요.
 set -euo pipefail

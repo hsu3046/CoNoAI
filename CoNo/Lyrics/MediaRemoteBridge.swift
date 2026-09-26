@@ -1,4 +1,4 @@
-// CoNo — Copyright (C) 2026 KnowAI (https://knowai.space) — GPL-3.0-or-later
+// CoNo — Copyright (C) 2026 AIB Inc. (https://www.aib.vote) — GPL-3.0-or-later
 //
 // macOS "지금 재생 중" (MediaRemote) 연동. macOS 15.4+ 는 서드파티 앱의 MediaRemote 접근을 막았으므로
 // 번들에 넣은 mediaremote-adapter(BSD-3)를 애플 서명 `/usr/bin/perl` 로 실행해 읽고 제어한다.

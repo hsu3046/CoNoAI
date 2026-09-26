@@ -1,4 +1,4 @@
-// CoNo — Copyright (C) 2026 KnowAI (https://knowai.space) — GPL-3.0-or-later
+// CoNo — Copyright (C) 2026 AIB Inc. (https://www.aib.vote) — GPL-3.0-or-later
 //
 // Core Audio process tap + 비공개(private) 애그리게이트 디바이스 수명 관리 (캡처 전용).
 // 탭 구성은 insidegui/AudioCap (BSD-2-Clause), 탭만 넣은 애그리게이트는 makeusabrew/audiotee 를 참고했다.

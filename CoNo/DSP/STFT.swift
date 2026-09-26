@@ -1,4 +1,4 @@
-// CoNo — Copyright (C) 2026 KnowAI (https://knowai.space) — GPL-3.0-or-later
+// CoNo — Copyright (C) 2026 AIB Inc. (https://www.aib.vote) — GPL-3.0-or-later
 //
 // torch.stft / torch.istft 와 같은 결과를 내는 STFT.
 //   center=True (양끝 n_fft/2 를 reflect 패딩), periodic Hann 창, onesided, normalized=False.

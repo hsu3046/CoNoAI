@@ -1,4 +1,4 @@
-// CoNo — Copyright (C) 2026 KnowAI (https://knowai.space) — GPL-3.0-or-later
+// CoNo — Copyright (C) 2026 AIB Inc. (https://www.aib.vote) — GPL-3.0-or-later
 //
 // 음악 앱 조회 AppleScript 원문. 앱 실행 시점에야 컴파일되므로 단위 테스트(LyricsTests)가 미리 컴파일해 본다.
 // ⚠️ AppleScript 예약어를 변수 이름으로 쓰지 말 것 — `st`(1st 의 서수 접미사)를 써서 -2741 로 실패한 적이 있다.

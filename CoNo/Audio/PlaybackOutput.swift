@@ -1,4 +1,4 @@
-// CoNo — Copyright (C) 2026 KnowAI (https://knowai.space) — GPL-3.0-or-later
+// CoNo — Copyright (C) 2026 AIB Inc. (https://www.aib.vote) — GPL-3.0-or-later
 //
 // 기본 출력 장치로 재생 (AVAudioEngine: 소스 노드 → 키 조절(TimePitch) → 믹서 → 출력).
 // 소스 노드를 출력 장치의 하드웨어 레이트로 만들어 믹서가 레이트 변환을 하지 않게 한다.

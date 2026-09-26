@@ -1,4 +1,4 @@
-// CoNo — Copyright (C) 2026 KnowAI (https://knowai.space) — GPL-3.0-or-later
+// CoNo — Copyright (C) 2026 AIB Inc. (https://www.aib.vote) — GPL-3.0-or-later
 //
 // SwiftF0 (lars76/swift-f0, MIT) 음정 검출 모델 래퍼.
 // 입력: 16 kHz 모노 오디오 + fmin/fmax 스칼라 → 출력: 256 샘플(16 ms)마다 음정(Hz) · 신뢰도.

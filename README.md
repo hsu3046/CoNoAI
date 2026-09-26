@@ -150,4 +150,4 @@ This project is licensed under the [GNU General Public License v3.0](https://www
 
 ---
 
-*Built by [KnowAI](https://knowai.space) · © 2026 KnowAI*
+*Built by [AIB Inc.](https://www.aib.vote) · © 2026 AIB Inc.*

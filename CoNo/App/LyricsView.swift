@@ -1,4 +1,4 @@
-// CoNo — Copyright (C) 2026 KnowAI (https://knowai.space) — GPL-3.0-or-later
+// CoNo — Copyright (C) 2026 AIB Inc. (https://www.aib.vote) — GPL-3.0-or-later
 //
 // 노래방식 2줄 가사: 지금 부르는 줄(크게, 왼쪽부터 색이 차오름) + 다음 줄(작게).
 // 색칠: AI 분리 모드에서는 분리된 보컬로 정렬한 음절 타이밍(SyllableAligner) + 글자 폭 환산,

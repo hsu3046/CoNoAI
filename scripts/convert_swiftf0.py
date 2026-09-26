@@ -1,4 +1,4 @@
-# CoNo — Copyright (C) 2026 KnowAI — GPL-3.0-or-later
+# CoNo — Copyright (C) 2026 AIB Inc. — GPL-3.0-or-later
 # SwiftF0 (lars76/swift-f0, MIT) 모델의 pitch 출력을 double → float 로 바꾼다.
 # 이유: ONNX Runtime ObjC API 는 double 텐서를 읽지 못한다 ("unsupported tensor element type").
 # 사용: uv run --with onnx python3 scripts/convert_swiftf0.py <원본 model.onnx> CoNo/Resources/swift_f0.onnx

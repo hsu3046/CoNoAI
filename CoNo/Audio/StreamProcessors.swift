@@ -1,4 +1,4 @@
-// CoNo — Copyright (C) 2026 KnowAI (https://knowai.space) — GPL-3.0-or-later
+// CoNo — Copyright (C) 2026 AIB Inc. (https://www.aib.vote) — GPL-3.0-or-later
 //
 // 워커 스레드에서 도는 처리 단계. 입력 = 캡처(탭) 레이트, 출력 = 재생(장치) 레이트의 인터리브 스테레오.
 // 처리 방식은 시작할 때 정한다 (방식마다 지연이 달라서 실행 중에 바꾸면 싱크가 깨진다).

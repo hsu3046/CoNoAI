@@ -1,4 +1,4 @@
-// CoNo — Copyright (C) 2026 KnowAI (https://knowai.space) — GPL-3.0-or-later
+// CoNo — Copyright (C) 2026 AIB Inc. (https://www.aib.vote) — GPL-3.0-or-later
 //
 // 귀렌찬 스타일 음정 바: 원곡 보컬의 음표가 오른쪽에서 흘러와 재생선(왼쪽 1/4)을 지나간다.
 // 시간축은 출력 스트림 초 — KaraokeEngine.displayPosition() 과 PitchTimeline 이 같은 축이다.

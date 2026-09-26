@@ -1,4 +1,4 @@
-// CoNo — Copyright (C) 2026 KnowAI (https://knowai.space) — GPL-3.0-or-later
+// CoNo — Copyright (C) 2026 AIB Inc. (https://www.aib.vote) — GPL-3.0-or-later
 //
 // 단일 생산자·단일 소비자(SPSC) lock-free 링 버퍼 (Float 샘플, 인터리브 여부는 호출자 책임).
 // 오디오 IO 스레드에서 호출되므로 read/write 는 할당·락·시스템 콜이 없다.

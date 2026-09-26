@@ -1,4 +1,4 @@
-// CoNo — Copyright (C) 2026 KnowAI (https://knowai.space) — GPL-3.0-or-later
+// CoNo — Copyright (C) 2026 AIB Inc. (https://www.aib.vote) — GPL-3.0-or-later
 //
 // 줄 단위 싱크 가사 + 분리된 보컬 음정(16 ms 프레임) → 음절별 시작·끝 시각.
 //

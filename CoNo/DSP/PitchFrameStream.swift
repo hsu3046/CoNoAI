@@ -1,4 +1,4 @@
-// CoNo — Copyright (C) 2026 KnowAI (https://knowai.space) — GPL-3.0-or-later
+// CoNo — Copyright (C) 2026 AIB Inc. (https://www.aib.vote) — GPL-3.0-or-later
 //
 // 프레임 단위 음정 검출기(SwiftF0)를 연속 스트림에 쓰기 위한 버퍼 관리.
 // lars76/swift-f0 (MIT) 의 PitchStream._emit 과 같은 규칙:

@@ -1,4 +1,4 @@
-// CoNo — Copyright (C) 2026 KnowAI (https://knowai.space) — GPL-3.0-or-later
+// CoNo — Copyright (C) 2026 AIB Inc. (https://www.aib.vote) — GPL-3.0-or-later
 //
 // LRCLIB 후보 중 지금 곡에 맞는 가사 고르기.
 // 실측에서 본 함정: 같은 곡에 한글 원문 대신 로마자 표기 항목이 섞여 있고(Hype Boy),

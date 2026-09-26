@@ -1,4 +1,4 @@
-# CoNo — Copyright (C) 2026 KnowAI — GPL-3.0-or-later
+# CoNo — Copyright (C) 2026 AIB Inc. — GPL-3.0-or-later
 # 진단 녹음 WAV 에서 틱(샘플 단위 불연속) 위치를 찾는다. 표준 라이브러리만 사용.
 #   python3 scripts/find_clicks.py ~/Downloads/CoNo-diagnostic-*/input-48000.wav
 # 방법: 2차 차분 |x[n] − 2x[n−1] + x[n−2]| 가 주변 50 ms 의 중앙값 × THRESHOLD 이상이고 절대값도 충분히 큰 곳.

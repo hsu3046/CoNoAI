@@ -1,4 +1,4 @@
-// CoNo — Copyright (C) 2026 KnowAI (https://knowai.space) — GPL-3.0-or-later
+// CoNo — Copyright (C) 2026 AIB Inc. (https://www.aib.vote) — GPL-3.0-or-later
 //
 // 진행 막대: 지금 들리는 곡 위치 / 곡 길이. 끌어서 놓으면 그 위치로 이동한다 (KaraokeEngine.seek).
 // 이동 중에는 목표 위치를 보여 준다 (새 위치의 소리가 닿기 전까지 들리는 위치는 옛 위치라서).

@@ -1,4 +1,4 @@
-// CoNo — Copyright (C) 2026 KnowAI (https://knowai.space) — GPL-3.0-or-later
+// CoNo — Copyright (C) 2026 AIB Inc. (https://www.aib.vote) — GPL-3.0-or-later
 //
 // 가사(LRC) 줄 시작 시각과 분리된 보컬의 "쉬었다가 노래를 시작하는 지점" 을 맞춰
 // 곡마다 가사 시각 오차를 자동으로 잰다.

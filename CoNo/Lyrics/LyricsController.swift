@@ -1,4 +1,4 @@
-// CoNo — Copyright (C) 2026 KnowAI (https://knowai.space) — GPL-3.0-or-later
+// CoNo — Copyright (C) 2026 AIB Inc. (https://www.aib.vote) — GPL-3.0-or-later
 //
 // 가사 기능 조립: 플레이어 폴링 → 곡 위치 앵커(SongClock) → 곡별 가사 로드 → 화면 표시값 계산.
 // 자동 싱크: 2초마다 최근 30초 보컬로 싱크 가사 후보들을 평가해 가장 잘 맞는 후보와 시각 오차를 적용한다

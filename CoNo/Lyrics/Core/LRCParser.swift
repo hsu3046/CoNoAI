@@ -1,4 +1,4 @@
-// CoNo — Copyright (C) 2026 KnowAI (https://knowai.space) — GPL-3.0-or-later
+// CoNo — Copyright (C) 2026 AIB Inc. (https://www.aib.vote) — GPL-3.0-or-later
 //
 // LRC 싱크 가사 파서.
 //   [mm:ss.xx]가사   [mm:ss.xxx]   [mm:ss]   한 줄에 여러 시각 태그 [00:12.00][00:45.00]후렴

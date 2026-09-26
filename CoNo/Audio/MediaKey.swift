@@ -1,4 +1,4 @@
-// CoNo — Copyright (C) 2026 KnowAI (https://knowai.space) — GPL-3.0-or-later
+// CoNo — Copyright (C) 2026 AIB Inc. (https://www.aib.vote) — GPL-3.0-or-later
 //
 // 키보드의 재생/일시정지(⏯) 미디어 키를 대신 눌러, 음악 앱 말고도(브라우저의 YouTube Music·Melon 등) 멈추고 이어 틀게 한다.
 // - 합성 키 이벤트를 보내려면 "손쉬운 사용" 권한이 필요하다 (처음 한 번 시스템이 묻는다).
