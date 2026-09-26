@@ -141,7 +141,7 @@ struct ControlDock: View {
             .padding(.vertical, 7)
             .foregroundStyle(selected ? StageTheme.night : StageTheme.ink)
             .background(Capsule().fill(selected ? StageTheme.mint : Color.white.opacity(0.08)))
-            .overlay(Capsule().strokeBorder(Color.white.opacity(selected ? 0 : 0.1), lineWidth: 0.5))
+            .overlay(Capsule().strokeBorder(Color.white.opacity(selected ? 0 : 0.08), lineWidth: 1))
             .animation(.snappy, value: selected)
         }
         .help(help)
@@ -215,7 +215,7 @@ struct ControlDock: View {
             .padding(.horizontal, 12)
             .frame(height: 32)
             .background(Capsule().fill(StageTheme.stopRed.opacity(0.14)))
-            .overlay(Capsule().strokeBorder(StageTheme.stopRed.opacity(0.35), lineWidth: 0.5))
+            .overlay(Capsule().strokeBorder(StageTheme.stopRed.opacity(0.3), lineWidth: 1))
         }
         .help("노래방 끝내기 — 연결된 앱과의 연결을 끊고 원곡도 멈춥니다")
         .accessibilityLabel("노래방 끝내기")

@@ -249,6 +249,7 @@ private struct StageHeader: View {
                 sourceChip
                 Spacer()
                 StatusPill(engine: engine)
+                    .padding(.trailing, 10)
                 SettingsLink {
                     Image(systemName: "gearshape")
                         .font(.system(size: 14, weight: .semibold))
@@ -305,7 +306,7 @@ private struct StageHeader: View {
         .lineLimit(1)
         .padding(.horizontal, 10)
         .padding(.vertical, 5)
-        .overlay(Capsule().strokeBorder(Color.white.opacity(0.14), lineWidth: 0.5))
+        .overlay(Capsule().strokeBorder(Color.white.opacity(0.1), lineWidth: 1))
     }
 
 }
@@ -350,8 +351,9 @@ private struct StatusPill: View {
             ("LIVE", StageTheme.mint)
         }
         HStack(spacing: 5) {
-            Circle().fill(color).frame(width: 6, height: 6)
-            Text(label).font(StageTheme.rounded(11, .bold))
+            Circle().fill(color).frame(width: 8, height: 8)
+                .shadow(color: color.opacity(0.7), radius: 4)
+            Text(label).font(StageTheme.rounded(13, .bold))
         }
         .foregroundStyle(color)
         .help(String(format: "%@ · 원곡보다 %.1f초 늦게 들립니다 (AI 분리·음정 미리보기 여유)", modeLabel, stats.bufferedSeconds))

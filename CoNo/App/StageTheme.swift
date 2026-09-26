@@ -86,7 +86,7 @@ struct GlassCapsule: ViewModifier {
         content
             .background(.ultraThinMaterial, in: Capsule())
             .background(Capsule().fill(Color.black.opacity(0.25)))
-            .overlay(Capsule().strokeBorder(Color.white.opacity(0.08), lineWidth: 0.5))
+            .overlay(Capsule().strokeBorder(Color.white.opacity(0.07), lineWidth: 1))
             .environment(\.colorScheme, .dark)
     }
 }

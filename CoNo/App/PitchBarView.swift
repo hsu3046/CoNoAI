@@ -36,7 +36,7 @@ struct PitchBarView: View {
             }
         }
         .background(RoundedRectangle(cornerRadius: 18).fill(Color.white.opacity(0.03)))
-        .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(Color.white.opacity(0.06), lineWidth: 0.5))
+        .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(Color.white.opacity(0.05), lineWidth: 1))
         .clipShape(RoundedRectangle(cornerRadius: 18))
         .accessibilityLabel("음정 바")
     }
