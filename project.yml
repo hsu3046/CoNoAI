@@ -56,6 +56,8 @@ targets:
         NSHumanReadableCopyright: "© 2026 AIB Inc. (https://www.aib.vote) · GPL-3.0"
         # Core Audio process tap 권한 프롬프트 문구 (없으면 탭이 무음만 받는다)
         NSAudioCaptureUsageDescription: "스트리밍 앱의 소리를 노래방 반주로 바꾸기 위해 다른 앱의 오디오를 캡처합니다. 오디오는 저장되지 않습니다."
+        # 마이크 채점 (도크의 채점 버튼을 누를 때만 연다)
+        NSMicrophoneUsageDescription: "노래하는 목소리의 음정을 원곡과 비교해 채점합니다. 목소리는 저장하거나 내보내지 않습니다."
         # Apple Music 의 곡 정보·재생 위치를 읽어 가사를 맞추기 위한 자동화 권한 문구
         NSAppleEventsUsageDescription: "음악 앱의 곡 정보·재생 위치를 읽어 가사를 맞추고, 브라우저에서는 탭 제목만 읽어 YouTube 광고를 알아챕니다."
     settings:

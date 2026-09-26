@@ -113,6 +113,11 @@ private struct GeneralSettings: View {
                     pane: "Privacy_Automation"
                 )
                 PermissionRow(
+                    title: "마이크",
+                    detail: "마이크 채점을 켤 때만 씁니다. 목소리는 음정만 재고 저장하지 않아요.",
+                    pane: "Privacy_Microphone"
+                )
+                PermissionRow(
                     title: "손쉬운 사용",
                     detail: "다른 앱을 멈출 때 예비 수단(⏯ 미디어 키)으로만 씁니다. 보통은 필요 없어요.",
                     pane: "Privacy_Accessibility"
@@ -153,6 +158,15 @@ private struct PermissionRow: View {
 private struct SoundSettings: View {
     let engine: KaraokeEngine
     let settings: AppSettings
+
+    private var microphoneDescription: String {
+        switch engine.singingState {
+        case .off: engine.wantsSinging ? "AI 반주를 시작하면 열어요" : "꺼짐"
+        case .starting: "여는 중…"
+        case let .listening(device, isBluetooth): isBluetooth ? "\(device) (블루투스)" : device
+        case .failed: "열지 못함"
+        }
+    }
 
     var body: some View {
         Form {
@@ -198,7 +212,22 @@ private struct SoundSettings: View {
                         Text(String(format: "%.0f%%", settings.guideVocalLevel * 100)).monospacedDigit().frame(width: 44, alignment: .trailing)
                     }
                 }
-                Caption("반주에 원곡 목소리를 살짝 섞어 부를 줄을 들려줍니다. 노래하는 중에는 도크의 마이크 슬라이더로 바꿔요.")
+                Caption("반주에 원곡 목소리를 살짝 섞어 부를 줄을 들려줍니다. 노래하는 중에는 도크의 가이드 보컬 슬라이더로 바꿔요.")
+            }
+
+            Section("마이크 채점") {
+                Toggle("채점", isOn: Binding(get: { settings.singingEnabled }, set: { on in
+                    settings.singingEnabled = on
+                    engine.setSinging(on)
+                }))
+                Picker("판정", selection: Binding(get: { settings.singingDifficulty }, set: { settings.singingDifficulty = $0 })) {
+                    Text("보통 (반음 안)").tag(SingingJudge.Difficulty.normal)
+                    Text("어려움 (±30센트)").tag(SingingJudge.Difficulty.hard)
+                }
+                .pickerStyle(.segmented)
+                LabeledContent("마이크", value: microphoneDescription)
+                Caption("내가 부르는 음정을 음정 바에 금색 선으로 겹쳐 보여 주고, 맞춘 음표로 점수를 매깁니다. 옥타브는 따지지 않아요(남녀가 바꿔 불러도 됨). AI 반주 모드에서만 동작하고, 목소리는 저장하지 않습니다.")
+                Caption("스피커로 틀어 놓고 불러도 됩니다. 전주·간주에서 스피커 소리가 마이크로 새는 양을 재서 걸러내요. 마이크를 입 가까이 둘수록 정확합니다. 마이크는 시스템 설정 › 사운드 › 입력에서 고릅니다.")
             }
         }
         .formStyle(.grouped)
@@ -464,6 +493,11 @@ private struct DiagnosticsSettings: View {
                 Section("모니터") {
                     MonitorView(engine: engine, delaySeconds: settings.delaySeconds)
                 }
+                if let singing = engine.singing {
+                    Section("마이크 채점") {
+                        SingingMonitor(singing: singing)
+                    }
+                }
             } else {
                 Section("모니터") {
                     Caption("노래방이 켜져 있을 때 버퍼·끊김·오디오 장치·AI 계산 시간을 보여 줍니다.")
@@ -623,3 +657,22 @@ private struct AboutSettings: View {
     }
 }
 
+
+/// 진단: 마이크 레벨 · 배운 스피커 누설 · 목소리로 인정한 비율 (0.25초마다)
+private struct SingingMonitor: View {
+    let singing: SingingTracker
+
+    var body: some View {
+        TimelineView(.periodic(from: .now, by: 0.25)) { _ in
+            let snapshot = singing.snapshot()
+            LabeledContent("마이크 레벨", value: String(format: "%.0f dBFS", 20 * log10(max(Double(snapshot.micPeak), 1e-5))))
+            LabeledContent("스피커 누설", value: snapshot.leakageDB.map { String(format: "%.0f dB", $0) } ?? "재는 중 (원곡이 쉬는 구간에서)")
+            LabeledContent("목소리로 인정", value: String(format: "%.0f%%", snapshot.acceptedRatio * 100))
+            LabeledContent("점수", value: "\(snapshot.score.score) · 음표 \(snapshot.score.notesHit)/\(snapshot.score.notesTotal)")
+            if let error = snapshot.error {
+                Text(error).font(.caption).foregroundStyle(.orange)
+            }
+            Caption("스피커 누설: 스피커 소리가 마이크에 얼마나 크게 들어오는지(헤드폰이면 매우 작음). 목소리로 인정: 소리가 들어온 프레임 중 반주가 아니라 내 목소리로 본 비율 — 부르지 않을 때 높으면 반주를 목소리로 잘못 보는 것.")
+        }
+    }
+}

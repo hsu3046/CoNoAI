@@ -113,6 +113,9 @@ final class DelayPipeline: @unchecked Sendable {
 
     private let captureRing: SPSCRingBuffer
     private let playbackRing: SPSCRingBuffer
+    /// 재생 렌더마다 (출력 스트림 초, 평균 제곱) 두 값씩 — 마이크 채점이 스피커 누설을 가늠하는 데 쓴다.
+    /// 읽는 쪽이 없으면 가득 찬 채로 쓰기를 건너뛴다 (재생에는 영향 없음).
+    let outputLevels = SPSCRingBuffer(capacity: 8_192)
 
     // 오디오 스레드별 스크래치 (콜백 안에서 할당하지 않기 위해 미리 확보)
     private let captureScratch: UnsafeMutablePointer<Float>
@@ -150,6 +153,12 @@ final class DelayPipeline: @unchecked Sendable {
     private let adMuteUntilFrame = Atomic<Int>(Int.max)
     /// 재생 스레드가 매 콜백 갱신: 지금 소리를 끄고 있는지 (UI "이동 중")
     private let outputMutedFlag = Atomic<Bool>(false)
+    /// 재생 스레드 전용: 출력 레벨 한 쌍을 링에 쓰기 전에 담는 곳 (미리 확보)
+    private let levelScratch: UnsafeMutablePointer<Float> = {
+        let pointer = UnsafeMutablePointer<Float>.allocate(capacity: 2)
+        pointer.initialize(repeating: 0, count: 2)
+        return pointer
+    }()
     /// 재생 스레드 전용: 직전 콜백이 꺼져 있었는지 (끄는 순간만 페이드아웃)
     private var playbackWasMuted = false
     /// 이보다 작으면 디지털 무음으로 본다
@@ -227,6 +236,7 @@ final class DelayPipeline: @unchecked Sendable {
         captureScratch.deallocate()
         playScratch.deallocate()
         workerScratch.deallocate()
+        levelScratch.deallocate()
     }
 
     // MARK: - Worker
@@ -461,6 +471,15 @@ final class DelayPipeline: @unchecked Sendable {
             (playScratch + got).update(repeating: 0, count: samples - got)
         }
 
+        // 출력 레벨 기록 (마이크 채점용). 한 쌍이 통째로 들어갈 때만 쓴다 — 반쪽만 쓰면 짝이 어긋난다.
+        if got > 0, outputLevels.capacity - outputLevels.availableToRead >= 2 {
+            var sum: Float = 0
+            for i in 0..<got { sum += playScratch[i] * playScratch[i] }
+            levelScratch[0] = Float(Double(playedFrames) / outputSampleRate)
+            levelScratch[1] = sum / Float(got)
+            outputLevels.write(levelScratch, count: 2)
+        }
+
         // 재생 시계 갱신: 이 버퍼 첫 샘플 = 출력 스트림의 playedFrames 번째
         let hostTime = timestamp.pointee.mFlags.contains(.hostTimeValid) ? timestamp.pointee.mHostTime : start
         clockVersion.add(1, ordering: .acquiringAndReleasing)
@@ -512,6 +531,11 @@ final class DelayPipeline: @unchecked Sendable {
     }
 
     // MARK: - Playback clock (UI 스레드)
+
+    /// 재생이 실제로 앞으로 가며 소리를 내는 중인지 (멈춤·버퍼 채우는 중·이동 음소거가 아님). 아무 스레드.
+    var isAdvancing: Bool {
+        !pauseRequested.load(ordering: .relaxed) && primedFlag.load(ordering: .relaxed) && !outputMutedFlag.load(ordering: .relaxed)
+    }
 
     /// 지금 스피커로 나가고 있는 출력 스트림 위치 (초). 아직 재생 전이면 nil.
     /// 마지막 렌더의 (위치, 호스트 시각) 에서 경과 시간으로 보간하되, 끊김(언더런) 중에 앞으로 달려가지 않도록 +50 ms 로 제한.

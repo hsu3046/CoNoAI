@@ -36,6 +36,9 @@ final class AppSettings {
     var myVoice: VoiceType { didSet { store(myVoice.rawValue, "myVoice") } }
     /// 음표 막대 외에 원곡 가수의 음정 곡선도 그린다
     var showPitchContour: Bool { didSet { store(showPitchContour, "showPitchContour") } }
+    /// 마이크 채점 (도크의 채점 버튼) — 켜 두면 다음 AI 반주 시작 때도 마이크를 연다
+    var singingEnabled: Bool { didSet { store(singingEnabled, "singingEnabled") } }
+    var singingDifficulty: SingingJudge.Difficulty { didSet { store(singingDifficulty.rawValue, "singingDifficulty") } }
 
     static let autoSource = "auto"
     static let systemSource = "system"
@@ -63,6 +66,8 @@ final class AppSettings {
         lyricsNetEase = value("lyricsNetEase", true)
         lyricsAMLL = value("lyricsAMLL", true)
         lyricsAppleMusic = value("lyricsAppleMusic", false)
+        singingEnabled = value("singingEnabled", false)
+        singingDifficulty = SingingJudge.Difficulty(rawValue: value("singingDifficulty", 0)) ?? .normal
     }
 
     var extraLyricsSources: Set<LyricsSource> {

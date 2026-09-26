@@ -32,6 +32,13 @@ struct KaraokeScreen: View {
             } else {
                 IdleStage(engine: engine, catalog: catalog, settings: settings, start: start)
             }
+            if let result = engine.singingResult {
+                SingingResultCard(result: result) {
+                    withAnimation(.easeOut) { engine.singingResult = nil }
+                }
+                .transition(.opacity.combined(with: .scale(scale: 0.92)))
+                .id(result.id)
+            }
             if let toast {
                 ToastView(toast: toast)
                     .transition(.opacity.combined(with: .scale(scale: 0.9)))
@@ -63,6 +70,13 @@ struct KaraokeScreen: View {
         .onChange(of: settings.extraLyricsSources, initial: true) { _, sources in
             engine.lyrics.enabledExtraSources = sources
         }
+        .onChange(of: settings.singingDifficulty, initial: true) { _, difficulty in
+            engine.singingDifficulty = difficulty
+        }
+        .onAppear {
+            if settings.singingEnabled, !engine.wantsSinging { engine.setSinging(true) }
+        }
+        .animation(.snappy, value: engine.singingResult?.id)
         .onChange(of: settings.myVoice) { _, voice in
             // 내 키를 쓰는 중에 목소리를 바꾸면 바로 다시 맞춘다
             if case .voice = engine.keyMode { engine.applyVoiceKey(voice) }
@@ -147,7 +161,7 @@ struct KaraokeScreen: View {
                 .padding(.vertical, 18)
 
             // 안내 한 줄 자리는 늘 비워 둔다 (떴다 사라질 때 위의 음정 바 높이가 바뀌지 않게)
-            Text(engine.playbackMessage ?? " ")
+            Text(engine.playbackMessage ?? engine.singingNotice ?? " ")
                 .font(.callout)
                 .foregroundStyle(.orange)
                 .lineLimit(1)
@@ -336,7 +350,8 @@ private struct PitchBarStage: View {
             keyShift: engine.keyShift,
             showDiagnostics: settings.showPitchDiagnostics,
             autoZoom: settings.pitchAutoZoom,
-            showContour: settings.showPitchContour
+            showContour: settings.showPitchContour,
+            singing: engine.singing
         )
         .overlay {
             // 광고가 들리는 동안: 광고 목소리의 음정이 흐르지 않게 덮는다
@@ -363,6 +378,13 @@ private struct PitchBarStage: View {
                 }
                 .padding(10)
                 .transition(.opacity)
+            }
+        }
+        .overlay(alignment: .bottomTrailing) {
+            if let singing = engine.singing {
+                LiveScoreChip(singing: singing)
+                    .padding(10)
+                    .allowsHitTesting(false)
             }
         }
         .onHover { inside in

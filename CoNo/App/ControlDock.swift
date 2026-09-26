@@ -1,6 +1,6 @@
 // CoNo — Copyright (C) 2026 AIB Inc. (https://www.aib.vote) — GPL-3.0-or-later
 //
-// 하단 도크: 재생·일시정지 | 키 ♭/♯ | 원키·내 키 | 반주·보컬·원곡 (+ 가이드 보컬). 끝내기는 헤더의 연결된 앱 칩.
+// 하단 도크: 재생·일시정지 | 키 ♭/♯ | 원키·내 키 | 반주·보컬·원곡 (+ 가이드 보컬) | 채점. 끝내기는 헤더의 연결된 앱 칩.
 // 노래방 리모컨처럼 큰 버튼 몇 개로 끝나게 한다. 단축키는 KaraokeScreen 이 받는다.
 
 import SwiftUI
@@ -25,6 +25,8 @@ struct ControlDock: View {
                     guideVocal
                         .transition(.opacity.combined(with: .move(edge: .leading)))
                 }
+                divider
+                singButton
             }
 
         }
@@ -171,11 +173,57 @@ struct ControlDock: View {
         .background(Capsule().fill(Color.white.opacity(0.08)))
     }
 
+    // MARK: 채점
+
+    private var singButton: some View {
+        let on = engine.wantsSinging
+        let failed = if case .failed = engine.singingState { true } else { false }
+        return Button {
+            // 실패 상태에서 누르면 끄지 않고 다시 시도 (권한을 켜고 돌아온 경우)
+            let next = failed || !engine.wantsSinging
+            engine.setSinging(next)
+            settings.singingEnabled = next
+        } label: {
+            HStack(spacing: 6) {
+                if on, let singing = engine.singing {
+                    MicLevelIcon(singing: singing)
+                } else {
+                    Image(systemName: failed ? "mic.slash.fill" : on ? "mic.fill" : "mic")
+                        .font(.system(size: 13, weight: .bold))
+                        .frame(width: 18)
+                }
+                Text("채점").font(StageTheme.rounded(13, .semibold))
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 7)
+            .foregroundStyle(on && !failed ? StageTheme.night : failed ? .orange : StageTheme.ink)
+            .background(Capsule().fill(on && !failed ? StageTheme.gold : Color.white.opacity(0.08)))
+            .overlay(Capsule().strokeBorder(Color.white.opacity(on ? 0 : 0.08), lineWidth: 1))
+            .animation(.snappy, value: on)
+        }
+        .help(singHelp)
+        .accessibilityLabel("마이크 채점")
+        .accessibilityAddTraits(on ? .isSelected : [])
+    }
+
+    private var singHelp: String {
+        switch engine.singingState {
+        case .off: "마이크로 불러 원곡 음정과 맞는지 보여주고 채점합니다. 스피커로 틀어도 됩니다"
+        case .starting: "마이크를 여는 중…"
+        case let .listening(device, isBluetooth):
+            isBluetooth
+                ? "마이크: \(device) — 블루투스 마이크는 이어폰 소리를 통화 음질로 떨어뜨려요. 누르면 끕니다"
+                : "마이크: \(device) — 누르면 끕니다"
+        case let .failed(message): message
+        }
+    }
+
     // MARK: 가이드 보컬
 
     private var guideVocal: some View {
         HStack(spacing: 8) {
-            Image(systemName: engine.guideVocalLevel > 0 ? "music.mic" : "mic.slash")
+            // 마이크 모양은 채점 버튼이 쓰므로 원곡 가수 목소리는 사람 아이콘
+            Image(systemName: engine.guideVocalLevel > 0 ? "person.wave.2.fill" : "person.wave.2")
                 .font(.system(size: 14, weight: .semibold))
                 .foregroundStyle(engine.guideVocalLevel > 0 ? StageTheme.pink : StageTheme.secondaryInk)
                 .frame(width: 18)
@@ -195,5 +243,25 @@ struct ControlDock: View {
             .accessibilityLabel("가이드 보컬")
         }
         .help("가이드 보컬: 원곡 목소리를 살짝 섞어 부를 줄을 들려줍니다")
+    }
+}
+
+/// 채점 중 마이크 아이콘: 들어오는 소리 크기만큼 뒤 원이 커진다 (0.1초마다)
+private struct MicLevelIcon: View {
+    let singing: SingingTracker
+
+    var body: some View {
+        TimelineView(.periodic(from: .now, by: 0.1)) { _ in
+            let level = CGFloat(min(1, singing.snapshot().micPeak * 4))
+            Image(systemName: "mic.fill")
+                .font(.system(size: 13, weight: .bold))
+                .frame(width: 18)
+                .background(
+                    Circle()
+                        .fill(StageTheme.night.opacity(0.18))
+                        .frame(width: 10 + 16 * level, height: 10 + 16 * level)
+                        .animation(.easeOut(duration: 0.1), value: level)
+                )
+        }
     }
 }

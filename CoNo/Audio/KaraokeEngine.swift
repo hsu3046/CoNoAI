@@ -3,6 +3,7 @@
 // UI 가 쓰는 파사드: 탭 세션 + 지연 파이프라인 + (AI 모드) 분리 모델을 묶어 시작/정지하고 통계를 갱신한다.
 
 import AudioToolbox
+import AVFoundation
 import Foundation
 import Observation
 
@@ -38,6 +39,14 @@ struct ModelBenchmark: Sendable, Equatable {
     /// SwiftF0 자가진단: 220 Hz 사인파에서 검출한 음정 (nil = 실패, 사유는 pitchSelfTestError)
     var pitchSelfTestHz: Double?
     var pitchSelfTestError: String?
+}
+
+/// 곡이 끝났을 때 보여줄 채점 결과
+struct SingingResult: Identifiable, Equatable, Sendable {
+    let id = UUID()
+    let title: String?
+    let artist: String?
+    let score: SongScore
 }
 
 @MainActor
@@ -161,6 +170,122 @@ final class KaraokeEngine {
         didSet { separationProcessor?.guideVocalLevel = Float(guideVocalLevel) }
     }
 
+    // MARK: - 마이크 채점 (#9)
+
+    enum SingingState: Equatable {
+        case off
+        case starting
+        case listening(deviceName: String, isBluetooth: Bool)
+        case failed(String)
+    }
+
+    /// 사용자가 켜 둔 채점 (AI 반주 모드가 시작되면 마이크를 연다)
+    private(set) var wantsSinging = false
+    private(set) var singingState: SingingState = .off
+    /// 채점기 (마이크가 열려 있을 때만)
+    private(set) var singing: SingingTracker?
+    /// 곡이 끝나면 화면이 보여주고 지운다
+    var singingResult: SingingResult?
+    var singingDifficulty: SingingJudge.Difficulty = .normal {
+        didSet { singing?.difficulty = singingDifficulty }
+    }
+    @ObservationIgnored private var heardClock: HeardClock?
+    @ObservationIgnored private var singingGeneration = 0
+    @ObservationIgnored private var scoringTrackID: String?
+    @ObservationIgnored private var scoringTrack: TrackInfo?
+    /// 결과를 보여줄 만큼 부른 곡 (음표 수)
+    private static let minimumScoredNotes = 12
+
+    /// 채점은 분리된 원곡 음정이 있어야 한다
+    var canSing: Bool { runningMode == .aiSeparation && pitchTimeline != nil }
+
+    func setSinging(_ on: Bool) {
+        wantsSinging = on
+        if on {
+            Task { await startSinging() }
+        } else {
+            stopSinging()
+            singingState = .off
+        }
+    }
+
+    private func startSinging() async {
+        guard wantsSinging, singing == nil, singingState != .starting else { return }
+        guard canSing, let timeline = pitchTimeline, let pipeline else { return }
+        singingGeneration &+= 1
+        let generation = singingGeneration
+        singingState = .starting
+
+        guard await AVCaptureDevice.requestAccess(for: .audio) else {
+            if generation == singingGeneration {
+                singingState = .failed("마이크 권한이 꺼져 있습니다. 시스템 설정 › 개인정보 보호 및 보안 › 마이크에서 CoNo 를 켜 주세요.")
+            }
+            return
+        }
+        do {
+            // 마이크 장치 열기·검출기 로드는 메인 밖에서
+            let (mic, detector) = try await Task.detached { (try MicrophoneInput(), try SwiftF0Detector()) }.value
+            // 기다리는 동안 끄거나 노래방을 다시 시작했으면 버린다
+            guard generation == singingGeneration, wantsSinging, self.pipeline === pipeline else { return }
+            let clock = HeardClock(pipeline: pipeline)
+            clock.setExtraLatency(extraLatencySeconds)
+            let tracker = try SingingTracker(mic: mic, detector: detector, reference: timeline, clock: clock)
+            tracker.keyShift = keyShift
+            tracker.difficulty = singingDifficulty
+            try mic.start { [weak self] in
+                // 입력 장치가 바뀌면 새 장치로 다시 연다
+                MainActor.assumeIsolated { self?.restartSinging() }
+            }
+            tracker.start()
+            singing = tracker
+            heardClock = clock
+            scoringTrack = heardTrack
+            scoringTrackID = scoringTrack?.id
+            singingState = .listening(deviceName: mic.deviceName, isBluetooth: mic.isBluetooth)
+        } catch {
+            if generation == singingGeneration { singingState = .failed(error.localizedDescription) }
+        }
+    }
+
+    private func stopSinging() {
+        singingGeneration &+= 1
+        if let singing {
+            singing.stop()
+            singing.mic.stop()
+        }
+        singing = nil
+        heardClock = nil
+        if singingState == .starting || singingState.isListening { singingState = .off }
+    }
+
+    private func restartSinging() {
+        guard singing != nil else { return }
+        stopSinging()
+        Task { await startSinging() }
+    }
+
+    /// 50 ms 마다: 채점기에 지금 키·지연을 알리고, 들리는 곡이 바뀌면 앞 곡 결과를 확정한다
+    private func updateSinging() {
+        guard let singing else { return }
+        heardClock?.setExtraLatency(extraLatencySeconds)
+        singing.keyShift = keyShift
+        let track = heardTrack
+        if track?.id != scoringTrackID {
+            concludeSong()
+            scoringTrack = track
+            scoringTrackID = track?.id
+            singing.resetScore()
+        }
+    }
+
+    /// 지금 곡의 점수를 결과로 (충분히 불렀을 때만)
+    private func concludeSong() {
+        guard let singing else { return }
+        let score = singing.snapshot().score
+        guard score.notesTotal >= Self.minimumScoredNotes else { return }
+        singingResult = SingingResult(title: scoringTrack?.title, artist: scoringTrack?.artist, score: score)
+    }
+
     // MARK: - 재생·일시정지
 
     /// CoNo 가 소리를 얼려 둔 상태 (음악 앱도 멈춰 있다)
@@ -276,6 +401,7 @@ final class KaraokeEngine {
         while pipeline.isSourceAudible(within: 0.15), ContinuousClock.now < deadline {
             try? await Task.sleep(for: .milliseconds(50))
         }
+        concludeSong()
         stop()
     }
 
@@ -654,6 +780,7 @@ final class KaraokeEngine {
             if let pitchTimeline {
                 lyrics.vocalSource = VocalTimingSource(timeline: pitchTimeline, streamOffset: separationTiming?.streamOffset ?? 0)
             }
+            if wantsSinging { Task { await startSinging() } }
         } catch {
             playback.stop()
             session.teardown()
@@ -682,6 +809,8 @@ final class KaraokeEngine {
 
     func stop() {
         startGeneration &+= 1
+        // 채점기가 파이프라인 출력 레벨을 읽으므로 먼저 멈춘다
+        stopSinging()
         statsTask?.cancel()
         statsTask = nil
         lyrics.stop()
@@ -733,8 +862,12 @@ final class KaraokeEngine {
 
     /// 키 조절 단계의 지연도 빼서, 지금 "귀에 들리는" 위치를 돌려준다.
     func displayPosition() -> Double? {
-        let extraLatency = (output?.processingLatencySeconds ?? 0) + displayLatencyMilliseconds / 1000
-        return pipeline?.playbackPosition().map { $0 - extraLatency }
+        pipeline?.playbackPosition().map { $0 - extraLatencySeconds }
+    }
+
+    /// 재생 위치에서 빼는 지연: 키 조절 단계 + 화면 싱크
+    private var extraLatencySeconds: Double {
+        (output?.processingLatencySeconds ?? 0) + displayLatencyMilliseconds / 1000
     }
 
     private func startStatsPolling() {
@@ -757,10 +890,28 @@ final class KaraokeEngine {
                 }
                 self.updateSeek()
                 self.updateAdMute()
+                self.updateSinging()
                 tick += 1
                 if tick % 20 == 0 { self.updateVocalRange() }
                 try? await Task.sleep(for: .milliseconds(50))
             }
         }
+    }
+}
+
+extension KaraokeEngine {
+    /// 무대 아래 안내 한 줄: 채점 실패 사유나 블루투스 마이크 주의
+    var singingNotice: String? {
+        switch singingState {
+        case let .failed(message): message
+        case .listening(_, isBluetooth: true): "블루투스 마이크를 쓰는 중이에요. 이어폰 소리가 통화 음질로 떨어지면 Mac 내장 마이크로 바꿔 주세요."
+        default: nil
+        }
+    }
+}
+
+extension KaraokeEngine.SingingState {
+    var isListening: Bool {
+        if case .listening = self { true } else { false }
     }
 }
