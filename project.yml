@@ -49,6 +49,9 @@ targets:
       path: Support/Info.plist
       properties:
         CFBundleDisplayName: CoNo
+        # 버전은 아래 빌드 설정(MARKETING_VERSION·CURRENT_PROJECT_VERSION)을 따른다
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         LSApplicationCategoryType: public.app-category.music
         NSHumanReadableCopyright: "© 2026 KnowAI (https://knowai.space) · GPL-3.0"
         # Core Audio process tap 권한 프롬프트 문구 (없으면 탭이 무음만 받는다)

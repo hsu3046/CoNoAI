@@ -104,7 +104,7 @@ private struct GeneralSettings: View {
                 )
                 PermissionRow(
                     title: "자동화 › 음악",
-                    detail: "Apple Music 의 곡 정보·재생 위치를 읽고 재생·일시정지·이동을 합니다.",
+                    detail: "Apple Music 앱을 직접 연결해 곡 정보·재생 위치를 더 정확히 읽고 재생·일시정지·이동을 합니다. 다른 앱(브라우저·Spotify 등)은 이 권한이 필요 없어요.",
                     pane: "Privacy_Automation"
                 )
                 PermissionRow(
@@ -511,10 +511,12 @@ private struct LevelBar: View {
 
 private struct AboutSettings: View {
     private var version: String {
-        let info = Bundle.main.infoDictionary
-        let short = info?["CFBundleShortVersionString"] as? String ?? "?"
-        let build = info?["CFBundleVersion"] as? String ?? "?"
-        return "\(short) (\(build))"
+        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "?"
+    }
+
+    /// 빌드 번호 — 같은 버전을 여러 번 배포할 때 구별하는 내부 번호 (도움말로만)
+    private var build: String {
+        Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "?"
     }
 
     var body: some View {
@@ -524,15 +526,16 @@ private struct AboutSettings: View {
                     Image(nsImage: NSApp.applicationIconImage).resizable().frame(width: 56, height: 56)
                     VStack(alignment: .leading, spacing: 2) {
                         Text("CoNo").font(.title2.bold())
-                        Text("듣던 노래가 그대로 노래방이 됩니다").foregroundStyle(.secondary)
+                        Text("코인 노래방 No! 집에서 나만의 노래방 즐기기").foregroundStyle(.secondary)
                         Text("버전 \(version)").font(.caption).foregroundStyle(.secondary).monospacedDigit()
+                            .help("빌드 \(build)")
                     }
                 }
                 .padding(.vertical, 4)
             }
 
             Section("만든 곳") {
-                LabeledContent("KnowAI") { Link("knowai.space", destination: URL(string: "https://knowai.space")!) }
+                LabeledContent("AIB Inc.") { Link("aib.vote", destination: URL(string: "https://www.aib.vote")!) }
                 LabeledContent("소스 코드") { Link("github.com/hsu3046/CoNoAI", destination: URL(string: "https://github.com/hsu3046/CoNoAI")!) }
                 LabeledContent("라이선스") { Text("GNU GPL v3") }
             }
