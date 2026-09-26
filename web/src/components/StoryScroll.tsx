@@ -1,0 +1,353 @@
+// CoNo — Copyright (C) 2026 AIB Inc. (https://www.aib.vote) — GPL-3.0-or-later
+//
+// 스크롤 스토리: 화면이 고정된 채 스크롤만큼 장면이 바뀐다.
+//   ① 음악 파형 → ② 분홍 보컬이 빨려 나가고 민트 반주만 → ③ 가사·음정 바 → ④ 금색 내 목소리 · 점수 · 불꽃
+
+"use client";
+
+import { useEffect, useRef } from "react";
+import { drawConfetti, drawFireworks, makeShow } from "@/fx/fireworks";
+import { canvasFonts, fitCanvas, useScrollProgress } from "@/fx/hooks";
+
+const SCENES = [
+  {
+    step: "01",
+    title: "음악 앱에서, 아무 노래나 ▶",
+    body: "Apple Music · YouTube Music · Spotify · 멜론… 소리만 나면 됩니다. CoNo 가 그 앱의 소리를 받아 옵니다.",
+    chips: ["Apple Music", "YouTube Music", "Spotify", "멜론", "브라우저 영상"],
+  },
+  {
+    step: "02",
+    title: "AI 가 목소리만 쏙",
+    body: "Mac 안에서 AI 가 보컬을 걸러 반주만 남겨요. 인터넷으로 보내지 않아요. 원곡 목소리를 살짝 섞는 가이드 보컬도 있어요.",
+    chips: ["인터넷 없이", "실시간", "가이드 보컬"],
+  },
+  {
+    step: "03",
+    title: "3.5초 미래를 미리 봅니다",
+    body: "CoNo 는 소리를 3.5초 늦게 들려줘요. 그 덕에 다음 음정과 가사를 먼저 보여 주죠. 가사는 여러 곳에서 찾아 목소리에 맞춰 자동 싱크.",
+    chips: ["음정 바", "글자마다 색칠되는 가사", "자동 싱크"],
+  },
+  {
+    step: "04",
+    title: "부르면 채점, 끝나면 팡팡",
+    body: "마이크로 부르면 내 음정이 금색 선으로 겹쳐져요. 곡이 끝나면 드럼롤과 불꽃놀이. 스피커로 틀어도 반주는 걸러냅니다.",
+    chips: ["옥타브 무관", "실시간 채점", "불꽃놀이"],
+  },
+] as const;
+
+// 음정 바에 흐를 가짜 음표 (반음, 시작 초, 길이 초) — 한 바퀴 8초
+const NOTES = [
+  [0, 0.0, 0.5], [4, 0.55, 0.5], [7, 1.1, 0.5], [4, 1.65, 0.45], [5, 2.2, 0.8], [4, 3.05, 0.3], [2, 3.4, 0.9],
+  [2, 4.4, 0.5], [5, 4.95, 0.5], [9, 5.5, 0.5], [5, 6.05, 0.45], [7, 6.6, 0.8], [4, 7.45, 0.5],
+] as const;
+const LOOP = 8;
+const LYRIC = "오늘 밤은 우리 집 무대 위로 올라가";
+
+export function StoryScroll() {
+  const [sectionRef, progress] = useScrollProgress<HTMLElement>();
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const stageRef = useRef<HTMLDivElement>(null);
+  const progressRef = useRef(0);
+  useEffect(() => {
+    progressRef.current = progress;
+  }, [progress]);
+  const scene = Math.min(3, Math.floor(progress * 4 * 0.9999));
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    let frame = 0;
+    const start = performance.now();
+    const show = makeShow(92, 7, 0, 0.55);
+    let fourthEnteredAt: number | null = null;
+
+    const draw = (now: number) => {
+      frame = requestAnimationFrame(draw);
+      const { width, height, ctx } = fitCanvas(canvas);
+      if (!ctx || width === 0) return;
+      const t = (now - start) / 1000;
+      const p = progressRef.current * 4;
+      ctx.clearRect(0, 0, width, height);
+      // 파형·음정 바는 무대 영역에, 불꽃은 화면 전체에
+      const box = canvas.getBoundingClientRect();
+      const stage = stageRef.current?.getBoundingClientRect() ?? box;
+      const sx = stage.left - box.left;
+      const sy = stage.top - box.top;
+      const sw = stage.width;
+      const sh = stage.height;
+
+      // 장면 섞임 정도
+      const wave = clamp(2 - p) ; // ①② 파형 (③부터 사라짐)
+      const peel = clamp(p - 1); // ② 보컬 떼어내기
+      const bar = clamp(p - 1.9); // ③④ 음정 바
+      const sing = clamp(p - 2.9); // ④ 내 목소리
+      if (sing > 0.2 && fourthEnteredAt === null) fourthEnteredAt = t;
+      if (sing <= 0.05) fourthEnteredAt = null;
+
+      ctx.save();
+      ctx.translate(sx, sy);
+      if (wave > 0) drawWave(ctx, sw, sh, t, peel, wave);
+      if (bar > 0) drawPitchBar(ctx, sw, sh, t, bar, sing);
+      ctx.restore();
+      if (fourthEnteredAt !== null) {
+        const since = t - fourthEnteredAt;
+        const local = (since - 2.2) % 7;
+        if (since > 2.2) {
+          drawFireworks(ctx, show, local, width, height);
+          drawConfetti(ctx, local, width, height, 5);
+        }
+        const score = Math.min(92, Math.floor(92 * easeOut(Math.min(1, since / 2.2))));
+        ctx.save();
+        ctx.translate(sx, sy);
+        drawScore(ctx, sw, sh, score, sing);
+        ctx.restore();
+      }
+    };
+    frame = requestAnimationFrame(draw);
+    return () => cancelAnimationFrame(frame);
+  }, []);
+
+  return (
+    <section id="story" ref={sectionRef} className="relative h-[460vh]">
+      <div className="sticky top-0 flex h-dvh flex-col overflow-hidden lg:flex-row">
+        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_70%_50%,#1f1238,transparent_70%)]" />
+        <canvas ref={canvasRef} className="pointer-events-none absolute inset-0 size-full" aria-label="CoNo 가 노래를 노래방으로 바꾸는 과정 애니메이션" role="img" />
+        {/* 설명 */}
+        <div className="relative z-10 flex shrink-0 flex-col justify-end px-6 pb-4 pt-24 lg:w-[42%] lg:justify-center lg:py-0 lg:pl-[max(24px,calc((100vw-1152px)/2))]">
+          <div className="mb-6 flex gap-2" aria-hidden>
+            {SCENES.map((item, index) => (
+              <span key={item.step} className={`h-1.5 rounded-full transition-all duration-500 ${index === scene ? "w-10 bg-pink" : "w-4 bg-white/15"}`} />
+            ))}
+          </div>
+          <div className="relative min-h-[230px] sm:min-h-[210px]">
+            {SCENES.map((item, index) => (
+              <article
+                key={item.step}
+                className={`absolute inset-0 transition-all duration-500 ${index === scene ? "translate-y-0 opacity-100" : index < scene ? "-translate-y-6 opacity-0" : "translate-y-6 opacity-0"}`}
+                aria-hidden={index !== scene}
+              >
+                <p className="font-display text-5xl text-pink/80 sm:text-6xl">{item.step}</p>
+                <h2 className="mt-1 font-cute text-3xl sm:text-4xl">{item.title}</h2>
+                <p className="mt-3 max-w-md text-base leading-relaxed text-ink2">{item.body}</p>
+                <div className="mt-4 flex flex-wrap gap-2">
+                  {item.chips.map((chip) => (
+                    <span key={chip} className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-sm text-ink2">
+                      {chip}
+                    </span>
+                  ))}
+                </div>
+              </article>
+            ))}
+          </div>
+        </div>
+        {/* 장면이 그려지는 자리 (캔버스는 화면 전체 — 불꽃이 설명 쪽까지 퍼진다) */}
+        <div ref={stageRef} className="relative min-h-0 flex-1" />
+      </div>
+    </section>
+  );
+}
+
+const clamp = (value: number) => Math.min(1, Math.max(0, value));
+const easeOut = (x: number) => 1 - Math.pow(1 - x, 3);
+
+/** 파형: 막대 = 민트 반주 + 분홍 보컬. peel 만큼 보컬이 떨어져 위로 빨려 나간다 */
+function drawWave(ctx: CanvasRenderingContext2D, width: number, height: number, t: number, peel: number, alpha: number) {
+  const count = Math.max(28, Math.min(72, Math.floor(width / 12)));
+  const gap = width * 0.8 / count;
+  const left = width * 0.1;
+  const mid = height * 0.58;
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  for (let index = 0; index < count; index++) {
+    const phase = index * 0.45 + t * 3.2;
+    const accompaniment = (0.18 + 0.12 * Math.sin(phase) + 0.08 * Math.sin(phase * 2.3 + 1)) * height * 0.5;
+    const vocal = (0.1 + 0.1 * Math.abs(Math.sin(index * 0.2 + t * 1.7))) * height * 0.5;
+    const x = left + index * gap;
+    const w = Math.max(3, gap * 0.55);
+    // 반주
+    ctx.fillStyle = "#5ee0b8";
+    roundRect(ctx, x, mid - accompaniment, w, accompaniment * 2, w / 2);
+    // 보컬: 떼어지면서 오른쪽 위(AI)로 날아간다
+    const delay = (index / count) * 0.5;
+    const local = clamp((peel - delay) / 0.5);
+    const flyX = x + (width * 0.84 - x) * easeOut(local);
+    const flyY = mid - accompaniment - vocal * 2 + (height * 0.22 - (mid - accompaniment - vocal * 2)) * easeOut(local);
+    ctx.globalAlpha = alpha * (1 - local * 0.9);
+    ctx.fillStyle = "#ff8fb0";
+    const size = 1 - local * 0.7;
+    roundRect(ctx, flyX, flyY, w * size, vocal * 2 * size, (w * size) / 2);
+    ctx.globalAlpha = alpha;
+  }
+  // AI 칩
+  if (peel > 0) {
+    ctx.globalAlpha = alpha * clamp(peel * 3);
+    const cx = width * 0.84;
+    const cy = height * 0.22;
+    const glow = ctx.createRadialGradient(cx, cy, 0, cx, cy, 70);
+    glow.addColorStop(0, "rgba(255,143,176,0.55)");
+    glow.addColorStop(1, "rgba(255,143,176,0)");
+    ctx.fillStyle = glow;
+    ctx.beginPath();
+    ctx.arc(cx, cy, 70, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#fff";
+    ctx.font = `20px ${canvasFonts().cute}`;
+    ctx.textAlign = "center";
+    ctx.fillText("AI 🎤", cx, cy + 7);
+    ctx.fillStyle = "#99a1c7";
+    ctx.font = `15px ${canvasFonts().sans}`;
+    ctx.fillText("보컬은 여기로", cx, cy + 34);
+  }
+  ctx.restore();
+}
+
+/** 음정 바 + 가사 (+ sing 만큼 금색 내 목소리 선) */
+function drawPitchBar(ctx: CanvasRenderingContext2D, width: number, height: number, t: number, alpha: number, sing: number) {
+  const top = height * 0.12;
+  const barHeight = height * 0.46;
+  const left = width * 0.06;
+  const right = width * 0.96;
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  // 판
+  ctx.fillStyle = "rgba(0,0,0,0.3)";
+  roundRect(ctx, left, top, right - left, barHeight, 18);
+  // 반음 격자
+  ctx.strokeStyle = "rgba(255,255,255,0.05)";
+  ctx.lineWidth = 1;
+  for (let row = 0; row <= 12; row++) {
+    const y = top + (row / 12) * barHeight;
+    ctx.beginPath();
+    ctx.moveTo(left, y);
+    ctx.lineTo(right, y);
+    ctx.stroke();
+  }
+  const window = 5;
+  const playheadX = left + (right - left) * 0.28;
+  const now = t % LOOP;
+  const xOf = (time: number) => playheadX + ((time - now) / window) * (right - left);
+  const yOf = (semitone: number) => top + barHeight - ((semitone + 1.5) / 12) * barHeight;
+  const rowHeight = barHeight / 12;
+
+  const drawNotes = (offset: number) => {
+    for (const [semitone, start, length] of NOTES) {
+      const s = start + offset;
+      const x1 = xOf(s);
+      const x2 = xOf(s + length);
+      if (x2 < left || x1 > right) continue;
+      const current = s <= now && now < s + length;
+      const passed = s + length < now;
+      if (current) {
+        ctx.fillStyle = sing > 0.3 ? "rgba(255,204,92,0.45)" : "rgba(94,224,184,0.25)";
+        roundRect(ctx, x1 - 6, yOf(semitone) - rowHeight / 2 - 5, x2 - x1 + 12, rowHeight + 10, rowHeight / 2 + 5);
+      }
+      ctx.fillStyle = passed ? (sing > 0.3 ? "rgba(255,204,92,0.6)" : "rgba(255,255,255,0.16)") : current ? "#5ee0b8" : "rgba(255,255,255,0.8)";
+      roundRect(ctx, Math.max(left, x1), yOf(semitone) - rowHeight / 2 + 2, Math.min(right, x2) - Math.max(left, x1), rowHeight - 4, rowHeight / 2);
+    }
+  };
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(left, top, right - left, barHeight);
+  ctx.clip();
+  drawNotes(-LOOP);
+  drawNotes(0);
+  drawNotes(LOOP);
+
+  // 금색 내 목소리: 음표를 살짝 흔들리며 따라간다
+  if (sing > 0) {
+    ctx.globalAlpha = alpha * sing;
+    ctx.strokeStyle = "#ffcc5c";
+    ctx.lineWidth = 4;
+    ctx.lineCap = "round";
+    ctx.shadowColor = "#ffcc5c";
+    ctx.shadowBlur = 12;
+    ctx.beginPath();
+    let started = false;
+    for (let dt = -1.2; dt <= 0; dt += 0.02) {
+      const time = now + dt;
+      const note = noteAt(time);
+      if (note === null) {
+        started = false;
+        continue;
+      }
+      const wobble = Math.sin(time * 24) * 0.12 + Math.sin(time * 5) * 0.08;
+      const x = xOf(time);
+      const y = yOf(note + wobble);
+      if (!started) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+      started = true;
+    }
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+  }
+  ctx.restore();
+
+  // 재생선
+  ctx.globalAlpha = alpha;
+  ctx.strokeStyle = "rgba(255,143,176,0.9)";
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(playheadX, top);
+  ctx.lineTo(playheadX, top + barHeight);
+  ctx.stroke();
+
+  // 가사: 글자마다 색칠
+  const lyricY = top + barHeight + Math.min(90, height * 0.14);
+  const fontSize = Math.max(22, Math.min(44, width / 22));
+  ctx.font = `${fontSize}px ${canvasFonts().cute}`;
+  ctx.textAlign = "left";
+  const textWidth = ctx.measureText(LYRIC).width;
+  const x = (left + right) / 2 - textWidth / 2;
+  const fill = (now / LOOP) * textWidth;
+  ctx.fillStyle = "rgba(237,240,255,0.35)";
+  ctx.fillText(LYRIC, x, lyricY);
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(x, lyricY - fontSize, fill, fontSize * 1.4);
+  ctx.clip();
+  const gradient = ctx.createLinearGradient(x, 0, x + textWidth, 0);
+  gradient.addColorStop(0, "#5cc7ff");
+  gradient.addColorStop(1, "#5ee0b8");
+  ctx.fillStyle = gradient;
+  ctx.fillText(LYRIC, x, lyricY);
+  ctx.restore();
+  ctx.restore();
+}
+
+function noteAt(time: number): number | null {
+  const local = ((time % LOOP) + LOOP) % LOOP;
+  for (const [semitone, start, length] of NOTES) {
+    if (local >= start && local < start + length) return semitone;
+  }
+  return null;
+}
+
+function drawScore(ctx: CanvasRenderingContext2D, width: number, height: number, score: number, alpha: number) {
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  const x = width * 0.5;
+  const y = height * 0.94;
+  ctx.textAlign = "center";
+  ctx.font = `${Math.max(56, Math.min(110, width / 7))}px ${canvasFonts().display}`;
+  ctx.shadowColor = "#ff9a33";
+  ctx.shadowBlur = 28;
+  const gradient = ctx.createLinearGradient(0, y - 80, 0, y);
+  gradient.addColorStop(0, "#fff7c7");
+  gradient.addColorStop(1, "#ff8a38");
+  ctx.fillStyle = gradient;
+  ctx.fillText(String(score), x, y);
+  ctx.shadowBlur = 0;
+  ctx.font = `18px ${canvasFonts().cute}`;
+  ctx.fillStyle = "#99a1c7";
+  ctx.textAlign = "left";
+  ctx.fillText("점", x + Math.max(56, Math.min(110, width / 7)) * 0.62, y);
+  ctx.restore();
+}
+
+function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
+  if (w <= 0 || h <= 0) return;
+  ctx.beginPath();
+  ctx.roundRect(x, y, w, h, Math.min(r, w / 2, h / 2));
+  ctx.fill();
+}

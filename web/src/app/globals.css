@@ -1,0 +1,134 @@
+@import "tailwindcss";
+
+/* CoNo 무대 색 (앱의 StageTheme 와 같은 값) */
+@theme {
+  --color-ink: #edf0ff;
+  --color-ink2: #99a1c7;
+  --color-faint: #858cb3;
+  --color-mint: #5ee0b8;
+  --color-sky: #5cc7ff;
+  --color-pink: #ff8fb0;
+  --color-gold: #ffcc5c;
+  --color-stop: #ff6b6b;
+  --color-night: #0b0d1a;
+  --color-dusk: #170d29;
+
+  --font-display: var(--font-black-han-sans), var(--font-noto-sans-kr), system-ui, sans-serif;
+  --font-cute: var(--font-jua), var(--font-noto-sans-kr), system-ui, sans-serif;
+  --font-sans: var(--font-noto-sans-kr), -apple-system, system-ui, sans-serif;
+}
+
+html {
+  scroll-behavior: smooth;
+  /* 페이지마다 스크롤바 유무로 가운데 정렬이 밀리지 않게 */
+  scrollbar-gutter: stable;
+}
+
+body {
+  background: var(--color-night);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  /* hidden 은 body 를 스크롤 영역으로 만들어 sticky(스크롤 스토리)가 안 붙는다 → clip */
+  overflow-x: clip;
+  /* 한국어는 낱말 단위로 줄바꿈 ("여 / 기서" 방지), 긴 영문·해시는 넘치면 끊는다 */
+  word-break: keep-all;
+  overflow-wrap: anywhere;
+}
+
+::selection {
+  background: color-mix(in srgb, var(--color-pink) 45%, transparent);
+}
+
+/* 네온 글씨: 흰 심 + 색 번짐 */
+.neon {
+  --neon: var(--color-pink);
+  color: #fff;
+  text-shadow:
+    0 0 2px #fff,
+    0 0 8px var(--neon),
+    0 0 18px var(--neon),
+    0 0 42px var(--neon),
+    0 0 80px color-mix(in srgb, var(--neon) 60%, transparent);
+}
+.neon-mint { --neon: var(--color-mint); }
+.neon-gold { --neon: var(--color-gold); }
+.neon-sky { --neon: var(--color-sky); }
+
+/* 네온관이 켜질 때 지직거림 */
+@keyframes neon-flicker {
+  0%, 18%, 22%, 25%, 53%, 57%, 100% { opacity: 1; }
+  20%, 24%, 55% { opacity: 0.25; }
+}
+.flicker { animation: neon-flicker 2.4s linear infinite; }
+.flicker-once { animation: neon-flicker 1.2s linear 1; }
+
+/* 느리게 떠다니기 */
+@keyframes floaty {
+  0%, 100% { transform: translateY(0) rotate(var(--r, 0deg)); }
+  50% { transform: translateY(-14px) rotate(calc(var(--r, 0deg) + 6deg)); }
+}
+.floaty { animation: floaty 5s ease-in-out infinite; }
+
+/* 스포트라이트가 무대를 쓸고 지나감 */
+@keyframes sweep {
+  0%, 100% { transform: rotate(-24deg); }
+  50% { transform: rotate(24deg); }
+}
+
+/* 미러볼 반짝이 */
+@keyframes twinkle {
+  0%, 100% { opacity: 0.15; transform: scale(0.6); }
+  50% { opacity: 1; transform: scale(1); }
+}
+
+/* 도장 쾅 */
+@keyframes stamp {
+  0% { opacity: 0; transform: scale(3) rotate(-30deg); }
+  60% { opacity: 1; transform: scale(0.9) rotate(-12deg); }
+  80% { transform: scale(1.05) rotate(-14deg); }
+  100% { opacity: 1; transform: scale(1) rotate(-13deg); }
+}
+
+/* 맥 앱 권한 스위치가 차례로 켜짐 */
+@keyframes toggle-on {
+  0%, 20% { background: rgba(255, 255, 255, 0.15); }
+  30%, 100% { background: var(--color-mint); }
+}
+@keyframes knob-on {
+  0%, 20% { transform: translateX(0); }
+  30%, 100% { transform: translateX(16px); }
+}
+
+/* DMG 에서 응용 프로그램으로 끌어다 놓기 */
+@keyframes drag-install {
+  0%, 15% { transform: translate(0, 0) scale(1); opacity: 1; }
+  55% { transform: translate(var(--dx), -18px) scale(1.06); opacity: 1; }
+  70% { transform: translate(var(--dx), 0) scale(0.9); opacity: 0.2; }
+  71%, 100% { transform: translate(0, 0) scale(1); opacity: 0; }
+}
+
+/* 줄 흐르는 테두리 */
+@keyframes spin-slow {
+  to { transform: rotate(360deg); }
+}
+
+.reveal {
+  opacity: 0;
+  transform: translateY(28px);
+  transition: opacity 0.8s ease, transform 0.8s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.reveal.in {
+  opacity: 1;
+  transform: none;
+}
+
+/* 움직임 줄이기: 반복 애니메이션을 멈춘다 */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
