@@ -108,6 +108,11 @@ private struct GeneralSettings: View {
                     pane: "Privacy_Automation"
                 )
                 PermissionRow(
+                    title: "자동화 › 브라우저 (Chrome·Safari 등)",
+                    detail: "YouTube 광고를 알아채 광고 소리를 끄려고 탭 제목만 읽습니다. 허용하지 않으면 추정으로 대신해요.",
+                    pane: "Privacy_Automation"
+                )
+                PermissionRow(
                     title: "손쉬운 사용",
                     detail: "다른 앱을 멈출 때 예비 수단(⏯ 미디어 키)으로만 씁니다. 보통은 필요 없어요.",
                     pane: "Privacy_Accessibility"

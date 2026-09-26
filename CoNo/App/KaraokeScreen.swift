@@ -280,6 +280,7 @@ private struct StageHeader: View {
             // 가운데: 지금 들리는 곡 (0.5초마다 — 곡이 바뀌어도 소리가 바뀔 때 함께 바뀐다)
             TimelineView(.periodic(from: .now, by: 0.5)) { _ in
                 let track = engine.heardTrack
+                let onAd = engine.heardCaptureTime().flatMap { engine.lyrics.advertisement(atCaptureTime: $0) } != nil
                 HStack(spacing: 12) {
                     if let artwork = artworks.artwork(for: track?.id) {
                         Image(nsImage: artwork.image)
@@ -291,10 +292,10 @@ private struct StageHeader: View {
                             .transition(.opacity)
                     }
                     VStack(alignment: artworks.artwork(for: track?.id) == nil ? .center : .leading, spacing: 2) {
-                        Text(track?.title ?? engine.runningSource?.name ?? "")
+                        Text(onAd ? "광고 재생 중" : track?.title ?? engine.runningSource?.name ?? "")
                             .font(StageTheme.rounded(30))
                             .lineLimit(1)
-                        Text(track?.artist ?? subtitle)
+                        Text(onAd ? "광고가 끝나면 노래가 이어져요" : track?.artist ?? subtitle)
                             .font(StageTheme.rounded(17, .medium))
                             .foregroundStyle(StageTheme.secondaryInk)
                             .lineLimit(1)
@@ -333,6 +334,22 @@ private struct PitchBarStage: View {
             autoZoom: settings.pitchAutoZoom,
             showContour: settings.showPitchContour
         )
+        .overlay {
+            // 광고가 들리는 동안: 광고 목소리의 음정이 흐르지 않게 덮는다
+            TimelineView(.periodic(from: .now, by: 0.25)) { _ in
+                if engine.heardCaptureTime().flatMap({ engine.lyrics.advertisement(atCaptureTime: $0) }) != nil {
+                    RoundedRectangle(cornerRadius: 18)
+                        .fill(StageTheme.night.opacity(0.78))
+                        .overlay {
+                            Label("광고", systemImage: "megaphone")
+                                .font(StageTheme.rounded(15, .semibold))
+                                .foregroundStyle(StageTheme.secondaryInk)
+                        }
+                        .transition(.opacity)
+                }
+            }
+            .allowsHitTesting(false)
+        }
         .overlay(alignment: .topTrailing) {
             if hovering {
                 HStack(spacing: 6) {

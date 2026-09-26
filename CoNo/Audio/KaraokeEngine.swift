@@ -289,6 +289,8 @@ final class KaraokeEngine {
     /// 새 위치 소리의 시작을 찾아 소리 켤 지점을 정했는지
     @ObservationIgnored private var seekArrivalFound = false
     @ObservationIgnored private var seekTask: Task<Void, Never>?
+    /// 파이프라인에 걸어 둔 광고 구간 (바뀔 때만 다시 건다)
+    @ObservationIgnored private var appliedAdWindow: LyricsController.AdWindow?
 
     /// 곡 안 위치로 이동. CoNo 는 원곡보다 몇 초 늦게 들려주므로, 누르는 순간 소리를 끄고
     /// 원곡 앱이 실제로 새 위치를 재생하기 시작한 지점(재생 위치 보고로 찾는다)이 출력에 닿으면 다시 켠다.
@@ -330,6 +332,19 @@ final class KaraokeEngine {
             seekTarget = nil
         }
         if elapsed > .seconds(20) { seekTarget = nil }
+    }
+
+    /// 광고 구간(캡처 시각)을 출력 스트림 구간으로 옮겨 그 동안 소리를 끈다. 출력은 캡처보다 몇 초 늦으므로
+    /// 광고를 알아챈 뒤에 걸어도 광고 첫 소리부터 가린다.
+    private func updateAdMute() {
+        let window = lyrics.adWindow
+        guard window != appliedAdWindow, let pipeline else { return }
+        appliedAdWindow = window
+        let streamOffset = runningMode == .aiSeparation ? (separationTiming?.streamOffset ?? 0) : 0
+        pipeline.setAdMute(
+            fromStreamSeconds: window.map { $0.start + streamOffset },
+            untilStreamSeconds: window?.end.map { $0 + streamOffset }
+        )
     }
 
     private func seekSource(to seconds: Double) async -> Bool {
@@ -685,6 +700,7 @@ final class KaraokeEngine {
         vocalRange = nil
         seekTask?.cancel()
         seekTarget = nil
+        appliedAdWindow = nil
         if isBusy { status = .idle }
     }
 
@@ -740,6 +756,7 @@ final class KaraokeEngine {
                     }
                 }
                 self.updateSeek()
+                self.updateAdMute()
                 tick += 1
                 if tick % 20 == 0 { self.updateVocalRange() }
                 try? await Task.sleep(for: .milliseconds(50))

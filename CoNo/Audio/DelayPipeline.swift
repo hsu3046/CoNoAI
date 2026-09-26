@@ -145,6 +145,9 @@ final class DelayPipeline: @unchecked Sendable {
     /// 이동(seek) 뒤 새 위치의 소리가 출력에 닿을 때까지 소리를 끈다: 이 출력 프레임 전까지 무음 (Int.min = 끄지 않음).
     /// 링은 평소처럼 읽어 흘려보내므로 스트림 시각은 그대로다 (음정 바·가사 싱크 유지).
     private let muteUntilFrame = Atomic<Int>(Int.min)
+    /// 광고 구간: [from, until) 출력 프레임 동안 무음 (from = Int.max 면 없음). 앞으로 들릴 구간을 미리 걸어 둔다.
+    private let adMuteFromFrame = Atomic<Int>(Int.max)
+    private let adMuteUntilFrame = Atomic<Int>(Int.max)
     /// 재생 스레드가 매 콜백 갱신: 지금 소리를 끄고 있는지 (UI "이동 중")
     private let outputMutedFlag = Atomic<Bool>(false)
     /// 재생 스레드 전용: 직전 콜백이 꺼져 있었는지 (끄는 순간만 페이드아웃)
@@ -423,7 +426,10 @@ final class DelayPipeline: @unchecked Sendable {
         } else if playbackIsPrimed {
             playbackFrozen = false
             got = playbackRing.read(into: playScratch, count: samples)
-            let muted = playedFrames < muteUntilFrame.load(ordering: .relaxed)
+            let seekMuted = playedFrames < muteUntilFrame.load(ordering: .relaxed)
+            let adMuted = playedFrames >= adMuteFromFrame.load(ordering: .relaxed)
+                && playedFrames < adMuteUntilFrame.load(ordering: .relaxed)
+            let muted = seekMuted || adMuted
             if muted {
                 // 켜져 있다가 꺼지는 콜백만 앞부분을 페이드아웃, 나머지는 무음. 다시 켜질 때 페이드인.
                 let fade = playbackWasMuted ? 0 : min(got / Self.channels, Self.edgeFadeFrames)
@@ -441,7 +447,7 @@ final class DelayPipeline: @unchecked Sendable {
                 playbackNeedsFadeIn = false
             }
             playbackWasMuted = muted
-            outputMutedFlag.store(muted, ordering: .relaxed)
+            outputMutedFlag.store(seekMuted, ordering: .relaxed)
             if got < samples {
                 // 언더런: 남은 소리 끝을 페이드아웃해 무음으로 뚝 끊기는 클릭을 줄이고, 다시 채워지면 페이드인
                 Self.applyEdgeFade(playScratch, frames: got / Self.channels, fadeIn: false)
@@ -570,6 +576,16 @@ final class DelayPipeline: @unchecked Sendable {
 
     func unmuteOutput() {
         muteUntilFrame.store(Int.min, ordering: .relaxed)
+    }
+
+    /// 광고 구간 (출력 스트림 초). until 이 nil 이면 끝을 알 때까지 계속. from 이 nil 이면 해제.
+    func setAdMute(fromStreamSeconds from: Double?, untilStreamSeconds until: Double?) {
+        guard let from else {
+            adMuteFromFrame.store(Int.max, ordering: .relaxed)
+            return
+        }
+        adMuteUntilFrame.store(until.map { Int($0 * outputSampleRate) } ?? Int.max, ordering: .relaxed)
+        adMuteFromFrame.store(Int(from * outputSampleRate), ordering: .relaxed)
     }
 
     // MARK: - 일시정지 (UI 스레드)

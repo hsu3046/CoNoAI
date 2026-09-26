@@ -19,6 +19,18 @@ struct NowPlayingSample: Sendable {
     let position: Double
     /// 조회 시각 (mach_absolute_time, 호출 전후의 중간)
     let hostTime: UInt64
+    /// 브라우저 영상 광고 (이때 track 은 nil — 곡으로 취급하지 않는다)
+    var advertisement: AdvertisementInfo?
+}
+
+/// 지금 나오는 광고 한 편
+struct AdvertisementInfo: Equatable, Sendable {
+    /// 광고 제목·광고주 (같은 광고인지 구별용)
+    let title: String
+    /// 광고 길이 (초, 모르면 0)
+    let duration: Double
+    /// 광고 안 위치 (초)
+    let position: Double
 }
 
 enum NowPlayingError: LocalizedError {

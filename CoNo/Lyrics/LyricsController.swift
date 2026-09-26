@@ -46,6 +46,15 @@ final class LyricsController {
     private(set) var playerState: PlayerState?
     private(set) var currentTrack: TrackInfo?
 
+    /// 광고 구간 (캡처 시각). end 가 nil 이면 아직 광고 중. 엔진이 이 구간의 출력 소리를 끈다.
+    struct AdWindow: Equatable {
+        var start: Double
+        var end: Double?
+    }
+    @ObservationIgnored private(set) var adWindow: AdWindow?
+    /// 광고 한 편씩 (같은 구간에 여러 편이 이어질 수 있다) — 남은 시간 표시용
+    @ObservationIgnored private var adItems: [(key: String, start: Double, duration: Double)] = []
+
     /// 진단: 연속 재생 중 (플레이어 위치 − 캡처 시각) 의 흔들림.
     /// 이 값이 일정해야 앵커가 믿을 만하다. 크게 흔들리면 플레이어 위치 보고 자체가 들쭉날쭉한 것.
     struct AnchorDiagnostics: Equatable {
@@ -182,7 +191,41 @@ final class LyricsController {
         currentTrackID = nil
         playerState = nil
         currentTrack = nil
+        adWindow = nil
+        adItems.removeAll()
         status = .inactive
+    }
+
+    /// 광고가 들렸다: 곡으로 취급하지 않고(가사·음역·싱크 기억에서 제외) 구간만 기록한다
+    private func recordAdvertisement(_ ad: AdvertisementInfo, capture: Double) {
+        let start = capture - ad.position
+        if adItems.last?.key != ad.title {
+            adItems.append((ad.title, start, ad.duration))
+            if adItems.count > 8 { adItems.removeFirst() }
+        }
+        // 광고가 이어지는 동안은 한 구간 (광고 2편 연속도 하나로)
+        if adWindow == nil || adWindow?.end != nil {
+            adWindow = AdWindow(start: start, end: nil)
+        }
+        if currentTrackID != nil { currentTrackID = nil }
+        if currentTrack != nil { currentTrack = nil }
+        // 곡 시계 구간을 끊는다 (광고 뒤 곡 위치를 광고 전과 잇지 않게)
+        clock.add(PlaybackAnchor(captureTime: capture, songPosition: 0, isPlaying: false, trackID: nil))
+    }
+
+    /// 광고 뒤 곡이 다시 들어왔다: 구간을 닫는다. 영상이 처음부터면 위치로 정확히, 중간 광고면 폴링 간격 절반 앞.
+    private func closeAdvertisement(capture: Double, contentPosition: Double) {
+        guard var window = adWindow, window.end == nil else { return }
+        window.end = max(window.start, contentPosition < 3 ? capture - contentPosition : capture - 0.25)
+        adWindow = window
+    }
+
+    /// 캡처 시각 c 의 소리가 광고면 남은 초 (길이를 모르면 0). 광고가 아니면 nil.
+    func advertisement(atCaptureTime c: Double) -> Double? {
+        guard let window = adWindow, c >= window.start, c < (window.end ?? .infinity),
+              let item = adItems.last(where: { $0.start <= c + 0.5 })
+        else { return nil }
+        return item.duration > 0 ? max(0, item.start + item.duration - c) : 0
     }
 
     /// 음악 앱 재생·일시정지
@@ -242,6 +285,11 @@ final class LyricsController {
             if playerState != sample.state { playerState = sample.state }
             if currentTrack != sample.track { currentTrack = sample.track }
             guard let capture = captureTime(sample.hostTime) else { return }
+            if let ad = sample.advertisement {
+                recordAdvertisement(ad, capture: capture)
+                return
+            }
+            closeAdvertisement(capture: capture, contentPosition: sample.position)
             recordResidual(sample: sample, captureTime: capture)
             clock.add(PlaybackAnchor(
                 captureTime: capture,

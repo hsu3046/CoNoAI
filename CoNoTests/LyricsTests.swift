@@ -1,5 +1,6 @@
 // CoNo — Copyright (C) 2026 AIB Inc. (https://www.aib.vote) — GPL-3.0-or-later
 
+import AppKit
 import Foundation
 import Testing
 
@@ -326,3 +327,45 @@ struct VideoTrackLyricsTests {
     }
 }
 
+
+struct AdDetectorTests {
+    // 2026-09-26 실측: 광고 2개 뒤 본 영상. 광고 중에도 탭 제목은 본 영상 그대로였다.
+    private let tabs = ["LEE JISOO - MISMATCH / THE FIRST TAKE - YouTube", "(3) Gmail", "새 탭"]
+
+    @Test func nowPlayingTitleMissingFromTabsIsAnAd() {
+        #expect(AdDetector.isAdvertisement(title: "여기어때, 해외여행 플랫폼으로 확장! 프로젝트 관리는 먼데이닷컴으로",
+                                           artist: "monday.com", duration: 59.9, tabTitles: tabs))
+        #expect(AdDetector.isAdvertisement(title: "1-click Hermes Agent", artist: "Hostinger.com/kr/hermes-agent",
+                                           duration: 31.2, tabTitles: tabs))
+        #expect(!AdDetector.isAdvertisement(title: "LEE JISOO - MISMATCH / THE FIRST TAKE", artist: "THE FIRST TAKE",
+                                            duration: 244.2, tabTitles: tabs))
+        // YouTube Music 탭: "곡 - YouTube Music" / 알림 개수 "(1) "
+        #expect(!AdDetector.isAdvertisement(title: "Hype Boy", artist: "NewJeans", duration: 179,
+                                            tabTitles: ["(1) Hype Boy - YouTube Music"]))
+    }
+
+    @Test func genericTabTitlesDoNotHideAds() {
+        // 사이트 이름만 남은 탭("YouTube")은 모든 제목을 품는 것으로 오판하지 않는다 → 추정으로
+        #expect(AdDetector.isAdvertisement(title: "1-click Hermes Agent", artist: "Hostinger.com/kr/hermes-agent",
+                                           duration: 31.2, tabTitles: ["YouTube"]))
+    }
+
+    @Test func fallbackGuessWithoutTabTitles() {
+        #expect(AdDetector.isAdvertisement(title: "여기어때 …", artist: "monday.com", duration: 59.9, tabTitles: nil))
+        // 짧아도 가수 칸이 도메인이 아니면 곡으로
+        #expect(!AdDetector.isAdvertisement(title: "짧은 곡", artist: "아이유", duration: 58, tabTitles: nil))
+        // 도메인이어도 길면 곡으로 (가수 이름에 .com 이 든 경우 등)
+        #expect(!AdDetector.isAdvertisement(title: "Song", artist: "artist.com", duration: 210, tabTitles: nil))
+    }
+
+    @Test func browserTabScriptsCompileForInstalledBrowsers() {
+        for bundleID in ["com.google.Chrome", "com.apple.Safari"]
+        where NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID) != nil {
+            let script = NSAppleScript(source: BrowserTabScript.source(bundleID: bundleID)!)
+            var error: NSDictionary?
+            let compiled = script?.compileAndReturnError(&error) ?? false
+            #expect(compiled, "\(bundleID) 탭 스크립트 컴파일 실패: \(error ?? [:])")
+        }
+        #expect(!BrowserTabScript.supports(bundleID: "com.apple.Music"))
+    }
+}

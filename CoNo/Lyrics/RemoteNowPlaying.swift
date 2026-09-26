@@ -32,10 +32,16 @@ final class RemoteNowPlayingProvider: NowPlayingProvider {
     private let bundleID: String
     private let stream: MediaRemoteStream
     private let state = SharedState()
+    /// 광고 판정용 탭 제목 (브라우저일 때만)
+    private let tabs: BrowserTabs?
+    /// 항목(제목|가수|길이)별 광고 판정. 같은 판정이 두 번 나오면 확정해 더 묻지 않는다
+    /// (영상이 바뀐 직후엔 탭 제목이 한 박자 늦게 바뀔 수 있다).
+    private let verdicts = Mutex<[String: (isAd: Bool, confirmed: Bool)]>([:])
 
     init?(bundleID: String?) {
         guard let bundleID, let bridge = MediaRemoteBridge.shared else { return nil }
         self.bundleID = bundleID
+        tabs = BrowserTabs(bundleID: bundleID)
         let state = self.state
         stream = MediaRemoteStream(bridge: bridge) { info, artwork in
             state.mutex.withLock { current in
@@ -65,6 +71,11 @@ final class RemoteNowPlayingProvider: NowPlayingProvider {
         let stamp = (info.timestampEpochMicros ?? now * 1_000_000) / 1_000_000
         let position = max(0, elapsed + (now - stamp) * rate)
         let duration = (info.durationMicros ?? 0) / 1_000_000
+        if await isAdvertisement(info, duration: duration) {
+            let ad = AdvertisementInfo(title: "\(info.title)|\(info.artist ?? "")", duration: duration, position: position)
+            return .success(NowPlayingSample(state: info.playing ? .playing : .paused, track: nil, position: position,
+                                             hostTime: hostTime, advertisement: ad))
+        }
         let cleaned = MediaTitleCleaner.clean(title: info.title, artist: info.artist ?? "")
         let track = TrackInfo(
             // 같은 영상을 다시 틀어도 같은 ID (가사 캐시·학습값과 같은 기준)
@@ -77,6 +88,19 @@ final class RemoteNowPlayingProvider: NowPlayingProvider {
             durationIsReliable: false
         )
         return .success(NowPlayingSample(state: info.playing ? .playing : .paused, track: track, position: position, hostTime: hostTime))
+    }
+
+    private func isAdvertisement(_ info: RemoteNowPlaying, duration: Double) async -> Bool {
+        let key = "\(info.title)|\(info.artist ?? "")|\(Int(duration.rounded()))"
+        if let known = verdicts.withLock({ $0[key] }), known.confirmed { return known.isAd }
+        let titles = await tabs?.titles()
+        let isAd = AdDetector.isAdvertisement(title: info.title, artist: info.artist ?? "", duration: duration, tabTitles: titles)
+        verdicts.withLock { all in
+            let previous = all[key]
+            if all.count > 64 { all.removeAll() }
+            all[key] = (isAd, previous?.isAd == isAd)
+        }
+        return isAd
     }
 
     func artworkData() async -> Data? {

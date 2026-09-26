@@ -36,7 +36,9 @@ struct LyricsView: View {
 
         VStack(spacing: 0) {
             VStack(spacing: 14) {
-                if let lyrics = state?.lyrics {
+                if let heard, let remaining = controller.advertisement(atCaptureTime: heard) {
+                    AdNotice(remaining: remaining)
+                } else if let lyrics = state?.lyrics {
                     Group {
                         if let current = lyrics.current {
                             KaraokeLine(text: current, progress: lyrics.progress, highlightedCharacters: lyrics.highlightedCharacters, fontSize: lineFontSize)
@@ -100,6 +102,24 @@ struct LyricsView: View {
         case .notFound: "이 곡의 가사를 찾지 못했습니다"
         case let .failed(message): message
         }
+    }
+}
+
+/// 광고 중 안내 (소리는 엔진이 끈다)
+private struct AdNotice: View {
+    let remaining: Double
+
+    var body: some View {
+        VStack(spacing: 10) {
+            Label("광고 재생 중", systemImage: "megaphone.fill")
+                .font(StageTheme.rounded(28, .heavy))
+                .foregroundStyle(StageTheme.ink)
+            Text(remaining > 0.5 ? "\(Int(remaining.rounded(.up)))초 뒤 노래가 이어져요 · 광고 소리는 꺼 두었어요" : "곧 노래가 이어져요 · 광고 소리는 꺼 두었어요")
+                .font(StageTheme.rounded(16, .medium))
+                .foregroundStyle(StageTheme.secondaryInk)
+                .monospacedDigit()
+        }
+        .accessibilityElement(children: .combine)
     }
 }
 
