@@ -2,42 +2,45 @@
 
 ## Tagline-en
 
-Your streaming app is already a karaoke machine. CoNoAI strips the vocals live and gives you a pitch bar and synced lyrics — no downloads.
+Your music app is already a karaoke machine. CoNoAI strips the vocals live and adds a pitch bar and synced lyrics — no downloads.
 
 ## Tagline-ko
 
-노래방 가기엔 애매한 밤, 평소 듣던 스트리밍 앱이 그대로 코노가 됩니다. 곡을 따로 받을 필요 없이 AI가 실시간으로 목소리를 지우고, 부를 음정과 가사를 흘려 줍니다. 오늘 저녁엔 방에서 한 곡 어때요?
+노래방 가기엔 애매한 밤, 평소 듣던 음악 앱이나 브라우저의 YouTube가 그대로 코노가 됩니다. 곡을 따로 받을 필요 없이 AI가 실시간으로 목소리를 지우고, 부를 음정과 가사를 흘려 줍니다. 키가 높으면 버튼 하나로 내 목소리에 맞추면 돼요.
 
 ## Tagline-ja
 
-カラオケに行くほどでもない夜、いつもの音楽アプリがそのままカラオケボックスに。曲をダウンロードしなくても、AIがその場でボーカルを消して、歌うべき音程と歌詞を流してくれます。今夜は部屋で一曲いかがですか。
+カラオケに行くほどでもない夜、いつもの音楽アプリやブラウザのYouTubeがそのままカラオケボックスに。曲をダウンロードしなくても、AIがその場でボーカルを消して、歌うべき音程と歌詞を流してくれます。キーが高ければボタンひとつで自分の声に合わせられます。
 
 ---
 
 ## Summary-en
 
-You finally find the song you want to sing — but the karaoke version doesn't exist, or it's buried behind another app and another subscription. CoNoAI takes a different route: it listens to whatever your music app is already playing on your Mac, and a small AI model running entirely on your machine peels the lead vocal away a few seconds ahead of what you hear. That head start lets it draw the melody as a scrolling pitch bar, like a TV singing show, and light up the lyrics syllable by syllable as the singer would. Change the key when the song sits too high, and just sing.
+You finally find the song you want to sing — but the karaoke version doesn't exist, or it's buried behind another app and another subscription. CoNoAI takes a different route: it listens to whatever is already playing on your Mac, whether that's Apple Music or a video in your browser, and a small AI model running entirely on your machine peels the lead vocal away a few seconds ahead of what you hear. That head start lets it draw the melody as a scrolling pitch bar, like a TV singing show, and light up the lyrics syllable by syllable as the singer would. Press "My key" and it moves the song to a comfortable height for your voice, then just sing.
 
 ## Summary-ko
 
-부르고 싶은 노래는 찾았는데 반주 음원이 없거나, 있더라도 다른 앱과 다른 구독 뒤에 숨어 있을 때가 많죠. CoNoAI는 방향을 바꿨습니다. 맥에서 음악 앱이 지금 재생하는 소리를 그대로 받아, 내 컴퓨터 안에서만 도는 AI가 들리기 몇 초 전에 가수의 목소리를 걷어 냅니다. 그 몇 초의 여유 덕분에 부를 멜로디를 예능 프로그램처럼 흘러가는 음정 막대로 미리 보여 주고, 가사도 가수가 부르는 박자에 맞춰 한 음절씩 물들여 줍니다. 원래 키가 높다면 반음씩 내려서 편하게 부르면 됩니다. 곡을 내려받을 필요도, 새 서비스에 가입할 필요도 없어요.
+부르고 싶은 노래는 찾았는데 반주 음원이 없거나, 있더라도 다른 앱과 다른 구독 뒤에 숨어 있을 때가 많죠. CoNoAI는 방향을 바꿨습니다. 맥에서 지금 흐르는 소리를 그대로 받아 — Apple Music이든 브라우저의 YouTube든 — 내 컴퓨터 안에서만 도는 AI가 들리기 몇 초 전에 가수의 목소리를 걷어 냅니다. 그 몇 초의 여유 덕분에 부를 멜로디를 예능 프로그램처럼 흘러가는 음정 막대로 미리 보여 주고, 가사도 가수가 부르는 박자에 맞춰 한 음절씩 물들여 줍니다. 키가 높다면 '내 키' 한 번이면 내 목소리에 편한 높이로 옮겨 줘요. 곡을 내려받을 필요도, 새 서비스에 가입할 필요도 없습니다.
 
 ## Summary-ja
 
-歌いたい曲は見つかったのに、カラオケ音源がなかったり、別のアプリや別のサブスクの奥に隠れていたりしませんか。CoNoAI は発想を変えました。Mac でいつもの音楽アプリが流している音をそのまま受け取り、手元のマシンだけで動く AI が、聞こえる数秒前に歌手の声を取り除きます。その数秒の余裕で、歌うメロディーをテレビの歌番組のように流れる音程バーで先に見せ、歌詞も歌手のリズムに合わせて一音ずつ色づけていきます。キーが高ければ半音ずつ下げて、気楽に歌えばOK。曲のダウンロードも、新しいサービスへの登録もいりません。
+歌いたい曲は見つかったのに、カラオケ音源がなかったり、別のアプリや別のサブスクの奥に隠れていたりしませんか。CoNoAI は発想を変えました。Mac でいま流れている音を — Apple Music でもブラウザの YouTube でも — そのまま受け取り、手元のマシンだけで動く AI が、聞こえる数秒前に歌手の声を取り除きます。その数秒の余裕で、歌うメロディーをテレビの歌番組のように流れる音程バーで先に見せ、歌詞も歌手のリズムに合わせて一音ずつ色づけていきます。キーが高ければ「マイキー」ひとつで自分の声に楽な高さへ。曲のダウンロードも、新しいサービスへの登録もいりません。
 
 ---
 
 ## ✨ What It Does
 
 - **Removes the lead vocal in real time** — an on-device AI model (UVR MDX-Net Karaoke) separates the singer from the band while the song plays, keeping the backing chorus.
-- **Works with the app you already use** — captures the sound of Apple Music (and other music apps) directly, then mutes the original so you only hear the karaoke track.
-- **Shows the melody before you sing it** — a scrolling pitch bar, drawn from the singer's actual voice, flows toward a fixed line a few seconds ahead of time.
+- **Works with the app you already use** — captures Apple Music, browsers (YouTube, YouTube Music) and other music apps directly, then mutes the original so you only hear the karaoke track.
+- **Shows the melody before you sing it** — a scrolling pitch bar, drawn from the singer's actual voice, flows toward the playhead a few seconds ahead of time; auto zoom and the singer's pitch line can be toggled right on the bar.
 - **Lights up lyrics syllable by syllable** — synced lyrics are fetched automatically, and the highlight follows when the singer really starts each syllable, including Japanese kanji with multi-beat readings.
-- **Fixes lyrics that are out of time** — listens to the vocals to find how early or late a lyrics file is, picks the best version among several, and remembers the correction per song.
-- **Changes the key** — lower or raise the backing track by up to six semitones; the pitch bar moves with it.
-- **Lets you compare** — switch between karaoke, vocals only, and the original at any moment, all perfectly aligned.
-- **Keeps everything on your Mac** — audio is never recorded or uploaded; only lyrics are looked up online.
+- **Finds lyrics even for music videos** — video titles like "Artist - Song / THE FIRST TAKE" are cleaned up, and lyrics are re-timed to the video even when its intro is longer than the studio track.
+- **Fixes lyrics that are out of time** — listens to the vocals to measure how early or late a lyrics file is, follows live versions that drift, and remembers the correction per song. You can still nudge it by hovering over the lyrics.
+- **Moves the key to your voice** — step by semitone like a karaoke remote, or press "My key" to fit the song to your voice, even across genders.
+- **Plays, pauses, and seeks like a karaoke machine** — pause freezes the sound, pitch bar and lyrics together and resumes without losing a beat; drag the progress bar or skip a long interlude.
+- **Lets you mix a guide vocal** — blend a little of the original voice back in, or switch between karaoke, vocals only and the original at any moment.
+- **Sets the stage** — album art colors light the background and breathe with the music; full screen hides the controls for TV or projector.
+- **Keeps everything on your Mac** — audio is never uploaded; only lyrics are looked up online.
 
 ---
 
@@ -52,7 +55,8 @@ You finally find the song you want to sing — but the karaoke version doesn't e
 | Vocal separation | UVR-MDX-NET Karaoke 2 (ONNX) via ONNX Runtime 1.24 + CoreML execution provider |
 | Signal processing | Accelerate (vDSP DFT) — torch-compatible STFT, lock-free SPSC ring buffers |
 | Pitch detection | SwiftF0 (ONNX) |
-| Lyrics | Apple Music scripting (now playing), LRCLIB (synced lyrics), CFStringTokenizer (Japanese readings) |
+| Now playing | Apple Music scripting; macOS Now Playing via bundled [mediaremote-adapter](https://github.com/ungive/mediaremote-adapter) for other apps |
+| Lyrics | LRCLIB (synced lyrics), CFStringTokenizer (Japanese readings) |
 | Project | XcodeGen, Swift Testing |
 
 ---
@@ -71,10 +75,12 @@ xcodebuild -project CoNo.xcodeproj -scheme CoNo -configuration Release -derivedD
 open build/DerivedData/Build/Products/Release/CoNo.app
 ```
 
+- **Start singing:** play a song in Apple Music and CoNo starts on its own. For a browser or another app, press **노래 시작** (Start), or pick that app in Settings › General to have it start automatically too.
+- **Permissions:** allow *Screen & System Audio Recording* on first start. For Apple Music, also allow *Automation → Music*. Settings › General lists each permission with a button that opens the right System Settings pane.
 - **Signing:** builds are ad-hoc signed by default, so macOS asks for permissions again after every build. To keep permissions across builds, copy `Support/Signing.local.xcconfig.example` to `Support/Signing.local.xcconfig` (git-ignored), put in your own team ID, and run `xcodegen generate` again.
-- **Permissions:** on first start, allow *System Audio Recording* and, for lyrics, *Automation → Music*.
 - **Use the Release build** for AI mode — the Debug build runs the signal processing about 30× slower.
-- **Tip:** set your output device to 48 kHz in Audio MIDI Setup (see Known Issues).
+
+**Keyboard:** Space play/pause · ↑↓ key · K my key · 0 original key · 1 2 3 karaoke / vocals / original · → skip interlude · [ ] lyrics sync · ⌘, settings
 
 More details: [docs/SETUP.md](docs/SETUP.md) · Architecture: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) · Design decisions: [docs/DECISIONS.md](docs/DECISIONS.md)
 
@@ -84,14 +90,15 @@ More details: [docs/SETUP.md](docs/SETUP.md) · Architecture: [docs/ARCHITECTURE
 
 ```
 ├── CoNo/
-│   ├── App/                # SwiftUI screens: controls, pitch bar, karaoke lyrics
-│   ├── Audio/              # Tap capture, playback engine, delay pipeline, processors, resampler
-│   ├── DSP/                # STFT, streaming separator, pitch frame stream, note segmentation
+│   ├── App/                # Stage screen, control dock, progress bar, pitch bar, lyrics, settings
+│   ├── Audio/              # Tap capture, playback engine, delay pipeline, pause/seek, media key
+│   ├── DSP/                # STFT, streaming separator, pitch frames, note segmentation, "My key"
 │   ├── Separation/         # ONNX Runtime wrappers (MDX-Net, SwiftF0), pitch tracking
-│   ├── Lyrics/             # Apple Music now playing, LRCLIB client, lyrics controller
-│   │   └── Core/           # Pure logic: LRC parser, song clock, auto sync, syllable aligner
+│   ├── Lyrics/             # Now playing (Music / other apps), LRCLIB client, lyrics controller
+│   │   └── Core/           # Pure logic: LRC parser, song clock, auto sync, syllable aligner, title cleaner
 │   └── Resources/          # SwiftF0 pitch model (float output variant)
-├── CoNoTests/              # Unit tests for DSP, pitch, lyrics timing
+├── CoNoTests/              # Unit tests for DSP, pitch, lyrics timing, selection, seek arrival
+├── ThirdParty/             # mediaremote-adapter (BSD-3, vendored, built as a framework)
 ├── scripts/                # Model download, SwiftF0 conversion, click finder for diagnostics
 ├── docs/                   # Setup, architecture, decision log
 ├── project.yml             # XcodeGen project definition
@@ -102,22 +109,26 @@ More details: [docs/SETUP.md](docs/SETUP.md) · Architecture: [docs/ARCHITECTURE
 
 ## ⚠️ Status & Known Issues
 
-CoNoAI is an early proof of concept.
+CoNoAI is an early preview.
 
-- Lyrics sync currently needs **Apple Music** (it provides the track and position). Other apps are captured and separated, but without lyrics.
-- Occasional clicks can be heard in some sessions; a 96 kHz output device makes them more likely. Diagnostics are built in — see the issue tracker.
+- The pitch bar, "My key" and automatic lyrics sync need AI mode. Capturing the whole system (instead of one app) has no song info, lyrics or playback control.
+- Reading "Now Playing" from other apps relies on a helper that macOS may block in a future update; CoNo then falls back to the play/pause media key and shows no song info for those apps.
+- After a seek, you hear the new position after CoNo's delay (about 3–4 seconds) — the new audio has to go through the AI first.
+- Occasional clicks can be heard in some sessions; a 96 kHz output device makes them more likely. Diagnostics are built in (Settings › Diagnostics).
 - The vocal separation model weights come from the Ultimate Vocal Remover project and are downloaded separately; their license is not stated, so check it before redistributing. Lyrics come from the community-run LRCLIB service.
 
 ---
 
 ## 🗺 Roadmap
 
+- [x] Lyrics, pitch bar and playback control for browsers and other music apps
+- [x] Lyrics for music videos and live versions (title cleanup, wide auto sync)
+- [x] "My key", guide vocal, pause/seek, interlude skip
 - [ ] Microphone scoring with an octave-tolerant mode and a strict "one miss and you're out" mode
-- [ ] Lyrics for other apps via audio fingerprinting (ShazamKit) and vocal-based sync
-- [ ] Verify capture with Melon and YouTube Music
 - [ ] Find and fix the intermittent click
 - [ ] Optional forced-alignment model for word-perfect lyric timing
 - [ ] Follow output device changes without stopping
+- [ ] Signed and notarized release build
 
 ---
 
