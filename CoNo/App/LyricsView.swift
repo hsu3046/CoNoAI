@@ -53,7 +53,9 @@ struct LyricsView: View {
                     .multilineTextAlignment(.center)
             }
         }
+        // 상태 문구 ↔ 가사 두 줄 전환에도 높이가 같아야 위의 음정 바가 들썩이지 않는다
         .frame(maxWidth: .infinity)
+        .frame(height: lineFontSize * 1.4 + 14 + lineFontSize * 0.52 * 1.35)
     }
 
     private var statusMessage: String {

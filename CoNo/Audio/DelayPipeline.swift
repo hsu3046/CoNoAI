@@ -496,8 +496,11 @@ final class DelayPipeline: @unchecked Sendable {
             let after = clockVersion.load(ordering: .acquiring)
             guard before == after else { continue }
             guard hostTime != 0 else { return nil }
-            // 일시정지 중에는 멈춘 위치 그대로
-            if pauseRequested.load(ordering: .relaxed) { return Double(frames) / outputSampleRate }
+            // 일시정지 중·버퍼를 채우는 중(아직 재생 전·언더런 뒤)에는 멈춘 위치 그대로.
+            // 채우는 중에도 렌더 콜백이 돌며 시각만 갱신돼, 외삽하면 위치가 −0.1~+0.05초를 오가 음정 바가 떨린다.
+            if pauseRequested.load(ordering: .relaxed) || !primedFlag.load(ordering: .relaxed) {
+                return Double(frames) / outputSampleRate
+            }
             // 렌더 시각은 보통 "곧 재생될" 미래라 경과 시간이 음수일 수 있다
             let now = mach_absolute_time()
             let elapsed = (Double(now) - Double(hostTime)) * Self.hostTicksToSeconds

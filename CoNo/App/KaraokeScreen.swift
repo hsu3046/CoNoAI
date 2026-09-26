@@ -114,7 +114,7 @@ struct KaraokeScreen: View {
         VStack(spacing: 0) {
             StageHeader(engine: engine, artworks: artworks, controlsHidden: controlsHidden)
                 .padding(.horizontal, 24) // 음정 바 가장자리와 맞춘다
-                .padding(.top, 10)
+                .padding(.top, 16)
 
             Group {
                 if let timeline = engine.pitchTimeline {
@@ -144,9 +144,13 @@ struct KaraokeScreen: View {
                 .padding(.horizontal, 32)
                 .padding(.vertical, 18)
 
-            if let message = engine.playbackMessage {
-                Text(message).font(.callout).foregroundStyle(.orange).padding(.bottom, 6)
-            }
+            // 안내 한 줄 자리는 늘 비워 둔다 (떴다 사라질 때 위의 음정 바 높이가 바뀌지 않게)
+            Text(engine.playbackMessage ?? " ")
+                .font(.callout)
+                .foregroundStyle(.orange)
+                .lineLimit(1)
+                .frame(height: 20)
+                .padding(.bottom, 6)
 
             ControlDock(engine: engine, settings: settings)
                 .padding(.bottom, 20)
@@ -296,16 +300,17 @@ private struct StageHeader: View {
     /// 연결된 앱 (소리를 가져오는 앱)
     private var sourceChip: some View {
         HStack(spacing: 6) {
-            Text("연결된 앱").foregroundStyle(StageTheme.faintInk)
+            Text("연결된 앱").foregroundStyle(StageTheme.secondaryInk)
             if let url = engine.runningSource?.bundleURL {
                 Image(nsImage: NSWorkspace.shared.icon(forFile: url.path)).resizable().frame(width: 16, height: 16)
             }
-            Text(engine.runningSource?.name ?? "").foregroundStyle(StageTheme.secondaryInk)
+            Text(engine.runningSource?.name ?? "").foregroundStyle(StageTheme.ink)
         }
         .font(StageTheme.rounded(12, .medium))
         .lineLimit(1)
         .padding(.horizontal, 10)
         .padding(.vertical, 5)
+        .background(Capsule().fill(Color.black.opacity(0.22)))
         .overlay(Capsule().strokeBorder(Color.white.opacity(0.1), lineWidth: 1))
     }
 
@@ -344,7 +349,7 @@ private struct StatusPill: View {
     var body: some View {
         let stats = engine.stats
         let (label, color): (String, Color) = if engine.isPaused {
-            ("일시정지", StageTheme.secondaryInk)
+            ("일시정지", StageTheme.ink)
         } else if !stats.isPrimed {
             ("준비 중", .orange)
         } else {

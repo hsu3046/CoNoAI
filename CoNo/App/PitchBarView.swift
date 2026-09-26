@@ -35,7 +35,8 @@ struct PitchBarView: View {
                 draw(in: &context, size: size, frameDate: date)
             }
         }
-        .background(RoundedRectangle(cornerRadius: 18).fill(Color.white.opacity(0.03)))
+        // 어두운 바탕 — 배경(앨범 아트)이 밝아도 격자·음표가 묻히지 않게
+        .background(RoundedRectangle(cornerRadius: 18).fill(Color.black.opacity(0.28)))
         .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(Color.white.opacity(0.05), lineWidth: 1))
         .clipShape(RoundedRectangle(cornerRadius: 18))
         .accessibilityLabel("음정 바")
