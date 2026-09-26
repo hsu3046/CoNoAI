@@ -22,13 +22,6 @@ struct LyricsView: View {
             content(frameDate: timeline.date)
         }
         .frame(maxWidth: .infinity, minHeight: 130)
-        // 가사 싱크 미세조정: 자주 쓰지 않으니 가사 위에 마우스를 올렸을 때만 (단축키 [ ] 는 늘)
-        .overlay(alignment: .bottomTrailing) {
-            if hovering, controller.status != .unsupportedSource {
-                LyricsSyncPill(controller: controller)
-                    .transition(.opacity)
-            }
-        }
         .onHover { inside in
             withAnimation(.easeOut(duration: 0.2)) { hovering = inside }
         }
@@ -41,49 +34,59 @@ struct LyricsView: View {
         let heard = heardCaptureTime()
         let state = heard.map { controller.display(atCaptureTime: $0) }
 
-        VStack(spacing: 14) {
-            if let lyrics = state?.lyrics {
-                Group {
-                    if let current = lyrics.current {
-                        KaraokeLine(text: current, progress: lyrics.progress, highlightedCharacters: lyrics.highlightedCharacters, fontSize: lineFontSize)
-                    } else if let countdown = lyrics.countdown {
-                        CountdownDots(remaining: countdown)
-                    } else if let onSkipInterlude, let heard, let target = controller.interludeSkipTarget(atCaptureTime: heard) {
-                        // 긴 간주·전주: 노래방 기계의 간주 점프
-                        Button {
-                            onSkipInterlude(target)
-                        } label: {
-                            Label("간주 점프", systemImage: "forward.end.fill")
-                                .font(StageTheme.rounded(17, .semibold))
-                                .padding(.horizontal, 18)
-                                .padding(.vertical, 10)
-                                .glassCapsule()
+        VStack(spacing: 0) {
+            VStack(spacing: 14) {
+                if let lyrics = state?.lyrics {
+                    Group {
+                        if let current = lyrics.current {
+                            KaraokeLine(text: current, progress: lyrics.progress, highlightedCharacters: lyrics.highlightedCharacters, fontSize: lineFontSize)
+                        } else if let countdown = lyrics.countdown {
+                            CountdownDots(remaining: countdown)
+                        } else if let onSkipInterlude, let heard, let target = controller.interludeSkipTarget(atCaptureTime: heard) {
+                            // 긴 간주·전주: 노래방 기계의 간주 점프
+                            Button {
+                                onSkipInterlude(target)
+                            } label: {
+                                Label("간주 점프", systemImage: "forward.end.fill")
+                                    .font(StageTheme.rounded(17, .semibold))
+                                    .padding(.horizontal, 18)
+                                    .padding(.vertical, 10)
+                                    .glassCapsule()
+                            }
+                            .buttonStyle(.plain)
+                            .foregroundStyle(StageTheme.ink)
+                            .help("다음 가사 3초 전으로 (→)")
+                        } else {
+                            Image(systemName: "music.note")
+                                .font(.system(size: 30, weight: .semibold))
+                                .foregroundStyle(StageTheme.faintInk)
                         }
-                        .buttonStyle(.plain)
-                        .foregroundStyle(StageTheme.ink)
-                        .help("다음 가사 3초 전으로 (→)")
-                    } else {
-                        Image(systemName: "music.note")
-                            .font(.system(size: 30, weight: .semibold))
-                            .foregroundStyle(StageTheme.faintInk)
                     }
+                    .frame(height: lineFontSize * 1.4)
+                    Text(lyrics.next ?? " ")
+                        .font(StageTheme.rounded(lineFontSize * 0.52, .semibold))
+                        .foregroundStyle(StageTheme.secondaryInk.opacity(0.75))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.5)
+                } else {
+                    Text(statusMessage)
+                        .font(StageTheme.rounded(17, .medium))
+                        .foregroundStyle(StageTheme.secondaryInk)
+                        .multilineTextAlignment(.center)
                 }
-                .frame(height: lineFontSize * 1.4)
-                Text(lyrics.next ?? " ")
-                    .font(StageTheme.rounded(lineFontSize * 0.52, .semibold))
-                    .foregroundStyle(StageTheme.secondaryInk.opacity(0.75))
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.5)
-            } else {
-                Text(statusMessage)
-                    .font(StageTheme.rounded(17, .medium))
-                    .foregroundStyle(StageTheme.secondaryInk)
-                    .multilineTextAlignment(.center)
             }
+            // 상태 문구 ↔ 가사 두 줄 전환에도 높이가 같아야 위의 음정 바가 들썩이지 않는다
+            .frame(maxWidth: .infinity)
+            .frame(height: lineFontSize * 1.4 + 14 + lineFontSize * 0.52 * 1.35)
+            // 가사 싱크 미세조정: 다음 줄 바로 아래. 자주 쓰지 않으니 가사 위에 마우스를 올렸을 때만 (자리는 늘 비워 둔다, 단축키 [ ] 는 늘)
+            VStack {
+                if hovering, controller.status != .unsupportedSource {
+                    LyricsSyncPill(controller: controller)
+                        .transition(.opacity)
+                }
+            }
+            .frame(height: 34)
         }
-        // 상태 문구 ↔ 가사 두 줄 전환에도 높이가 같아야 위의 음정 바가 들썩이지 않는다
-        .frame(maxWidth: .infinity)
-        .frame(height: lineFontSize * 1.4 + 14 + lineFontSize * 0.52 * 1.35)
     }
 
     private var statusMessage: String {
@@ -111,6 +114,8 @@ private struct LyricsSyncPill: View {
                 .font(.system(size: 11, weight: .semibold))
                 .foregroundStyle(StageTheme.secondaryInk)
                 .padding(.leading, 8)
+                .padding(.trailing, 2)
+            nudge(label: "−1초", by: -1, help: "가사를 1초 늦추기")
             nudge("minus", by: -step, help: "가사를 늦추기 ([)")
             Button {
                 controller.offsetSeconds = 0
@@ -124,6 +129,7 @@ private struct LyricsSyncPill: View {
             .buttonStyle(.plain)
             .help("누르면 0 으로 · \(autoSyncSummary)")
             nudge("plus", by: step, help: "가사를 앞당기기 (])")
+            nudge(label: "+1초", by: 1, help: "가사를 1초 앞당기기")
         }
         .padding(.vertical, 4)
         .padding(.trailing, 4)
@@ -139,14 +145,20 @@ private struct LyricsSyncPill: View {
         return String(format: "자동 싱크 %+.2f초 (신뢰도 %.0f%%)", -auto.appliedDelay, estimate.confidence * 100)
     }
 
-    private func nudge(_ symbol: String, by delta: Double, help: String) -> some View {
+    private func nudge(_ symbol: String? = nil, label: String? = nil, by delta: Double, help: String) -> some View {
         Button {
-            controller.offsetSeconds = min(max(controller.offsetSeconds + delta, -1), 1)
+            let limit = LyricsController.offsetLimit
+            controller.offsetSeconds = min(max(controller.offsetSeconds + delta, -limit), limit)
         } label: {
-            Image(systemName: symbol)
-                .font(.system(size: 11, weight: .bold))
-                .frame(width: 26, height: 26)
-                .background(Circle().fill(Color.white.opacity(0.1)))
+            Group {
+                if let symbol {
+                    Image(systemName: symbol).font(.system(size: 11, weight: .bold)).frame(width: 26)
+                } else if let label {
+                    Text(label).font(StageTheme.rounded(11, .semibold)).monospacedDigit().padding(.horizontal, 8)
+                }
+            }
+            .frame(height: 26)
+            .background(Capsule().fill(Color.white.opacity(0.1)))
         }
         .buttonStyle(.plain)
         .help(help)

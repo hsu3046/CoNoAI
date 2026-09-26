@@ -222,6 +222,23 @@ struct LyricsAutoSyncTests {
     }
 }
 
+struct SongClockSeekArrivalTests {
+    @Test func arrivalIsWhenPlayerReportsTheTarget() {
+        var clock = SongClock()
+        // 2:00 부근을 부르다가 캡처 200초에 1:00 으로 이동 명령. 브라우저는 0.6초 뒤에야 실제로 옮겨 간다.
+        clock.add(PlaybackAnchor(captureTime: 199.5, songPosition: 119.5, isPlaying: true, trackID: "A"))
+        clock.add(PlaybackAnchor(captureTime: 200.2, songPosition: 120.2, isPlaying: true, trackID: "A")) // 아직 옛 위치
+        #expect(clock.captureTime(whenReaching: 60, after: 200) == nil, "아직 안 닿았다")
+        clock.add(PlaybackAnchor(captureTime: 200.9, songPosition: 60.3, isPlaying: true, trackID: "A"))
+        let arrival = clock.captureTime(whenReaching: 60, after: 200)
+        #expect(arrival.map { abs($0 - 200.6) < 1e-9 } == true, "60.3 을 보고한 0.3초 전 = 200.6")
+        // 명령 이전 앵커는 보지 않는다 / 일시정지 앵커는 보지 않는다
+        var paused = SongClock()
+        paused.add(PlaybackAnchor(captureTime: 201, songPosition: 60, isPlaying: false, trackID: "A"))
+        #expect(paused.captureTime(whenReaching: 60, after: 200) == nil)
+    }
+}
+
 struct SongClockContinuityTests {
     @Test func segmentStartsAfterSeek() {
         var clock = SongClock()

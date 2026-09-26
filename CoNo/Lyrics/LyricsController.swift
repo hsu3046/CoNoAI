@@ -63,6 +63,8 @@ final class LyricsController {
     @ObservationIgnored private var lastResidualTrackID: String?
     /// 사용자가 맞추는 가사 싱크 (초). + 면 가사를 앞당긴다.
     var offsetSeconds: Double = 0
+    /// 미세조정 범위 (±초)
+    static let offsetLimit: Double = 10
 
     /// 자동 싱크 상태 (화면 진단용)
     struct AutoSyncInfo: Equatable {
@@ -197,6 +199,11 @@ final class LyricsController {
     func seekAppleMusic(to seconds: Double) async -> Bool {
         if case .success = await appleMusic.seek(to: seconds) { return true }
         return false
+    }
+
+    /// 이동 뒤 곡이 실제로 target 에 닿은 캡처 시각 (아직이면 nil)
+    func captureTime(whenReaching target: Double, after start: Double) -> Double? {
+        clock.captureTime(whenReaching: target, after: start)
     }
 
     /// 들리는 소리의 곡 위치와 곡 길이 (진행 막대용) — 상태를 바꾸지 않는다

@@ -284,31 +284,52 @@ final class KaraokeEngine {
     /// 이동 중 목표 위치 (진행 막대가 도착 전 옛 위치로 되돌아가 보이지 않게). 새 위치의 소리가 들리면 nil.
     private(set) var seekTarget: Double?
     @ObservationIgnored private var seekStartedAt: ContinuousClock.Instant?
+    /// 이동 명령을 보낸 캡처 시각 — 이 뒤로 원곡 앱이 목표 위치를 보고하면 그때가 새 위치 소리의 시작
+    @ObservationIgnored private var seekCaptureStart: Double?
+    /// 새 위치 소리의 시작을 찾아 소리 켤 지점을 정했는지
+    @ObservationIgnored private var seekArrivalFound = false
     @ObservationIgnored private var seekTask: Task<Void, Never>?
 
     /// 곡 안 위치로 이동. CoNo 는 원곡보다 몇 초 늦게 들려주므로, 누르는 순간 소리를 끄고
-    /// 새 위치의 소리가 출력에 닿으면 다시 켠다 (그 사이 옛 소리는 버리지 않고 흘려보내 싱크를 유지).
+    /// 원곡 앱이 실제로 새 위치를 재생하기 시작한 지점(재생 위치 보고로 찾는다)이 출력에 닿으면 다시 켠다.
+    /// 그 사이 옛 소리는 버리지 않고 흘려보내 스트림 시각·싱크를 유지한다.
     func seek(toSongPosition target: Double) {
         guard canControlPlayback, let pipeline else { return }
         let target = max(0, target)
         seekTarget = target
         seekStartedAt = .now
+        seekCaptureStart = captureTime(atHostTime: mach_absolute_time())
+        seekArrivalFound = false
         playbackMessage = nil
         pipeline.muteOutputUntilFurtherNotice()
         seekTask?.cancel()
         seekTask = Task {
             let moved = controlsAppleMusic ? await lyrics.seekAppleMusic(to: target) : await seekSource(to: target)
-            guard !Task.isCancelled else { return }
-            guard moved, let capture = captureTime(atHostTime: mach_absolute_time()) else {
-                pipeline.unmuteOutput()
-                seekTarget = nil
-                playbackMessage = "연결된 앱이 이동 명령을 받지 않았습니다"
-                return
-            }
-            // 지금 캡처되는 소리부터 새 위치 → 출력 스트림 시각으로 (+ 앱이 실제로 옮겨 가는 여유)
-            let streamOffset = runningMode == .aiSeparation ? (separationTiming?.streamOffset ?? 0) : 0
-            pipeline.muteOutput(untilStreamSeconds: capture + streamOffset + 0.3)
+            guard !Task.isCancelled, !moved else { return }
+            pipeline.unmuteOutput()
+            seekTarget = nil
+            playbackMessage = "연결된 앱이 이동 명령을 받지 않았습니다"
         }
+    }
+
+    /// 50 ms 마다: 원곡 앱이 목표 위치에 닿은 캡처 시각을 찾으면 그 지점이 출력에 닿을 때 소리를 켠다.
+    private func updateSeek() {
+        guard let target = seekTarget, let started = seekStartedAt, let pipeline else { return }
+        let elapsed = ContinuousClock.now - started
+        let streamOffset = runningMode == .aiSeparation ? (separationTiming?.streamOffset ?? 0) : 0
+        if !seekArrivalFound {
+            if let start = seekCaptureStart, let arrival = lyrics.captureTime(whenReaching: target, after: start) {
+                pipeline.muteOutput(untilStreamSeconds: arrival + streamOffset)
+                seekArrivalFound = true
+            } else if elapsed > .seconds(10) {
+                // 재생 위치 보고가 없거나 안 바뀌면 지금 캡처 위치부터 (최후의 수단)
+                pipeline.muteOutput(untilStreamSeconds: (captureTime(atHostTime: mach_absolute_time()) ?? 0) + streamOffset)
+                seekArrivalFound = true
+            }
+        } else if !stats.isOutputMuted, elapsed > .milliseconds(300) {
+            seekTarget = nil
+        }
+        if elapsed > .seconds(20) { seekTarget = nil }
     }
 
     private func seekSource(to seconds: Double) async -> Bool {
@@ -718,13 +739,7 @@ final class KaraokeEngine {
                         self.playbackMessage = "원곡 앱이 멈추지 않았습니다. 다른 앱이 '지금 재생 중' 으로 잡혀 있을 수 있어요."
                     }
                 }
-                // 이동: 새 위치의 소리가 들리기 시작하면(소리 끄기가 풀리면) 목표 표시를 거둔다
-                if self.seekTarget != nil, let started = self.seekStartedAt {
-                    let elapsed = ContinuousClock.now - started
-                    if (elapsed > .milliseconds(500) && !self.stats.isOutputMuted) || elapsed > .seconds(15) {
-                        self.seekTarget = nil
-                    }
-                }
+                self.updateSeek()
                 tick += 1
                 if tick % 20 == 0 { self.updateVocalRange() }
                 try? await Task.sleep(for: .milliseconds(50))

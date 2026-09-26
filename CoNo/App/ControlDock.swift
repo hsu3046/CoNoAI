@@ -1,6 +1,6 @@
 // CoNo — Copyright (C) 2026 KnowAI (https://knowai.space) — GPL-3.0-or-later
 //
-// 하단 도크: 재생·일시정지 | 키 ♭/♯ | 원키·내 키 | 반주·보컬·원곡 (+ 가이드 보컬) | 끝내기.
+// 하단 도크: 재생·일시정지 | 키 ♭/♯ | 원키·내 키 | 반주·보컬·원곡 (+ 가이드 보컬). 끝내기는 헤더의 연결된 앱 칩.
 // 노래방 리모컨처럼 큰 버튼 몇 개로 끝나게 한다. 단축키는 KaraokeScreen 이 받는다.
 
 import SwiftUI
@@ -26,11 +26,10 @@ struct ControlDock: View {
                         .transition(.opacity.combined(with: .move(edge: .leading)))
                 }
             }
-            divider
-            stopButton
+
         }
         .padding(.leading, 12)
-        .padding(.trailing, 10)
+        .padding(.trailing, 16)
         .padding(.vertical, 10)
         .glassCapsule()
         .buttonStyle(.plain)
@@ -196,28 +195,5 @@ struct ControlDock: View {
             .accessibilityLabel("가이드 보컬")
         }
         .help("가이드 보컬: 원곡 목소리를 살짝 섞어 부를 줄을 들려줍니다")
-    }
-
-    // MARK: 끝내기
-
-    /// 곡 재생·정지와 헷갈리지 않게: 전원 아이콘 + 글자 + 붉은 색 (연결을 끊고 노래방을 닫는 동작)
-    private var stopButton: some View {
-        Button {
-            Task { await engine.finish() }
-        } label: {
-            HStack(spacing: 5) {
-                Image(systemName: "power")
-                    .font(.system(size: 12, weight: .bold))
-                Text("끝내기")
-                    .font(StageTheme.rounded(12, .semibold))
-            }
-            .foregroundStyle(StageTheme.stopRed)
-            .padding(.horizontal, 12)
-            .frame(height: 32)
-            .background(Capsule().fill(StageTheme.stopRed.opacity(0.14)))
-            .overlay(Capsule().strokeBorder(StageTheme.stopRed.opacity(0.3), lineWidth: 1))
-        }
-        .help("노래방 끝내기 — 연결된 앱과의 연결을 끊고 원곡도 멈춥니다")
-        .accessibilityLabel("노래방 끝내기")
     }
 }

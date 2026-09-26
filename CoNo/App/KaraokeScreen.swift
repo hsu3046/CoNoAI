@@ -244,7 +244,7 @@ struct KaraokeScreen: View {
 
     private func nudgeLyrics(by seconds: Double) {
         let lyrics = engine.lyrics
-        lyrics.offsetSeconds = min(max(lyrics.offsetSeconds + seconds, -1), 1)
+        lyrics.offsetSeconds = min(max(lyrics.offsetSeconds + seconds, -LyricsController.offsetLimit), LyricsController.offsetLimit)
         show(String(format: "가사 %+.2f초", lyrics.offsetSeconds))
     }
 
@@ -316,23 +316,47 @@ private struct StageHeader: View {
         engine.lyrics.status == .unsupportedSource ? "곡 정보를 받을 수 없는 연결입니다" : "연결된 앱에서 노래를 틀어 주세요"
     }
 
-    /// 연결된 앱 (소리를 가져오는 앱)
+    /// 연결된 앱 (소리를 가져오는 앱) — 누르면 연결을 끊고 노래방을 끝낸다 (원곡도 멈춘다)
     private var sourceChip: some View {
-        HStack(spacing: 6) {
-            Text("연결된 앱").foregroundStyle(StageTheme.secondaryInk)
-            if let url = engine.runningSource?.bundleURL {
-                Image(nsImage: NSWorkspace.shared.icon(forFile: url.path)).resizable().frame(width: 16, height: 16)
-            }
-            Text(engine.runningSource?.name ?? "").foregroundStyle(StageTheme.ink)
-        }
-        .font(StageTheme.rounded(12, .medium))
-        .lineLimit(1)
-        .padding(.horizontal, 10)
-        .padding(.vertical, 5)
-        .background(Capsule().fill(Color.black.opacity(0.22)))
-        .overlay(Capsule().strokeBorder(Color.white.opacity(0.1), lineWidth: 1))
+        SourceChip(engine: engine)
     }
 
+}
+
+/// 연결된 앱 칩. 끝의 ⏏ 를 포함해 칩 전체가 "연결 끊기" 버튼이고, 마우스를 올리면 붉게 바뀐다.
+private struct SourceChip: View {
+    let engine: KaraokeEngine
+    @State private var hovering = false
+
+    var body: some View {
+        Button {
+            Task { await engine.finish() }
+        } label: {
+            HStack(spacing: 6) {
+                Text(hovering ? "연결 끊기" : "연결된 앱")
+                    .foregroundStyle(hovering ? StageTheme.stopRed : StageTheme.secondaryInk)
+                if let url = engine.runningSource?.bundleURL {
+                    Image(nsImage: NSWorkspace.shared.icon(forFile: url.path)).resizable().frame(width: 16, height: 16)
+                }
+                Text(engine.runningSource?.name ?? "").foregroundStyle(StageTheme.ink)
+                Image(systemName: "eject.fill")
+                    .font(.system(size: 9, weight: .bold))
+                    .foregroundStyle(hovering ? StageTheme.stopRed : StageTheme.secondaryInk)
+                    .padding(.leading, 2)
+            }
+            .font(StageTheme.rounded(12, .medium))
+            .lineLimit(1)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 5)
+            .background(Capsule().fill(hovering ? StageTheme.stopRed.opacity(0.14) : Color.black.opacity(0.22)))
+            .overlay(Capsule().strokeBorder(hovering ? StageTheme.stopRed.opacity(0.35) : Color.white.opacity(0.1), lineWidth: 1))
+            .animation(.easeOut(duration: 0.15), value: hovering)
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering = $0 }
+        .help("연결 끊기 — 노래방을 끝내고 원곡도 멈춥니다")
+        .accessibilityLabel("연결 끊기: \(engine.runningSource?.name ?? "")")
+    }
 }
 
 // MARK: - 자주 바뀌는 값 (50 ms 통계) 을 읽는 작은 뷰들 — 화면 전체가 초당 20번 다시 그려지지 않게

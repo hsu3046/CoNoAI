@@ -279,7 +279,8 @@ private struct SyncSettings: View {
             Section("가사") {
                 LabeledContent("가사 미세조정") {
                     HStack {
-                        Slider(value: Binding(get: { engine.lyrics.offsetSeconds }, set: { engine.lyrics.offsetSeconds = $0 }), in: -1...1, step: 0.05)
+                        Slider(value: Binding(get: { engine.lyrics.offsetSeconds }, set: { engine.lyrics.offsetSeconds = $0 }),
+                               in: -LyricsController.offsetLimit...LyricsController.offsetLimit, step: 0.05)
                             .accessibilityLabel("가사 미세조정")
                         Text(String(format: "%+.2f초", engine.lyrics.offsetSeconds)).monospacedDigit().frame(width: 64, alignment: .trailing)
                     }

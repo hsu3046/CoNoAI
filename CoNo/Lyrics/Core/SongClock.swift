@@ -86,6 +86,19 @@ struct SongClock: Sendable {
         return anchors[index].captureTime
     }
 
+    /// 이동(seek) 뒤 곡이 실제로 target 위치에 닿은 캡처 시각. start(명령을 보낸 캡처 시각) 이후의 재생 앵커 중
+    /// 처음으로 target 근처(−0.5…+tolerance 초)를 보고한 앵커에서 거슬러 계산한다. 아직 안 닿았으면 nil.
+    /// (명령이 끝난 순간 ≠ 새 위치 소리의 시작 — 브라우저는 버퍼링으로 더 늦게 옮겨 간다)
+    func captureTime(whenReaching target: Double, after start: Double, tolerance: Double = 3) -> Double? {
+        for anchor in anchors where anchor.captureTime >= start && anchor.isPlaying {
+            let ahead = anchor.songPosition - target
+            if ahead >= -0.5, ahead <= tolerance {
+                return max(start, anchor.captureTime - max(0, ahead))
+            }
+        }
+        return nil
+    }
+
     /// 캡처 시각 c 의 소리가 곡 어디였는지. c 이전의 가장 최근 앵커가 속한 연속 구간의 중앙값 기준.
     func position(atCaptureTime c: Double) -> SongPosition? {
         guard let index = anchors.lastIndex(where: { $0.captureTime <= c }), let trackID = anchors[index].trackID else { return nil }
