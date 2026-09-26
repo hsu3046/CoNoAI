@@ -142,6 +142,8 @@ final class DelayPipeline: @unchecked Sendable {
     private let pausedAudioFrames = Atomic<Int>(0)
     /// 이보다 작으면 디지털 무음으로 본다
     private static let silencePeak: Float = 1e-5
+    /// 캡처에 마지막으로 소리가 있던 호스트 시각 (원곡이 지금 재생 중인지 — 미디어 키는 토글이라 보내기 전에 확인)
+    private let lastAudibleHostTime = Atomic<UInt64>(0)
 
     private let processor: StreamProcessor
     /// 진단 녹음 (처리기 입력·출력 최근 30초)
@@ -346,6 +348,7 @@ final class DelayPipeline: @unchecked Sendable {
 
         capturedFrameCount.add(frameCount, ordering: .relaxed)
         if peak > 0 { receivedSignal.store(true, ordering: .relaxed) }
+        if peak >= Self.silencePeak { lastAudibleHostTime.store(mach_absolute_time(), ordering: .relaxed) }
         Self.raisePeak(inputPeakBits, to: peak)
 
         guard shouldKeepCapture(frames: frameCount, peak: peak) else {
@@ -533,6 +536,13 @@ final class DelayPipeline: @unchecked Sendable {
     func setPaused(_ paused: Bool) {
         pausedAudioFrames.store(0, ordering: .relaxed)
         pauseRequested.store(paused, ordering: .relaxed)
+    }
+
+    /// 원곡 앱이 최근 `seconds` 안에 소리를 냈는지
+    func isSourceAudible(within seconds: Double) -> Bool {
+        let last = lastAudibleHostTime.load(ordering: .relaxed)
+        guard last != 0 else { return false }
+        return (Double(mach_absolute_time()) - Double(last)) * Self.hostTicksToSeconds < seconds
     }
 
     /// 일시정지 중에 들어온 소리 (초). 1초를 넘으면 음악이 다른 곳에서 다시 재생된 것.

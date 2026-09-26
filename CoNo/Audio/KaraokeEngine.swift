@@ -170,50 +170,96 @@ final class KaraokeEngine {
     /// 실행 중인 소스
     private(set) var runningSource: AudioSource?
 
-    /// 재생·일시정지를 CoNo 에서 할 수 있는지 (지금은 음악 앱만 — 다른 앱은 멈출 방법이 없다)
-    var canControlPlayback: Bool {
-        isRunning && LyricsController.supports(bundleID: runningSource?.bundleID)
+    /// 음악 앱은 AppleScript 로 정확히, 다른 앱은 ⏯ 미디어 키로 멈춘다
+    private var controlsAppleMusic: Bool {
+        LyricsController.supports(bundleID: runningSource?.bundleID)
     }
+
+    /// 재생·일시정지를 CoNo 에서 할 수 있는지
+    var canControlPlayback: Bool { isRunning }
 
     /// 화면의 재생 버튼 상태: CoNo 가 얼렸거나, 음악 앱에서 멈춘 경우
     var showsPaused: Bool {
-        isPaused || lyrics.playerState == .paused
+        isPaused || (controlsAppleMusic && lyrics.playerState == .paused)
     }
 
     func togglePlayback() {
         if showsPaused { resume() } else { pause() }
     }
 
-    /// 누르는 순간 들리는 소리·가사·음정 바가 멈추고, 음악 앱도 멈춘다.
+    /// CoNo 가 얼린 시각 — 직후에 소리가 계속 들어오면 원곡 앱이 안 멈춘 것 (미디어 키가 다른 앱으로 간 경우)
+    @ObservationIgnored private var pausedAt: ContinuousClock.Instant?
+
+    /// 누르는 순간 들리는 소리·가사·음정 바가 멈추고, 원곡 앱도 멈춘다.
     func pause() {
         guard canControlPlayback, let pipeline, !isPaused else { return }
         pipeline.setPaused(true)
         isPaused = true
+        pausedAt = .now
         playbackMessage = nil
-        Task {
-            if case let .failure(error) = await lyrics.send(.pause) {
-                // 음악 앱이 안 멈추면 캡처가 계속 쌓이므로 얼림을 푼다
+        if controlsAppleMusic {
+            Task {
+                if case let .failure(error) = await lyrics.send(.pause) {
+                    // 음악 앱이 안 멈추면 캡처가 계속 쌓이므로 얼림을 푼다
+                    resumePipeline()
+                    playbackMessage = error.localizedDescription
+                }
+            }
+        } else if pipeline.isSourceAudible(within: 0.4) {
+            // 원곡이 소리를 내고 있을 때만 누른다 (토글이라 이미 멈춘 앱을 누르면 재생된다)
+            if !MediaKey.pressPlayPause() {
                 resumePipeline()
-                playbackMessage = error.localizedDescription
+                playbackMessage = Self.accessibilityMessage
             }
         }
     }
 
     /// 멈춘 곳부터 이어서 (CoNo 가 얼려 둔 소리부터 끊김 없이)
     func resume() {
-        guard canControlPlayback else { return }
+        guard canControlPlayback, let pipeline else { return }
+        let sourceSilent = !pipeline.isSourceAudible(within: 0.4)
         resumePipeline()
         playbackMessage = nil
-        Task {
-            if case let .failure(error) = await lyrics.send(.play) {
-                playbackMessage = error.localizedDescription
+        if controlsAppleMusic {
+            Task {
+                if case let .failure(error) = await lyrics.send(.play) {
+                    playbackMessage = error.localizedDescription
+                }
             }
+        } else if sourceSilent, !MediaKey.pressPlayPause() {
+            playbackMessage = Self.accessibilityMessage
         }
     }
+
+    /// 끝내기: CoNo 소리를 먼저 끊고, 원곡 앱도 멈춘 뒤(조용해진 걸 확인하고) 정리한다.
+    /// 그냥 정리하면 원곡 음소거가 풀리면서 3~4초 앞선 원곡이 갑자기 들린다.
+    func finish() async {
+        guard isRunning, let pipeline else {
+            stop()
+            return
+        }
+        pipeline.setPaused(true)
+        isPaused = true
+        if controlsAppleMusic {
+            _ = await lyrics.send(.pause)
+        } else if pipeline.isSourceAudible(within: 0.4) {
+            _ = MediaKey.pressPlayPause()
+        }
+        // 원곡이 0.15초 조용해지거나 1초가 지날 때까지 (멈추지 못해도 끝내기는 한다)
+        let deadline = ContinuousClock.now + .seconds(1)
+        while pipeline.isSourceAudible(within: 0.15), ContinuousClock.now < deadline {
+            try? await Task.sleep(for: .milliseconds(50))
+        }
+        stop()
+    }
+
+    private static let accessibilityMessage =
+        "다른 앱을 멈추려면 시스템 설정 › 개인정보 보호 및 보안 › 손쉬운 사용에서 CoNo 를 켜 주세요."
 
     private func resumePipeline() {
         pipeline?.setPaused(false)
         isPaused = false
+        pausedAt = nil
     }
 
     /// AI 모드에서 들려줄 출력 — 실행 중에도 바꿀 수 있다
@@ -595,9 +641,14 @@ final class KaraokeEngine {
                 if let separationProcessor = self.separationProcessor {
                     self.inferenceStats = separationProcessor.inferenceStats
                 }
-                // 얼려 둔 동안 소리가 1초 넘게 계속 들어오면 음악 앱에서 다시 재생한 것 → 따라서 푼다
+                // 얼려 둔 동안 소리가 1초 넘게 계속 들어오면 원곡 앱이 재생 중 → 따라서 푼다.
+                // 얼린 직후라면 멈추기에 실패한 것 (미디어 키가 다른 앱으로 갔을 수 있다)
                 if self.isPaused, pipeline.pausedAudioSeconds > 1 {
+                    let justPaused = self.pausedAt.map { ContinuousClock.now - $0 < .seconds(3) } ?? false
                     self.resumePipeline()
+                    if justPaused, !self.controlsAppleMusic {
+                        self.playbackMessage = "원곡 앱이 멈추지 않았습니다. 다른 앱이 '지금 재생 중' 으로 잡혀 있을 수 있어요."
+                    }
                 }
                 tick += 1
                 if tick % 20 == 0 { self.updateVocalRange() }

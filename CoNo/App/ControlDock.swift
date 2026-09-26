@@ -54,11 +54,7 @@ struct ControlDock: View {
                 .background(Circle().fill(StageTheme.ink))
                 .contentTransition(.symbolEffect(.replace))
         }
-        .disabled(!engine.canControlPlayback)
-        .opacity(engine.canControlPlayback ? 1 : 0.4)
-        .help(engine.canControlPlayback
-            ? (paused ? "이어서 재생 (Space)" : "일시정지 (Space)")
-            : "재생·일시정지는 지금 음악 앱에서만 됩니다")
+        .help(paused ? "이어서 재생 (Space)" : "일시정지 (Space)")
         .accessibilityLabel(paused ? "재생" : "일시정지")
     }
 
@@ -203,14 +199,14 @@ struct ControlDock: View {
 
     private var stopButton: some View {
         Button {
-            engine.stop()
+            Task { await engine.finish() }
         } label: {
             Image(systemName: "stop.fill")
                 .font(.system(size: 12, weight: .bold))
                 .frame(width: 32, height: 32)
                 .background(Circle().fill(Color.white.opacity(0.1)))
         }
-        .help("노래방 끝내기")
+        .help("노래방 끝내기 (원곡도 함께 멈춥니다)")
         .accessibilityLabel("노래방 끝내기")
     }
 }

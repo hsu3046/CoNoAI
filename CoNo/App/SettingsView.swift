@@ -87,7 +87,10 @@ private struct GeneralSettings: View {
             }
 
             Section("가사와 재생 제어") {
-                Text("가사·곡 정보·재생/일시정지는 지금 음악 앱(Apple Music)에서만 됩니다. 처음 쓸 때 '자동화' 권한을 허용해 주세요.")
+                Text("가사·곡 정보는 지금 음악 앱(Apple Music)에서만 나옵니다. 처음 쓸 때 '자동화' 권한을 허용해 주세요.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Text("다른 앱(브라우저의 YouTube Music 등)은 ⏯ 미디어 키로 멈추고 이어 틉니다. 처음 한 번 '손쉬운 사용' 권한이 필요하고, macOS 가 '지금 재생 중' 으로 보는 앱에 전달됩니다.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
