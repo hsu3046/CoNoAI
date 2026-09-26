@@ -651,7 +651,6 @@ private struct ShortcutsButton: View {
                         }
                     }
                 }
-                Text("노래방 화면이 앞에 있을 때 동작합니다.").font(.caption).foregroundStyle(.secondary)
             }
             .padding(16)
         }
