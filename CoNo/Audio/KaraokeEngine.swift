@@ -426,18 +426,59 @@ final class KaraokeEngine {
     /// 직접 끝낼 때는 1절만 불러도 결과를 보여준다
     private static let minimumNotesWhenEnded = 5
 
+    /// 원곡 앱을 이미 다음 곡 처음에 멈춰 두었는지 (못 했으면 재생할 때 넘긴다)
+    @ObservationIgnored private var nextSongCued = false
+
     /// 노래방 리모컨의 "종료": 여기까지 채점하고 멈춘다. 연결은 끊지 않는다.
+    /// 원곡 앱은 바로 다음 곡의 처음으로 넘겨 멈춰 둔다 — CoNo 를 끄거나 음악 앱에서 재생해도 끝낸 곡이 이어지지 않게.
     func endSong() {
-        guard canControlPlayback, !endedSong else { return }
+        guard canControlPlayback, let pipeline, !endedSong else { return }
         concludeSong(minimumNotes: Self.minimumNotesWhenEnded)
         // 끝낸 곡을 다음 곡 경계에서 다시 결과로 내지 않게
         singing?.resetScore()
-        pause()
+        let audible = pipeline.isSourceAudible(within: 0.4)
+        if !isPaused {
+            pipeline.setPaused(true)
+            isPaused = true
+            pausedAt = .now
+        }
+        playbackMessage = nil
         endedSong = true
+        nextSongCued = false
+        Task {
+            nextSongCued = await cueNextSong()
+            // 다음 곡으로 못 넘겼으면 멈추기라도 (미디어 키는 토글이라 소리가 나고 있을 때만)
+            if !nextSongCued, !controlsAppleMusic, audible, MediaRemoteBridge.shared == nil {
+                _ = MediaKey.pressPlayPause()
+            }
+        }
     }
 
-    /// 끝낸 곡의 남은 소리(지연 버퍼)는 버리지 않고 음소거로 흘려보내고, 원곡 앱을 다음 곡으로 넘겨 튼다.
-    /// 원곡 앱이 멈춰 있던 동안 캡처는 무음을 버리므로, 지금 캡처 위치 = 끝낸 곡 소리의 끝 = 다음 곡의 시작.
+    /// 원곡 앱: 멈춤 → 다음 곡 → 멈춤 → 처음(0초). 다음 곡이 저절로 재생돼도 곧바로 멈추고 처음으로 돌린다.
+    /// 명령은 순서대로 보낸다 (음악 앱은 한 직렬 큐, "지금 재생 중" 은 await 순서).
+    private func cueNextSong() async -> Bool {
+        if controlsAppleMusic {
+            _ = await lyrics.send(.pause)
+            guard case .success = await lyrics.send(.nextTrack) else { return false }
+            _ = await lyrics.send(.pause)
+            _ = await lyrics.seekAppleMusic(to: 0)
+            return true
+        }
+        guard let bridge = MediaRemoteBridge.shared,
+              let info = await bridge.current(),
+              info.belongs(to: runningSource?.bundleID)
+        else { return false }
+        // 멈춤은 토글이 아니라 몇 번 보내도 안전하다 (상태 보고가 늦어도 확실히 멈추게 늘 보낸다)
+        _ = await bridge.send(.pause)
+        guard await bridge.send(.nextTrack) else { return false }
+        _ = await bridge.send(.pause)
+        _ = await bridge.seek(toSeconds: 0)
+        return true
+    }
+
+    /// 끝낸 곡의 남은 소리(지연 버퍼)는 버리지 않고 음소거로 흘려보내고, 다음 곡을 튼다.
+    /// 원곡 앱이 멈춰 있던 동안 캡처는 무음을 버리므로, 지금 캡처 위치 = 끝낸 곡 소리의 끝.
+    /// (다음 곡으로 넘길 때 잠깐 새어 든 소리도 여기까지 함께 가린다 — 다음 곡은 0초부터 다시 나온다)
     private func advanceToNextSong(_ pipeline: DelayPipeline) {
         endedSong = false
         muteEndedSong(pipeline, excludingSeconds: 0)
@@ -445,21 +486,27 @@ final class KaraokeEngine {
         playbackMessage = nil
         isAdvancingToNextSong = true
         advanceStartedAt = .now
+        let cued = nextSongCued
+        nextSongCued = false
         Task {
-            var moved = false
+            var played = false
             if controlsAppleMusic {
-                if case .success = await lyrics.send(.nextTrack) {
-                    moved = true
-                    _ = await lyrics.send(.play)
+                if !cued, case .failure = await lyrics.send(.nextTrack) {
+                    played = false
+                } else if case .success = await lyrics.send(.play) {
+                    played = true
                 }
-            } else if await sendToSource(.nextTrack) {
-                moved = true
-                _ = await sendToSource(.play)
-            } else if MediaKey.pressNextTrack() {
-                moved = true
+            } else {
+                var moved = cued
+                if !moved { moved = await sendToSource(.nextTrack) }
+                if moved {
+                    played = await sendToSource(.play)
+                } else if MediaKey.pressNextTrack() {
+                    played = true
+                }
             }
-            if !moved {
-                playbackMessage = "다음 곡으로 넘기지 못했어요. 음악 앱에서 넘겨 주세요."
+            if !played {
+                playbackMessage = "다음 곡을 틀지 못했어요. 음악 앱에서 재생해 주세요."
             }
         }
     }
