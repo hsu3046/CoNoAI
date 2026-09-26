@@ -33,7 +33,7 @@ struct KaraokeScreen: View {
                 IdleStage(engine: engine, catalog: catalog, settings: settings, start: start)
             }
             if let result = engine.singingResult {
-                SingingResultCard(result: result) {
+                SingingResultCard(result: result, artwork: artworks.artwork(for: result.trackID)?.image) {
                     withAnimation(.easeOut) { engine.singingResult = nil }
                 }
                 .transition(.opacity)

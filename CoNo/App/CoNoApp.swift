@@ -8,6 +8,13 @@ struct CoNoApp: App {
     @State private var catalog = AudioSourceCatalog()
     @State private var settings = AppSettings()
 
+    init() {
+        #if DEBUG
+        // 개발용: 채점 연출 프레임을 PNG 로 뽑고 끝낸다 (CONO_RENDER_CELEBRATION=<폴더>)
+        CelebrationPreviewRenderer.renderIfRequested()
+        #endif
+    }
+
     var body: some Scene {
         Window("CoNo", id: "main") {
             KaraokeScreen(engine: engine, catalog: catalog, settings: settings)

@@ -44,6 +44,7 @@ struct ModelBenchmark: Sendable, Equatable {
 /// 곡이 끝났을 때 보여줄 채점 결과
 struct SingingResult: Identifiable, Equatable, Sendable {
     let id = UUID()
+    let trackID: String?
     let title: String?
     let artist: String?
     let score: SongScore
@@ -288,7 +289,7 @@ final class KaraokeEngine {
         guard let singing else { return false }
         let score = singing.snapshot().score
         guard score.notesTotal >= minimumNotes else { return false }
-        singingResult = SingingResult(title: scoringTrack?.title, artist: scoringTrack?.artist, score: score)
+        singingResult = SingingResult(trackID: scoringTrack?.id, title: scoringTrack?.title, artist: scoringTrack?.artist, score: score)
         return true
     }
 
