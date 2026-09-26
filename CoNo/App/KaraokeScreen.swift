@@ -292,10 +292,11 @@ private struct StageHeader: View {
                             .transition(.opacity)
                     }
                     VStack(alignment: artworks.artwork(for: track?.id) == nil ? .center : .leading, spacing: 2) {
-                        Text(onAd ? "광고 재생 중" : track?.title ?? engine.runningSource?.name ?? "")
+                        // 광고 안내는 가사 자리에서만 — 여기선 연결된 앱 이름만
+                        Text(onAd ? engine.runningSource?.name ?? "" : track?.title ?? engine.runningSource?.name ?? "")
                             .font(StageTheme.rounded(30))
                             .lineLimit(1)
-                        Text(onAd ? "광고가 끝나면 노래가 이어져요" : track?.artist ?? subtitle)
+                        Text(onAd ? " " : track?.artist ?? subtitle)
                             .font(StageTheme.rounded(17, .medium))
                             .foregroundStyle(StageTheme.secondaryInk)
                             .lineLimit(1)
@@ -340,11 +341,6 @@ private struct PitchBarStage: View {
                 if engine.heardCaptureTime().flatMap({ engine.lyrics.advertisement(atCaptureTime: $0) }) != nil {
                     RoundedRectangle(cornerRadius: 18)
                         .fill(StageTheme.night.opacity(0.78))
-                        .overlay {
-                            Label("광고", systemImage: "megaphone")
-                                .font(StageTheme.rounded(15, .semibold))
-                                .foregroundStyle(StageTheme.secondaryInk)
-                        }
                         .transition(.opacity)
                 }
             }
