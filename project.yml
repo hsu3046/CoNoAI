@@ -64,8 +64,8 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: space.knowai.cono
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
-        MARKETING_VERSION: 0.1.0
-        CURRENT_PROJECT_VERSION: 1
+        MARKETING_VERSION: 0.2.0
+        CURRENT_PROJECT_VERSION: 2
         CODE_SIGN_ENTITLEMENTS: Support/CoNo.entitlements
         # 개발 빌드는 끈다. 배포 빌드(scripts/release.sh)가 켜고 Developer ID 로 서명·공증한다
         ENABLE_HARDENED_RUNTIME: NO
