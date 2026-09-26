@@ -101,6 +101,8 @@ struct NoteScorerTests {
         #expect(scorer.score.notesHit == 1)
         // 득점 = 50 × 1 + 25 × (0.2 / 0.6) → 58.33 / 75 = 78%
         #expect(scorer.score.score == 78)
+        #expect(scorer.score.bestStreak == 1)
+        #expect(scorer.score.streak == 0, "둘째 음표를 놓쳐 연속이 끊긴다")
 
         // 같은 음표를 다시 넘겨도 두 번 세지 않는다 (창마다 경계가 조금 달라져도)
         scorer.score(notes: notes + [SungNote(startFrame: 161, endFrame: 184, midi: 62)], framePeriod: period, hitTimes: hits, stableUntil: 190 * period)

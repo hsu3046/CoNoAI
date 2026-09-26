@@ -135,6 +135,9 @@ struct SongScore: Equatable, Sendable {
     /// 음표 길이로 가중한 득점 (초)
     var creditSeconds = 0.0
     var totalSeconds = 0.0
+    /// 연달아 맞춘 음표 수 (지금 / 최고)
+    var streak = 0
+    var bestStreak = 0
 
     /// 0…100
     var score: Int {
@@ -171,7 +174,13 @@ struct NoteScorer {
             let hits = Double(Self.count(hitTimes, from: start, to: end))
             let ratio = hits / frames
             score.notesTotal += 1
-            if ratio >= hitRatio { score.notesHit += 1 }
+            if ratio >= hitRatio {
+                score.notesHit += 1
+                score.streak += 1
+                score.bestStreak = max(score.bestStreak, score.streak)
+            } else {
+                score.streak = 0
+            }
             score.totalSeconds += end - start
             score.creditSeconds += (end - start) * min(1, ratio / fullCreditRatio)
             scoredUntil = end

@@ -58,3 +58,8 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 - **NetEase Cloud Music** — public web endpoints (not an official API); can be turned off in Settings › Lyrics
 - **Apple Music** — optional, off by default; uses Apple's web player endpoints with the user's own subscription sign-in (not an official public API). The approach follows findings from [lyrimuse](https://github.com/Yudaotor/lyrimuse) (GPL-3.0).
 
+
+## Drum roll with cymbal crash (sound effect)
+- Source: "Long Snare Drum Roll with Cymbal Crash.mp3" by MissloonerVoiceOver255 — https://freesound.org/people/MissloonerVoiceOver255/sounds/569113/
+- License: Creative Commons 0 (public domain dedication) — https://creativecommons.org/publicdomain/zero/1.0/
+- Used in: `CoNo/Resources/Drumroll.m4a` (trimmed to the last 2.8 s of the roll plus the crash, faded, normalized, AAC) — played with the singing score

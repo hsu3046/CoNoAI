@@ -271,19 +271,25 @@ final class KaraokeEngine {
         singing.keyShift = keyShift
         let track = heardTrack
         if track?.id != scoringTrackID {
-            concludeSong()
+            let concluded = concludeSong()
             scoringTrack = track
             scoringTrackID = track?.id
             singing.resetScore()
+            // 채점한 곡이 끝나 다음 곡이 들리기 시작하면 멈춘다 (노래방처럼 한 곡씩, 결과를 보라고).
+            // 다음 곡 앞부분은 버퍼에 남아 있어 재생을 누르면 처음부터 이어진다. 광고로 바뀐 건 멈추지 않는다.
+            let onAd = heardCaptureTime().flatMap { lyrics.advertisement(atCaptureTime: $0) } != nil
+            if concluded, track != nil, !onAd, !isPaused { pause() }
         }
     }
 
-    /// 지금 곡의 점수를 결과로 (충분히 불렀을 때만)
-    private func concludeSong() {
-        guard let singing else { return }
+    /// 지금 곡의 점수를 결과로 (충분히 불렀을 때만). 결과를 냈으면 true.
+    @discardableResult
+    private func concludeSong() -> Bool {
+        guard let singing else { return false }
         let score = singing.snapshot().score
-        guard score.notesTotal >= Self.minimumScoredNotes else { return }
+        guard score.notesTotal >= Self.minimumScoredNotes else { return false }
         singingResult = SingingResult(title: scoringTrack?.title, artist: scoringTrack?.artist, score: score)
+        return true
     }
 
     // MARK: - 재생·일시정지

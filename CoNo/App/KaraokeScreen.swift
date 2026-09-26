@@ -36,7 +36,7 @@ struct KaraokeScreen: View {
                 SingingResultCard(result: result) {
                     withAnimation(.easeOut) { engine.singingResult = nil }
                 }
-                .transition(.opacity.combined(with: .scale(scale: 0.92)))
+                .transition(.opacity)
                 .id(result.id)
             }
             if let toast {
