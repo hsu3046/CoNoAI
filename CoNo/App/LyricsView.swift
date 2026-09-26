@@ -88,8 +88,8 @@ private struct KaraokeLine: View {
         ZStack(alignment: .leading) {
             Text(text).foregroundStyle(StageTheme.ink)
             Text(text)
+                // 글자 안쪽만 칠한다 (빛 번짐 그림자를 주면 사각 마스크에 갇혀 글자 뒤에 색 상자가 생긴다)
                 .foregroundStyle(LinearGradient(colors: [StageTheme.sky, StageTheme.mint], startPoint: .leading, endPoint: .trailing))
-                .shadow(color: StageTheme.mint.opacity(0.45), radius: 10)
                 .mask(alignment: .leading) {
                     GeometryReader { proxy in
                         Rectangle().frame(width: proxy.size.width * progress)
