@@ -11,6 +11,7 @@
 - `project.yml` 이 원본. `CoNo.xcodeproj` 는 `xcodegen generate` 생성물 (커밋 금지). 빌드 설정은 project.yml 에서만 바꾼다.
 
 ## Critical Gotchas
+- **배포는 `scripts/release.sh` 로만** (docs/RELEASE.md): Developer ID 를 `DEVELOPMENT_TEAM` 으로 골라 서명·공증. Hardened Runtime 은 배포 빌드에서만 켜고, 새 권한이 필요하면 `Support/CoNo.entitlements` 에 추가 (없으면 배포판에서만 조용히 막힌다).
 - **IO 스레드 규칙**: `DelayPipeline.renderIO` 와 그 호출 경로에서 할당·락·로그·`print`·Swift 배열 생성 금지. 버퍼는 init 에서 미리 확보.
 - **피드백 루프**: 시스템 전체 탭은 CoNo 자신을 반드시 제외. 제외 실패 시 시작 거부(fail-closed)를 유지할 것.
 - **탭 버퍼 위치**: 애그리게이트 입력 목록에서 탭 스트림은 서브디바이스 입력 **뒤**에 붙는다. 첫 버퍼를 탭이라고 가정하지 말 것 (지금은 탭 전용 애그리게이트지만 구성을 바꿀 때 대비).

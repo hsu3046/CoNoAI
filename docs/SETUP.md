@@ -26,6 +26,8 @@ open build/DerivedData/Build/Products/Debug/CoNo.app
 ```
 Xcode 로 열어도 된다: `open CoNo.xcodeproj`. `CoNo.xcodeproj` 는 생성물이라 커밋하지 않는다 — 설정은 `project.yml` 에서 바꾼다.
 
+배포용(서명·공증 DMG) 빌드는 [RELEASE.md](RELEASE.md).
+
 ## 권한
 설정 › 일반 › 권한에 세 가지가 쓰임과 함께 나오고, "열기" 로 해당 시스템 설정 화면이 열린다.
 
