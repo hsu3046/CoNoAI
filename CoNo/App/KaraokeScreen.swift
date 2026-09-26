@@ -3,7 +3,7 @@
 // 메인 화면 = 노래방 무대. 노래 부를 때 필요한 것만: 곡 제목·가수, 음정 바, 가사, 재생·키 도크.
 // 나머지(소스·처리 방식·지연·AI 설정·싱크·진단)는 설정 창(⌘,)에 있다.
 //
-// 단축키 (메인 창에서): Space 재생·일시정지 · ↑↓ 키 · 0 원키 · K 내 키 · 1/2/3 반주·보컬·원곡 · [ ] 가사 싱크 · Return 시작
+// 단축키 (메인 창에서): Space 재생·일시정지 · Esc 곡 끝내기 · ↑↓ 키 · 0 원키 · K 내 키 · 1/2/3 반주·보컬·원곡 · [ ] 가사 싱크 · Return 시작
 
 import AppKit
 import SwiftUI
@@ -208,6 +208,14 @@ struct KaraokeScreen: View {
             return .handled
         }
         switch press.key {
+        case .escape:
+            // 결과가 떠 있으면 닫고, 아니면 곡 끝내기
+            if engine.singingResult != nil {
+                withAnimation(.easeOut) { engine.singingResult = nil }
+            } else if !engine.endedSong {
+                engine.endSong()
+                show(engine.wantsSinging ? "곡 끝 — 채점" : "곡 끝")
+            }
         case .space:
             engine.togglePlayback()
         case .upArrow:
@@ -513,7 +521,7 @@ private struct SeekingBadge: View {
         if engine.seekTarget != nil || engine.stats.isOutputMuted {
             HStack(spacing: 8) {
                 ProgressView().controlSize(.small)
-                Text("이동 중…").font(StageTheme.rounded(15, .semibold))
+                Text(engine.isAdvancingToNextSong ? "다음 곡으로…" : "이동 중…").font(StageTheme.rounded(15, .semibold))
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 9)
@@ -650,6 +658,7 @@ private struct ShortcutsButton: View {
 
     private static let shortcuts: [(keys: String, action: String)] = [
         ("Space", "재생 · 일시정지"),
+        ("Esc", "곡 끝내기 (채점 중이면 점수)"),
         ("↑  ↓", "키 반음 올리기 · 내리기"),
         ("K", "내 키 (내 목소리에 맞추기)"),
         ("0", "원키"),

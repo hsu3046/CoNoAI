@@ -9,8 +9,9 @@ import AppKit
 import ApplicationServices
 
 enum MediaKey {
-    /// IOKit ev_keymap.h 의 NX_KEYTYPE_PLAY
+    /// IOKit ev_keymap.h 의 NX_KEYTYPE_PLAY / NX_KEYTYPE_NEXT
     private static let playKey = 16
+    private static let nextKey = 17
 
     /// 권한이 있으면 ⏯ 를 한 번 누른다. 없으면 권한 창을 띄우고 false.
     @MainActor
@@ -20,12 +21,21 @@ enum MediaKey {
             _ = AXIsProcessTrustedWithOptions(["AXTrustedCheckOptionPrompt": true] as CFDictionary)
             return false
         }
-        post(keyDown: true)
-        post(keyDown: false)
+        post(key: playKey, keyDown: true)
+        post(key: playKey, keyDown: false)
         return true
     }
 
-    private static func post(keyDown: Bool) {
+    /// ⏭ 다음 곡 (권한이 없으면 false)
+    @MainActor
+    static func pressNextTrack() -> Bool {
+        guard AXIsProcessTrusted() else { return false }
+        post(key: nextKey, keyDown: true)
+        post(key: nextKey, keyDown: false)
+        return true
+    }
+
+    private static func post(key: Int, keyDown: Bool) {
         // 시스템 정의 이벤트 subtype 8 = 보조 키. data1 = 키 코드 << 16 | (누름 0xA / 뗌 0xB) << 8
         let state = keyDown ? 0xA : 0xB
         let event = NSEvent.otherEvent(
@@ -36,7 +46,7 @@ enum MediaKey {
             windowNumber: 0,
             context: nil,
             subtype: 8,
-            data1: (playKey << 16) | (state << 8),
+            data1: (key << 16) | (state << 8),
             data2: -1
         )
         event?.cgEvent?.post(tap: .cghidEventTap)

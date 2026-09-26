@@ -54,7 +54,9 @@ extension AppleMusicScript {
     }
 }
 
+/// 원곡 앱 재생 제어. rawValue 는 음악 앱 AppleScript 동사 그대로다.
 enum PlayerCommand: String, CaseIterable, Sendable {
     case play
     case pause
+    case nextTrack = "next track"
 }

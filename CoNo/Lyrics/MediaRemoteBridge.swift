@@ -55,10 +55,11 @@ final class MediaRemoteBridge: Sendable {
 
     /// 지금 재생 중인 앱에 명령. 성공하면 true.
     func send(_ command: PlayerCommand) async -> Bool {
-        // 어댑터 명령 번호: kMRPlay = 0, kMRPause = 1
+        // 어댑터 명령 번호: kMRPlay = 0, kMRPause = 1, kMRNextTrack = 4
         let code = switch command {
         case .play: "0"
         case .pause: "1"
+        case .nextTrack: "4"
         }
         return await run(["send", code])?.status == 0
     }

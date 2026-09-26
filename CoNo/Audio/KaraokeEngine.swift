@@ -284,10 +284,10 @@ final class KaraokeEngine {
 
     /// 지금 곡의 점수를 결과로 (충분히 불렀을 때만). 결과를 냈으면 true.
     @discardableResult
-    private func concludeSong() -> Bool {
+    private func concludeSong(minimumNotes: Int = minimumScoredNotes) -> Bool {
         guard let singing else { return false }
         let score = singing.snapshot().score
-        guard score.notesTotal >= Self.minimumScoredNotes else { return false }
+        guard score.notesTotal >= minimumNotes else { return false }
         singingResult = SingingResult(title: scoringTrack?.title, artist: scoringTrack?.artist, score: score)
         return true
     }
@@ -369,6 +369,10 @@ final class KaraokeEngine {
     /// 멈춘 곳부터 이어서 (CoNo 가 얼려 둔 소리부터 끊김 없이)
     func resume() {
         guard canControlPlayback, let pipeline else { return }
+        if endedSong {
+            advanceToNextSong(pipeline)
+            return
+        }
         let sourceSilent = !pipeline.isSourceAudible(within: 0.4)
         resumePipeline()
         playbackMessage = nil
@@ -409,6 +413,71 @@ final class KaraokeEngine {
         }
         concludeSong()
         stop()
+    }
+
+    // MARK: - 곡 끝내기 (연결은 그대로)
+
+    /// 곡을 끝내 둔 상태 — 재생을 누르면 다음 곡으로 넘어간다
+    private(set) var endedSong = false
+    /// 다음 곡으로 넘어가며 끝낸 곡의 남은 소리를 음소거로 흘려보내는 중
+    private(set) var isAdvancingToNextSong = false
+    @ObservationIgnored private var advanceStartedAt: ContinuousClock.Instant?
+    /// 직접 끝낼 때는 1절만 불러도 결과를 보여준다
+    private static let minimumNotesWhenEnded = 5
+
+    /// 노래방 리모컨의 "종료": 여기까지 채점하고 멈춘다. 연결은 끊지 않는다.
+    func endSong() {
+        guard canControlPlayback, !endedSong else { return }
+        concludeSong(minimumNotes: Self.minimumNotesWhenEnded)
+        // 끝낸 곡을 다음 곡 경계에서 다시 결과로 내지 않게
+        singing?.resetScore()
+        pause()
+        endedSong = true
+    }
+
+    /// 끝낸 곡의 남은 소리(지연 버퍼)는 버리지 않고 음소거로 흘려보내고, 원곡 앱을 다음 곡으로 넘겨 튼다.
+    /// 원곡 앱이 멈춰 있던 동안 캡처는 무음을 버리므로, 지금 캡처 위치 = 끝낸 곡 소리의 끝 = 다음 곡의 시작.
+    private func advanceToNextSong(_ pipeline: DelayPipeline) {
+        endedSong = false
+        muteEndedSong(pipeline, excludingSeconds: 0)
+        resumePipeline()
+        playbackMessage = nil
+        isAdvancingToNextSong = true
+        advanceStartedAt = .now
+        Task {
+            var moved = false
+            if controlsAppleMusic {
+                if case .success = await lyrics.send(.nextTrack) {
+                    moved = true
+                    _ = await lyrics.send(.play)
+                }
+            } else if await sendToSource(.nextTrack) {
+                moved = true
+                _ = await sendToSource(.play)
+            } else if MediaKey.pressNextTrack() {
+                moved = true
+            }
+            if !moved {
+                playbackMessage = "다음 곡으로 넘기지 못했어요. 음악 앱에서 넘겨 주세요."
+            }
+        }
+    }
+
+    /// 끝낸 곡의 소리가 출력에 남은 구간을 음소거. excludingSeconds = 멈춘 뒤 새로 들어온 소리 (그만큼은 들려준다)
+    private func muteEndedSong(_ pipeline: DelayPipeline, excludingSeconds: Double) {
+        let streamOffset = runningMode == .aiSeparation ? (separationTiming?.streamOffset ?? 0) : 0
+        let captured = (captureTime(atHostTime: mach_absolute_time()) ?? 0) - excludingSeconds
+        pipeline.muteOutput(untilStreamSeconds: captured + streamOffset)
+    }
+
+    /// 다음 곡 소리가 들리기 시작하면 안내를 끈다
+    private func updateAdvance() {
+        guard isAdvancingToNextSong, let started = advanceStartedAt else { return }
+        let elapsed = ContinuousClock.now - started
+        if (!stats.isOutputMuted && elapsed > .milliseconds(300)) || elapsed > .seconds(20) {
+            isAdvancingToNextSong = false
+            advanceStartedAt = nil
+        }
     }
 
     // MARK: - 이동 (재생 위치)
@@ -836,6 +905,8 @@ final class KaraokeEngine {
         seekTask?.cancel()
         seekTarget = nil
         appliedAdWindow = nil
+        endedSong = false
+        isAdvancingToNextSong = false
         if isBusy { status = .idle }
     }
 
@@ -888,6 +959,11 @@ final class KaraokeEngine {
                 // 얼려 둔 동안 소리가 1초 넘게 계속 들어오면 원곡 앱이 재생 중 → 따라서 푼다.
                 // 얼린 직후라면 멈추기에 실패한 것 (미디어 키가 다른 앱으로 갔을 수 있다)
                 if self.isPaused, pipeline.pausedAudioSeconds > 1 {
+                    // 곡을 끝내 둔 뒤 음악 앱에서 직접 다른 곡을 틀었으면: 끝낸 곡의 남은 소리는 건너뛰고 새로 들어온 소리부터
+                    if self.endedSong {
+                        self.endedSong = false
+                        self.muteEndedSong(pipeline, excludingSeconds: pipeline.pausedAudioSeconds)
+                    }
                     let justPaused = self.pausedAt.map { ContinuousClock.now - $0 < .seconds(3) } ?? false
                     self.resumePipeline()
                     if justPaused, !self.controlsAppleMusic {
@@ -896,6 +972,7 @@ final class KaraokeEngine {
                 }
                 self.updateSeek()
                 self.updateAdMute()
+                self.updateAdvance()
                 self.updateSinging()
                 tick += 1
                 if tick % 20 == 0 { self.updateVocalRange() }

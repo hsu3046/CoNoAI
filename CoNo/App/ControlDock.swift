@@ -13,7 +13,10 @@ struct ControlDock: View {
 
     var body: some View {
         HStack(spacing: 18) {
-            playButton
+            HStack(spacing: 10) {
+                playButton
+                endSongButton
+            }
             divider
             keyStepper
             voiceChips
@@ -46,18 +49,36 @@ struct ControlDock: View {
 
     private var playButton: some View {
         let paused = engine.showsPaused
+        // 곡을 끝내 둔 뒤엔 재생 = 다음 곡
+        let symbol = engine.endedSong ? "forward.end.fill" : paused ? "play.fill" : "pause.fill"
         return Button {
             engine.togglePlayback()
         } label: {
-            Image(systemName: paused ? "play.fill" : "pause.fill")
+            Image(systemName: symbol)
                 .font(.system(size: 18, weight: .bold))
                 .foregroundStyle(StageTheme.night)
                 .frame(width: 46, height: 46)
                 .background(Circle().fill(StageTheme.ink))
                 .contentTransition(.symbolEffect(.replace))
         }
-        .help(paused ? "이어서 재생 (Space)" : "일시정지 (Space)")
-        .accessibilityLabel(paused ? "재생" : "일시정지")
+        .help(engine.endedSong ? "다음 곡 부르기 (Space)" : paused ? "이어서 재생 (Space)" : "일시정지 (Space)")
+        .accessibilityLabel(engine.endedSong ? "다음 곡" : paused ? "재생" : "일시정지")
+    }
+
+    /// 곡 끝내기: 연결은 두고 여기까지 채점하고 멈춘다 (노래방 리모컨의 종료)
+    private var endSongButton: some View {
+        Button {
+            engine.endSong()
+        } label: {
+            Image(systemName: "stop.fill")
+                .font(.system(size: 13, weight: .bold))
+                .frame(width: 34, height: 34)
+                .background(Circle().fill(Color.white.opacity(0.1)))
+        }
+        .disabled(engine.endedSong)
+        .opacity(engine.endedSong ? 0.4 : 1)
+        .help(engine.wantsSinging ? "곡 끝내기 — 여기까지 채점하고 멈춰요. 재생을 누르면 다음 곡 (Esc)" : "곡 끝내기 — 멈추고, 재생을 누르면 다음 곡 (Esc)")
+        .accessibilityLabel("곡 끝내기")
     }
 
     // MARK: 키
