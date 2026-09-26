@@ -50,6 +50,36 @@ final class AppleMusicNowPlaying: @unchecked Sendable {
         }
     }
 
+    /// 재생·일시정지 명령 (조회와 같은 직렬 큐 — NSAppleScript 는 스레드 안전하지 않다)
+    func send(_ command: PlayerCommand) async -> Result<Void, NowPlayingError> {
+        await withCheckedContinuation { continuation in
+            queue.async { [self] in
+                continuation.resume(returning: sendSync(command))
+            }
+        }
+    }
+
+    /// 큐 전용: 명령 스크립트 (명령마다 한 번 컴파일)
+    private var commandScripts: [PlayerCommand: NSAppleScript] = [:]
+
+    private func sendSync(_ command: PlayerCommand) -> Result<Void, NowPlayingError> {
+        let script = commandScripts[command] ?? NSAppleScript(source: AppleMusicScript.command(command))
+        guard let script else { return .failure(.script("스크립트 생성 실패")) }
+        commandScripts[command] = script
+        var errorInfo: NSDictionary?
+        script.executeAndReturnError(&errorInfo)
+        if let errorInfo { return .failure(Self.error(from: errorInfo)) }
+        return .success(())
+    }
+
+    private static func error(from errorInfo: NSDictionary) -> NowPlayingError {
+        let code = errorInfo[NSAppleScript.errorNumber] as? Int
+        // -1743 = errAEEventNotPermitted (자동화 권한 거부), -1744 = 사용자 동의 필요
+        if code == -1743 || code == -1744 { return .automationDenied }
+        let message = errorInfo[NSAppleScript.errorMessage] as? String ?? "알 수 없는 오류"
+        return .script("\(message) (\(code ?? 0))")
+    }
+
     private func pollSync() -> Result<NowPlayingSample, NowPlayingError> {
         if script == nil {
             script = NSAppleScript(source: AppleMusicScript.source)
@@ -62,15 +92,7 @@ final class AppleMusicNowPlaying: @unchecked Sendable {
         let after = mach_absolute_time()
         let hostTime = before + (after - before) / 2
 
-        if let errorInfo {
-            let code = errorInfo[NSAppleScript.errorNumber] as? Int
-            // -1743 = errAEEventNotPermitted (자동화 권한 거부), -1744 = 사용자 동의 필요
-            if code == -1743 || code == -1744 {
-                return .failure(.automationDenied)
-            }
-            let message = errorInfo[NSAppleScript.errorMessage] as? String ?? "알 수 없는 오류"
-            return .failure(.script("\(message) (\(code ?? 0))"))
-        }
+        if let errorInfo { return .failure(Self.error(from: errorInfo)) }
 
         let stateText = result.atIndex(1)?.stringValue ?? "stopped"
         let state = PlayerState(rawValue: stateText) ?? .stopped

@@ -116,6 +116,15 @@ struct AppleMusicScriptTests {
         let compiled = script?.compileAndReturnError(&error) ?? false
         #expect(compiled, "AppleScript 컴파일 실패: \(error ?? [:])")
     }
+
+    @Test func playerCommandsCompile() {
+        for command in PlayerCommand.allCases {
+            let script = NSAppleScript(source: AppleMusicScript.command(command))
+            var error: NSDictionary?
+            let compiled = script?.compileAndReturnError(&error) ?? false
+            #expect(compiled, "\(command) 컴파일 실패: \(error ?? [:])")
+        }
+    }
 }
 
 struct TitleMatchTests {

@@ -17,4 +17,18 @@ enum AppleMusicScript {
         return {"notRunning"}
     end if
     """
+
+    /// 재생 제어. 음악 앱이 꺼져 있으면 켜지 않는다 (`play` 는 앱을 띄우므로 먼저 확인).
+    static func command(_ verb: PlayerCommand) -> String {
+        """
+        if application "Music" is running then
+            tell application "Music" to \(verb.rawValue)
+        end if
+        """
+    }
+}
+
+enum PlayerCommand: String, CaseIterable, Sendable {
+    case play
+    case pause
 }

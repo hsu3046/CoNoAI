@@ -86,13 +86,134 @@ final class KaraokeEngine {
     }
 
     func changeKey(by semitones: Int) {
-        let range = PlaybackOutput.keyShiftRange
-        let next = min(max(keyShift + semitones, range.lowerBound), range.upperBound)
-        if next != keyShift { keyShift = next }
+        keyMode = .manual
+        setKey(keyShift + semitones)
     }
 
     func resetKey() {
-        if keyShift != 0 { keyShift = 0 }
+        keyMode = .manual
+        setKey(0)
+    }
+
+    private func setKey(_ value: Int) {
+        let range = PlaybackOutput.keyShiftRange
+        let next = min(max(value, range.lowerBound), range.upperBound)
+        if next != keyShift { keyShift = next }
+    }
+
+    // MARK: - 남자키·여자키
+
+    enum KeyMode: Equatable {
+        /// 사용자가 ♭/♯ 로 직접 고른 키
+        case manual
+        /// 원곡 음역을 재서 이 목소리에 맞춘다 (곡이 바뀌어도 새 곡에 다시 맞춘다)
+        case voice(VoiceType)
+    }
+
+    private(set) var keyMode: KeyMode = .manual
+    /// 지금 곡의 원곡 보컬 음역 (AI 분리 모드에서 유성 구간이 충분히 쌓이면)
+    private(set) var vocalRange: VocalRange?
+    /// 음역 추정의 시작점 (출력 스트림 초) — 곡이 바뀌면 새 곡 부분만 잰다
+    @ObservationIgnored private var vocalRangeStart: Double = 0
+    @ObservationIgnored private var vocalRangeTrackID: String?
+    /// 목소리 모드에서 이번 곡에 아직 키를 맞추지 않았는지
+    @ObservationIgnored private var voiceKeyPending = false
+
+    /// 이 목소리에 맞는 키 (음역을 아직 모르면 nil)
+    func suggestedKey(for voice: VoiceType) -> Int? {
+        vocalRange.map { SmartKey.shift(forMedian: $0.medianMidi, toward: voice) }
+    }
+
+    /// 남자키·여자키 버튼. 음역을 이미 알면 바로, 아니면 분석되는 대로 맞춘다.
+    func applyVoiceKey(_ voice: VoiceType) {
+        keyMode = .voice(voice)
+        if let key = suggestedKey(for: voice) {
+            setKey(key)
+            voiceKeyPending = false
+        } else {
+            voiceKeyPending = true
+        }
+    }
+
+    /// 1초마다: 곡 경계를 따라 원곡 음역을 다시 재고, 목소리 모드면 새 곡에 키를 맞춘다.
+    private func updateVocalRange() {
+        guard let timeline = pitchTimeline else { return }
+        let trackID = lyrics.currentTrack?.id
+        if trackID != vocalRangeTrackID {
+            vocalRangeTrackID = trackID
+            // 곡이 바뀐 지점 = 지금 캡처되는 소리 → 출력 스트림 시각으로
+            let streamOffset = separationTiming?.streamOffset ?? 0
+            vocalRangeStart = (captureTime(atHostTime: mach_absolute_time()) ?? 0) + streamOffset
+            vocalRange = nil
+            if case .voice = keyMode { voiceKeyPending = true }
+        }
+        let snapshot = timeline.snapshot(from: vocalRangeStart, to: .greatestFiniteMagnitude)
+        let range = SmartKey.estimate(frames: snapshot.frames, framePeriod: timeline.framePeriod)
+        if range != vocalRange { vocalRange = range }
+        if voiceKeyPending, case let .voice(voice) = keyMode, let key = suggestedKey(for: voice) {
+            setKey(key)
+            voiceKeyPending = false
+        }
+    }
+
+    /// 가이드 보컬: 반주에 섞을 원곡 보컬 비율 (0…0.5, AI 모드). 실행 중에도 바로 반영.
+    var guideVocalLevel: Double = 0 {
+        didSet { separationProcessor?.guideVocalLevel = Float(guideVocalLevel) }
+    }
+
+    // MARK: - 재생·일시정지
+
+    /// CoNo 가 소리를 얼려 둔 상태 (음악 앱도 멈춰 있다)
+    private(set) var isPaused = false
+    /// 재생 제어 실패 사유 (화면 안내용)
+    private(set) var playbackMessage: String?
+    /// 실행 중인 소스
+    private(set) var runningSource: AudioSource?
+
+    /// 재생·일시정지를 CoNo 에서 할 수 있는지 (지금은 음악 앱만 — 다른 앱은 멈출 방법이 없다)
+    var canControlPlayback: Bool {
+        isRunning && LyricsController.supports(bundleID: runningSource?.bundleID)
+    }
+
+    /// 화면의 재생 버튼 상태: CoNo 가 얼렸거나, 음악 앱에서 멈춘 경우
+    var showsPaused: Bool {
+        isPaused || lyrics.playerState == .paused
+    }
+
+    func togglePlayback() {
+        if showsPaused { resume() } else { pause() }
+    }
+
+    /// 누르는 순간 들리는 소리·가사·음정 바가 멈추고, 음악 앱도 멈춘다.
+    func pause() {
+        guard canControlPlayback, let pipeline, !isPaused else { return }
+        pipeline.setPaused(true)
+        isPaused = true
+        playbackMessage = nil
+        Task {
+            if case let .failure(error) = await lyrics.send(.pause) {
+                // 음악 앱이 안 멈추면 캡처가 계속 쌓이므로 얼림을 푼다
+                resumePipeline()
+                playbackMessage = error.localizedDescription
+            }
+        }
+    }
+
+    /// 멈춘 곳부터 이어서 (CoNo 가 얼려 둔 소리부터 끊김 없이)
+    func resume() {
+        guard canControlPlayback else { return }
+        resumePipeline()
+        playbackMessage = nil
+        Task {
+            if case let .failure(error) = await lyrics.send(.play) {
+                playbackMessage = error.localizedDescription
+            }
+        }
+    }
+
+    private func resumePipeline() {
+        pipeline?.setPaused(false)
+        isPaused = false
     }
 
     /// AI 모드에서 들려줄 출력 — 실행 중에도 바꿀 수 있다
@@ -309,6 +430,7 @@ final class KaraokeEngine {
                     pitchDetector: pitchDetector
                 )
                 separationProcessor.output = separationOutput
+                separationProcessor.guideVocalLevel = Float(guideVocalLevel)
                 self.separationProcessor = separationProcessor
                 pitchTimeline = separationProcessor.pitchTimeline
                 separationTiming = (separationProcessor.streamOffsetSeconds, separationProcessor.maxWaitSeconds)
@@ -363,6 +485,12 @@ final class KaraokeEngine {
             self.session = session
             self.output = playback
             self.pipeline = pipeline
+            runningSource = source
+            isPaused = false
+            playbackMessage = nil
+            vocalRange = nil
+            vocalRangeTrackID = nil
+            vocalRangeStart = 0
             inputSampleRate = inputRate
             outputSampleRate = outputRate
             outputDeviceName = playback.deviceName
@@ -419,6 +547,9 @@ final class KaraokeEngine {
         separationProcessor = nil
         pitchTimeline = nil
         runningMode = nil
+        runningSource = nil
+        isPaused = false
+        vocalRange = nil
         if isBusy { status = .idle }
     }
 
@@ -457,12 +588,19 @@ final class KaraokeEngine {
 
     private func startStatsPolling() {
         statsTask = Task { [weak self] in
+            var tick = 0
             while !Task.isCancelled {
                 guard let self, let pipeline = self.pipeline else { return }
                 self.stats = pipeline.takeStats()
                 if let separationProcessor = self.separationProcessor {
                     self.inferenceStats = separationProcessor.inferenceStats
                 }
+                // 얼려 둔 동안 소리가 1초 넘게 계속 들어오면 음악 앱에서 다시 재생한 것 → 따라서 푼다
+                if self.isPaused, pipeline.pausedAudioSeconds > 1 {
+                    self.resumePipeline()
+                }
+                tick += 1
+                if tick % 20 == 0 { self.updateVocalRange() }
                 try? await Task.sleep(for: .milliseconds(50))
             }
         }

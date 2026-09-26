@@ -144,3 +144,50 @@ struct NoteSegmenterTests {
         #expect(NoteSegmenter().segment(frames([(50, nil)])).isEmpty)
     }
 }
+
+// MARK: - SmartKey (남자키·여자키)
+
+struct SmartKeyTests {
+    private func hz(_ midi: Double) -> Double { 440 * pow(2, (midi - 69) / 12) }
+
+    @Test func foldsOctavesTowardComfortableCenter() {
+        // 여자 노래(A4) → 남자키: 한 옥타브 아래로 부른다고 보고 −2 (G3 근처)
+        #expect(SmartKey.shift(forMedian: 69, toward: .male) == -2)
+        // 여자 노래 → 여자키: E4 로 −5
+        #expect(SmartKey.shift(forMedian: 69, toward: .female) == -5)
+        // 남자 노래(A3) → 남자키: G3 로 −2
+        #expect(SmartKey.shift(forMedian: 57, toward: .male) == -2)
+        // 남자 노래 → 여자키: +7 은 범위 밖 → 옥타브를 바꿔 −5
+        #expect(SmartKey.shift(forMedian: 57, toward: .female) == -5)
+        // 이미 맞으면 원키
+        #expect(SmartKey.shift(forMedian: 55.2, toward: .male) == 0)
+        // 결과는 항상 −6…+6
+        for median in stride(from: 40.0, through: 90.0, by: 0.25) {
+            for voice in VoiceType.allCases {
+                let key = SmartKey.shift(forMedian: median, toward: voice)
+                #expect((-6...6).contains(key))
+                // 옥타브 무시 거리가 반음 반 이내로 목표에 닿는다
+                let landed = median + Double(key) - voice.comfortableCenter
+                let folded = abs(landed - 12 * (landed / 12).rounded())
+                #expect(folded <= 0.5 + 1e-9, "median \(median) \(voice) → \(key)")
+            }
+        }
+    }
+
+    @Test func estimateNeedsEnoughVoicedFramesAndUsesMedian() {
+        let period = 0.016
+        let voicedFor = { (seconds: Double, midi: Double) in
+            (0..<Int(seconds / period)).map { PitchFrame(index: $0, pitchHz: self.hz(midi), confidence: 0.9) }
+        }
+        #expect(SmartKey.estimate(frames: voicedFor(5, 60), framePeriod: period) == nil, "유성 5초는 부족")
+        // 무성·저신뢰 프레임은 세지 않는다
+        let unvoiced = (0..<2000).map { PitchFrame(index: $0, pitchHz: 0, confidence: 0) }
+        #expect(SmartKey.estimate(frames: voicedFor(5, 60) + unvoiced, framePeriod: period) == nil)
+        // 중앙값: 짧은 고음 하나가 끌어올리지 않는다
+        let frames = voicedFor(8, 60) + voicedFor(4, 72)
+        let range = SmartKey.estimate(frames: frames, framePeriod: period)
+        #expect(range.map { abs($0.medianMidi - 60) < 0.01 } == true)
+        #expect(range.map { abs($0.voicedSeconds - 12) < 0.05 } == true)
+    }
+}
+

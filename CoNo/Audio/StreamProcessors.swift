@@ -117,6 +117,8 @@ final class SeparationProcessor: StreamProcessor, @unchecked Sendable {
     private let upsampler: AudioResampler?
 
     private let outputSelection = Atomic<Int>(SeparationOutput.accompaniment.rawValue)
+    /// 가이드 보컬: 반주에 섞을 원곡 보컬 비율 (0 = 순수 반주). Float 비트로 저장 (UI ↔ 워커)
+    private let guideVocalBits = Atomic<UInt32>(Float(0).bitPattern)
 
     // 스크래치 (워커 스레드 전용)
     private var planarLeft: [Float] = []
@@ -157,6 +159,12 @@ final class SeparationProcessor: StreamProcessor, @unchecked Sendable {
     var output: SeparationOutput {
         get { SeparationOutput(rawValue: outputSelection.load(ordering: .relaxed)) ?? .accompaniment }
         set { outputSelection.store(newValue.rawValue, ordering: .relaxed) }
+    }
+
+    /// 반주에 섞을 원곡 보컬 비율 (0...0.5). 노래방 기계의 멜로디 가이드처럼 부를 줄을 살짝 들려준다.
+    var guideVocalLevel: Float {
+        get { Float(bitPattern: guideVocalBits.load(ordering: .relaxed)) }
+        set { guideVocalBits.store(min(max(newValue, 0), 0.5).bitPattern, ordering: .relaxed) }
     }
 
     var inferenceStats: InferenceStats { timedSeparator.stats }
@@ -221,11 +229,12 @@ final class SeparationProcessor: StreamProcessor, @unchecked Sendable {
             }
 
             let selection = output
+            let guide = guideVocalLevel
             for i in 0..<n {
                 switch selection {
                 case .accompaniment:
-                    selectedLeft[i] = out.accompanimentLeft[i]
-                    selectedRight[i] = out.accompanimentRight[i]
+                    selectedLeft[i] = out.accompanimentLeft[i] + vocalLeft[i] * guide
+                    selectedRight[i] = out.accompanimentRight[i] + vocalRight[i] * guide
                 case .vocals:
                     selectedLeft[i] = vocalLeft[i]
                     selectedRight[i] = vocalRight[i]

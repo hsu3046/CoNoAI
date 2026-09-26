@@ -127,6 +127,22 @@ final class DelayPipeline: @unchecked Sendable {
     /// 재생 스레드 전용 누적 재생 프레임 (= 출력 스트림 위치)
     private var playedFrames = 0
 
+    // 일시정지: 재생은 즉시 얼리고, 캡처는 음악 앱이 실제로 멈출 때까지 들어온 소리만 받고 그 뒤 무음은 버린다.
+    // → 재개하면 멈춘 지점부터 한 샘플도 빠지지 않고 이어진다 (지연·스트림 시각이 그대로라 음정 바·가사 싱크 유지).
+    private let pauseRequested = Atomic<Bool>(false)
+    /// 재생 스레드 전용: 지금 얼어 있는지 (얼리는 순간 한 번만 페이드아웃하려고)
+    private var playbackFrozen = false
+    /// 캡처 스레드 전용: 무음을 버리는 중 (일시정지 중 + 재개 직후 음악이 다시 나올 때까지)
+    private var captureHolding = false
+    /// 캡처 스레드 전용: 재개 뒤 무음을 더 버릴 수 있는 남은 프레임 (곡이 원래 무음이어도 영원히 버리지 않게)
+    private var resumeGraceFrames = 0
+    /// 이번 캡처 콜백이 버려졌는지 (캡처 시계 외삽을 멈추기 위해 UI 가 읽는다)
+    private let captureDropping = Atomic<Bool>(false)
+    /// 일시정지 중에 들어온 소리 프레임 수 (음악 앱이 안 멈췄거나 다른 곳에서 재생을 다시 누른 것 감지)
+    private let pausedAudioFrames = Atomic<Int>(0)
+    /// 이보다 작으면 디지털 무음으로 본다
+    private static let silencePeak: Float = 1e-5
+
     private let processor: StreamProcessor
     /// 진단 녹음 (처리기 입력·출력 최근 30초)
     let recorder: DiagnosticRecorder
@@ -275,15 +291,15 @@ final class DelayPipeline: @unchecked Sendable {
         captureClockHostTime.store(hostTime, ordering: .relaxed)
         captureClockVersion.add(1, ordering: .acquiringAndReleasing)
 
-        let frames = captureTap(from: input, tapChannelCount: tapChannelCount)
-        capturedFramesTotal += frames
+        let (received, written) = captureTap(from: input, tapChannelCount: tapChannelCount)
+        capturedFramesTotal += written
         let valid = inputTime.pointee.mFlags.contains(.sampleTimeValid)
-        captureMonitor.record(sampleTime: valid ? inputTime.pointee.mSampleTime : nil, frames: frames, sampleRate: inputSampleRate)
+        captureMonitor.record(sampleTime: valid ? inputTime.pointee.mSampleTime : nil, frames: received, sampleRate: inputSampleRate)
         captureMonitor.recordCallback(ticks: mach_absolute_time() &- start)
     }
 
-    /// - Returns: 받은 프레임 수
-    private func captureTap(from input: UnsafePointer<AudioBufferList>, tapChannelCount: Int) -> Int {
+    /// - Returns: 받은 프레임 수, 캡처 링에 쓴 프레임 수 (일시정지 중 무음은 버린다)
+    private func captureTap(from input: UnsafePointer<AudioBufferList>, tapChannelCount: Int) -> (received: Int, written: Int) {
         let buffers = UnsafeMutableAudioBufferListPointer(UnsafeMutablePointer(mutating: input))
 
         // 끝에서부터 탭 채널 수만큼의 버퍼를 고른다 (최대 2채널 = 좌/우 소스)
@@ -315,7 +331,7 @@ final class DelayPipeline: @unchecked Sendable {
             index -= 1
         }
 
-        guard let leftBase, frames != Int.max, frames > 0 else { return 0 }
+        guard let leftBase, frames != Int.max, frames > 0 else { return (0, 0) }
         let right = rightBase ?? leftBase // 모노면 복제
         let frameCount = min(frames, Self.maxIOFrames)
 
@@ -328,14 +344,43 @@ final class DelayPipeline: @unchecked Sendable {
             peak = max(peak, abs(left), abs(rightSample))
         }
 
+        capturedFrameCount.add(frameCount, ordering: .relaxed)
+        if peak > 0 { receivedSignal.store(true, ordering: .relaxed) }
+        Self.raisePeak(inputPeakBits, to: peak)
+
+        guard shouldKeepCapture(frames: frameCount, peak: peak) else {
+            captureDropping.store(true, ordering: .relaxed)
+            return (frameCount, 0)
+        }
+        captureDropping.store(false, ordering: .relaxed)
         let samples = frameCount * Self.channels
         if captureRing.write(captureScratch, count: samples) < samples {
             overflowCount.add(1, ordering: .relaxed)
         }
-        capturedFrameCount.add(frameCount, ordering: .relaxed)
-        if peak > 0 { receivedSignal.store(true, ordering: .relaxed) }
-        Self.raisePeak(inputPeakBits, to: peak)
-        return frameCount
+        return (frameCount, frameCount)
+    }
+
+    /// 캡처 스레드: 이번 버퍼를 스트림에 넣을지. 일시정지 중·재개 직후에는 무음을 버린다.
+    private func shouldKeepCapture(frames: Int, peak: Float) -> Bool {
+        let paused = pauseRequested.load(ordering: .relaxed)
+        if paused {
+            captureHolding = true
+            resumeGraceFrames = Int(inputSampleRate * 1.5)
+        }
+        guard captureHolding else { return true }
+        let silent = peak < Self.silencePeak
+        if paused {
+            // 음악 앱이 멈추기 전 꼬리는 받는다 (재개 때 이어지도록). 계속 들어오면 UI 가 "다른 곳에서 재생됨" 으로 본다.
+            if !silent { pausedAudioFrames.add(frames, ordering: .relaxed) }
+            return !silent
+        }
+        // 재개됨: 음악이 다시 나오거나 유예가 끝나면 평소대로
+        resumeGraceFrames -= frames
+        if !silent || resumeGraceFrames <= 0 {
+            captureHolding = false
+            return true
+        }
+        return false
     }
 
     // MARK: - 재생 렌더 스레드 (real-time: 할당·락·로그 금지)
@@ -354,7 +399,17 @@ final class DelayPipeline: @unchecked Sendable {
         }
 
         var got = 0
-        if playbackIsPrimed {
+        let paused = pauseRequested.load(ordering: .relaxed)
+        if paused {
+            // 얼리는 첫 콜백만 짧게 읽어 페이드아웃하고, 그 뒤로는 링을 건드리지 않는다
+            if !playbackFrozen, playbackIsPrimed {
+                got = playbackRing.read(into: playScratch, count: min(samples, Self.edgeFadeFrames * Self.channels))
+                Self.applyEdgeFade(playScratch, frames: got / Self.channels, fadeIn: false)
+                playbackNeedsFadeIn = true
+            }
+            playbackFrozen = true
+        } else if playbackIsPrimed {
+            playbackFrozen = false
             got = playbackRing.read(into: playScratch, count: samples)
             if playbackNeedsFadeIn, got > 0 {
                 Self.applyEdgeFade(playScratch, frames: got / Self.channels, fadeIn: true)
@@ -438,6 +493,8 @@ final class DelayPipeline: @unchecked Sendable {
             let after = clockVersion.load(ordering: .acquiring)
             guard before == after else { continue }
             guard hostTime != 0 else { return nil }
+            // 일시정지 중에는 멈춘 위치 그대로
+            if pauseRequested.load(ordering: .relaxed) { return Double(frames) / outputSampleRate }
             // 렌더 시각은 보통 "곧 재생될" 미래라 경과 시간이 음수일 수 있다
             let now = mach_absolute_time()
             let elapsed = (Double(now) - Double(hostTime)) * Self.hostTicksToSeconds
@@ -458,6 +515,8 @@ final class DelayPipeline: @unchecked Sendable {
             let after = captureClockVersion.load(ordering: .acquiring)
             guard before == after else { continue }
             guard anchorHost != 0 else { return nil }
+            // 무음을 버리는 중이면 캡처 스트림이 멈춰 있다 → 외삽하지 않는다
+            if captureDropping.load(ordering: .relaxed) { return Double(frames) / inputSampleRate }
             let elapsed = (Double(hostTime) - Double(anchorHost)) * Self.hostTicksToSeconds
             return Double(frames) / inputSampleRate + elapsed
         }
@@ -467,6 +526,20 @@ final class DelayPipeline: @unchecked Sendable {
     // MARK: - Stats (UI 스레드)
 
     /// 피크는 읽으면서 0 으로 리셋한다 (UI 폴링 주기 동안의 최댓값).
+    // MARK: - 일시정지 (UI 스레드)
+
+    var isPaused: Bool { pauseRequested.load(ordering: .relaxed) }
+
+    func setPaused(_ paused: Bool) {
+        pausedAudioFrames.store(0, ordering: .relaxed)
+        pauseRequested.store(paused, ordering: .relaxed)
+    }
+
+    /// 일시정지 중에 들어온 소리 (초). 1초를 넘으면 음악이 다른 곳에서 다시 재생된 것.
+    var pausedAudioSeconds: Double {
+        Double(pausedAudioFrames.load(ordering: .relaxed)) / inputSampleRate
+    }
+
     func takeStats() -> PipelineStats {
         PipelineStats(
             inputPeak: Float(bitPattern: inputPeakBits.exchange(0, ordering: .relaxed)),

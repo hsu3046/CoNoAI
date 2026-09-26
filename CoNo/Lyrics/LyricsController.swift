@@ -42,6 +42,9 @@ final class LyricsController {
     }
 
     private(set) var status: Status = .inactive
+    /// 음악 앱의 재생 상태와 지금 캡처되는 곡 (0.5초 폴링). 들리는 곡은 `track(atCaptureTime:)`.
+    private(set) var playerState: PlayerState?
+    private(set) var currentTrack: TrackInfo?
 
     /// 진단: 연속 재생 중 (플레이어 위치 − 캡처 시각) 의 흔들림.
     /// 이 값이 일정해야 앵커가 믿을 만하다. 크게 흔들리면 플레이어 위치 보고 자체가 들쭉날쭉한 것.
@@ -163,7 +166,19 @@ final class LyricsController {
         autoSync = AutoSyncInfo()
         vocalSource = nil
         currentTrackID = nil
+        playerState = nil
+        currentTrack = nil
         status = .inactive
+    }
+
+    /// 음악 앱 재생·일시정지
+    func send(_ command: PlayerCommand) async -> Result<Void, NowPlayingError> {
+        await nowPlaying.send(command)
+    }
+
+    /// 캡처 시각 c 의 소리(= 들리는 소리)가 속한 곡. 화면 제목용 — 상태를 바꾸지 않는다.
+    func track(atCaptureTime c: Double) -> TrackInfo? {
+        clock.position(atCaptureTime: c).flatMap { tracks[$0.trackID] }
     }
 
     private func pollOnce(captureTime: @MainActor (UInt64) -> Double?) async {
@@ -173,6 +188,8 @@ final class LyricsController {
         case let .failure(error):
             status = .failed(error.localizedDescription)
         case let .success(sample):
+            if playerState != sample.state { playerState = sample.state }
+            if currentTrack != sample.track { currentTrack = sample.track }
             guard let capture = captureTime(sample.hostTime) else { return }
             recordResidual(sample: sample, captureTime: capture)
             clock.add(PlaybackAnchor(
