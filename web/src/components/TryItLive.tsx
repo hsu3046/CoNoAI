@@ -202,11 +202,11 @@ export function TryItLive() {
     <Screen id="try" innerRef={sectionRef} glow={{ color: "rgba(255,143,176,0.1)", x: "70%", y: "55%" }}>
       <div className="grid items-center gap-10 lg:grid-cols-[minmax(0,0.8fr)_minmax(0,1.7fr)]">
         <SectionTitle kicker="TRY IT NOW" title="설치 전에, 지금 여기서 불러 보세요" align="left">
-          CoNo가 직접 만든 20초짜리 곡 <b className="text-ink">〈우리 집 무대〉</b>. 마이크를 허용하고 금색 선을 음표 위에 올려 보세요.
+          다운로드하기 전에 잘 되는지 한 번 테스트해 보세요.
           <ul className="mt-5 space-y-2 text-sm">
             <li>🎵 높든 낮든 — 옥타브는 상관없어요</li>
             <li>🎧 이어폰이 더 정확해요 · 스피커도 괜찮아요</li>
-            <li>🔒 목소리는 이 브라우저 밖으로 나가지 않아요</li>
+            <li>🔒 녹음되거나 외부로 전송되지 않아요</li>
           </ul>
         </SectionTitle>
 
