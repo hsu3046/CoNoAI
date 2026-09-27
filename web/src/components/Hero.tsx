@@ -234,7 +234,7 @@ export function Hero() {
             style={{
               opacity: at("stamp") ? 1 : 0,
               color: "#fff0f0",
-              transform: "rotate(12deg)",
+              transform: "rotate(20deg)",
               transition: "opacity 0.15s",
               textShadow: "0 0 2px #fff, 0 0 8px #ff5a5a, 0 0 18px #ff5a5a, 0 0 42px #ff3b3b, 0 0 80px rgba(255,59,59,0.55)",
             }}
