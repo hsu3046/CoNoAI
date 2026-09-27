@@ -158,7 +158,7 @@ export function Hero() {
     return cleanup;
   }, [fastForward, clearTimers, stopListening, dropVoice]);
 
-  // 가만있어도 5초 뒤 시작 (움직임 줄이기면 바로 마지막 장면)
+  // 가만있어도 1.5초 뒤 시작 (움직임 줄이기면 바로 마지막 장면)
   useEffect(() => {
     const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     const auto = window.setTimeout(
@@ -170,7 +170,7 @@ export function Hero() {
         : () => {
             if (!clicked.current) void play();
           },
-      reduced ? 0 : 5000,
+      reduced ? 0 : 1500,
     );
     return () => {
       window.clearTimeout(auto);
