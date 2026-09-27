@@ -7,11 +7,16 @@ CoNo 를 알리고, 사용법을 보여 주고, 내려받게 하고, 의견을 �
 |---|---|---|
 | 첫 화면 | `src/components/Hero.tsx` | 음악 앱 ▶ → 소등 → 네온 "코인 노래방" + "No!" 도장 → "집에서 나만의 노래방" |
 | 스크롤 스토리 | `StoryScroll.tsx` | 고정 화면 4장면: 파형 → 보컬 분리 → 음정 바·가사 → 금색 선·점수·불꽃 |
+| 들어 보기 | `ListenSection.tsx` · `fx/stems.ts` · `lib/songs.ts` | 자작곡 4곡 하이라이트를 원곡 ↔ 반주 ↔ 보컬로 끊김 없이 바꿔 듣기 (앱의 스위치와 같은 모양) |
 | 브라우저 체험 | `TryItLive.tsx` · `fx/backing.ts` · `lib/pitch.ts` · `lib/melody.ts` | 자작곡 〈우리 집 무대〉 반주 + 마이크 음정(YIN) 채점, 끝나면 `ScoreShow` |
 | 점수 연출 | `ScoreShow.tsx` · `fx/fireworks.ts` · `fx/sfx.ts` | 앱의 CelebrationView 를 옮긴 것 (드럼롤 · 불꽃 · 폭죽 · 별) |
 | 소개·사용법·영상·챌린지·FAQ·다운로드 | `Sections.tsx` | |
 | 의견 | `Feedback.tsx` → `app/api/feedback/route.ts` → Supabase `site_feedback` | |
 
+- **노래**: `public/songs/<slug>/{mix,inst,vocal}.m4a` — 만든 이의 자작곡 (`assets/*.mp3`) 후렴 48초. **GPL 대상이 아니다 (All rights reserved)** — 다른 곳에 쓰지 말 것.
+  분리는 앱과 같은 모델(UVR MDX-Net Karaoke 2)·같은 전후처리 (보컬 = 원곡 − 반주 × 1.065), 구간은 보컬이 꾸준히 큰 곳을 자동으로 고른다. 곡명·색·파형은 `lib/songs.ts`.
+  세 파일은 같은 길이로 같이 인코딩해야 한다 — 세 트랙을 동시에 틀고 음량만 바꾸므로 길이가 다르면 반복 때 어긋난다.
+- **소리는 한 번에 한 곳**: 첫 화면 ▶ · 들어 보기 · 체험은 `claimAudio(owner)` 로 알리고, 다른 곳이 시작하면 멈춘다 (`onAudioClaim`). 화면 밖으로 나가도 멈춘다.
 - **배포판 정보**: `src/lib/release.ts` (버전·다운로드 주소·크기·SHA-256). 새 DMG 를 올리면 여기만 바꾼다.
 - **영상**: `release.ts` 의 `videos[].src` 에 mp4 경로나 YouTube 임베드 주소를 넣으면 "촬영 중" 자리 대신 나온다.
 - **점수 연출 미리보기**: `/demo/score?score=92` (검색 노출 안 함 — 영상 촬영용)

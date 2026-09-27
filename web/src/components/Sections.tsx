@@ -496,6 +496,7 @@ export function Footer() {
             의견 보내기
           </a>
           <span>효과음 드럼롤: Freesound #569113 (CC0)</span>
+          <span>사이트의 노래는 모두 자작곡 · All rights reserved (GPL 대상 아님)</span>
         </div>
       </div>
     </footer>

@@ -44,6 +44,21 @@ export function useInView<T extends Element>(options: { once?: boolean; margin?:
   return [ref, inView];
 }
 
+/** 요소가 화면 밖으로 나가면 onLeave (소리 멈추기 등). 관찰 콜백에서 부르므로 안에서 setState 해도 된다 */
+export function useOnLeave(ref: RefObject<Element | null>, onLeave: () => void, margin = "0px") {
+  const callback = useRef(onLeave);
+  useEffect(() => {
+    callback.current = onLeave;
+  }, [onLeave]);
+  useEffect(() => {
+    const element = ref.current;
+    if (!element) return;
+    const observer = new IntersectionObserver(([entry]) => !entry.isIntersecting && callback.current(), { rootMargin: margin });
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [ref, margin]);
+}
+
 /** 캔버스를 기기 픽셀 비율에 맞추고 크기(CSS px)를 돌려준다 */
 export function fitCanvas(canvas: HTMLCanvasElement): { width: number; height: number; ctx: CanvasRenderingContext2D | null } {
   const ratio = Math.min(2, window.devicePixelRatio || 1);

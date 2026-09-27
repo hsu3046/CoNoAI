@@ -8,6 +8,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { playBacking, type Backing } from "@/fx/backing";
+import { claimAudio, onAudioClaim } from "@/fx/stems";
 import { canvasFonts, fitCanvas, useInView } from "@/fx/hooks";
 import { loadSfx } from "@/fx/sfx";
 import { BEAT_SECONDS, COUNT_IN_BEATS, SONG_SECONDS, hzToMidi, lyricLines, melody, type MelodyNote } from "@/lib/melody";
@@ -53,6 +54,16 @@ export function TryItLive() {
   }, []);
 
   useEffect(() => () => cleanup(), [cleanup]);
+  // 다른 곳(첫 화면·들어 보기)이 소리를 내면 체험을 멈춘다
+  useEffect(
+    () =>
+      onAudioClaim((owner) => {
+        if (owner === "try" || !backingRef.current) return;
+        cleanup();
+        setPhase("idle");
+      }),
+    [cleanup],
+  );
 
   const draw = useCallback((heard: number, trail: TrailPoint[], tallies: NoteTally[]) => {
     const canvas = canvasRef.current;
@@ -133,6 +144,7 @@ export function TryItLive() {
     setError(null);
     setResult(null);
     setPhase("starting");
+    claimAudio("try");
     try {
       const ctx = audioRef.current ?? new AudioContext();
       audioRef.current = ctx;

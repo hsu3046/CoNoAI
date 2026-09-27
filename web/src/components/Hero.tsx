@@ -2,12 +2,15 @@
 //
 // 첫 화면: 평범한 음악 앱 창의 ▶ 를 누르면 불이 꺼지고, 네온사인 "코인 노래방" 이 켜졌다가
 // "No!" 도장이 찍히고 "집에서 나만의 노래방" 으로 바뀐다. 누르지 않아도 몇 초 뒤 저절로.
+// ▶ 를 누르면 실제 노래(〈좋은 예감〉)가 원곡으로 나오다가, 불이 켜질 즈음 목소리만 빠지고 AI 반주가 남는다.
 
 "use client";
 
 import Image from "next/image";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useInView } from "@/fx/hooks";
+import { useInView, useOnLeave } from "@/fx/hooks";
+import { StemPlayer, audioContext, claimAudio, onAudioClaim } from "@/fx/stems";
+import { heroSong, songUrls } from "@/lib/songs";
 import { release } from "@/lib/release";
 import { CONTAINER } from "./Screen";
 
@@ -25,6 +28,7 @@ export function Hero() {
   const timers = useRef<number[]>([]);
   // 화면 밖으로 나가면 반복 애니메이션(미러볼·스포트라이트·음표)을 멈춘다
   const [sectionRef, inView] = useInView<HTMLElement>({ margin: "100px" });
+  const song = useHeroSong(sectionRef);
 
   // 한 번 시작하면 다시 돌리지 않는다 — 누른 뒤 5초 자동 시작이 또 울려 간판이 꺼졌다 켜지던 문제
   const started = useRef(false);
@@ -201,7 +205,15 @@ export function Hero() {
             lit ? "mt-6 w-[min(360px,90vw)] scale-90 opacity-80" : "mt-2 w-[min(460px,92vw)]"
           }`}
         >
-          <MusicAppCard playing={lit} onPlay={() => void play()} />
+          <MusicAppCard
+            lit={lit}
+            song={song.state}
+            voiceGone={song.voiceGone}
+            onPlay={() => {
+              void play();
+              song.toggle();
+            }}
+          />
         </div>
 
         <div
@@ -279,7 +291,8 @@ function NeonTube({ text, color, drawn, fast }: { text: string; color: string; d
   );
 }
 
-function MusicAppCard({ playing, onPlay }: { playing: boolean; onPlay: () => void }) {
+function MusicAppCard({ lit, song, voiceGone, onPlay }: { lit: boolean; song: SongState; voiceGone: boolean; onPlay: () => void }) {
+  const sounding = song === "playing" || song === "loading";
   return (
     <div className="rounded-3xl border border-white/10 bg-white/[0.06] p-4 text-left shadow-2xl backdrop-blur-xl">
       <div className="mb-3 flex gap-1.5">
@@ -289,20 +302,20 @@ function MusicAppCard({ playing, onPlay }: { playing: boolean; onPlay: () => voi
       </div>
       <div className="flex items-center gap-4">
         <div className="relative size-20 shrink-0 overflow-hidden rounded-2xl bg-[conic-gradient(from_200deg,#ff8fb0,#b88cff,#5cc7ff,#5ee0b8,#ffcc5c,#ff8fb0)]">
-          <div className={`absolute inset-0 bg-black/20 ${playing ? "animate-[spin-slow_6s_linear_infinite]" : ""}`} />
+          <div className={`absolute inset-0 bg-black/20 ${lit || sounding ? "animate-[spin-slow_6s_linear_infinite]" : ""}`} />
         </div>
         <div className="min-w-0 flex-1">
-          <p className="truncate font-bold">늘 듣던 그 노래</p>
-          <p className="truncate text-sm text-ink2">좋아하는 가수</p>
+          <p className="truncate font-bold">{heroSong.title}</p>
+          <p className="truncate text-sm text-ink2">늘 듣던 그 노래</p>
           <div className="mt-3 flex h-6 items-end gap-[3px]" aria-hidden>
             {Array.from({ length: 26 }, (_, index) => (
               <span
                 key={index}
-                className="w-1 rounded-full bg-gradient-to-t from-pink to-gold"
+                className={`w-1 rounded-full bg-gradient-to-t transition-colors duration-700 ${voiceGone && sounding ? "from-mint to-sky" : "from-pink to-gold"}`}
                 style={{
-                  height: playing ? `${30 + ((index * 37) % 70)}%` : "18%",
+                  height: lit || sounding ? `${30 + ((index * 37) % 70)}%` : "18%",
                   transition: `height ${0.25 + (index % 5) * 0.08}s ease`,
-                  animation: playing ? `floaty ${0.6 + (index % 4) * 0.15}s ease-in-out infinite` : undefined,
+                  animation: lit || sounding ? `floaty ${0.6 + (index % 4) * 0.15}s ease-in-out infinite` : undefined,
                 }}
               />
             ))}
@@ -311,16 +324,88 @@ function MusicAppCard({ playing, onPlay }: { playing: boolean; onPlay: () => voi
         <button
           type="button"
           onClick={onPlay}
-          aria-label="재생 — CoNo 켜기"
+          aria-label={sounding ? "노래 멈추기" : "노래 재생"}
           className="relative grid size-14 shrink-0 place-items-center rounded-full bg-ink text-night transition hover:scale-110"
         >
-          {!playing && <span className="absolute inset-0 animate-ping rounded-full bg-ink/40" />}
-          <span className="relative text-xl">{playing ? "❚❚" : "▶"}</span>
+          {!lit && <span className="absolute inset-0 animate-ping rounded-full bg-ink/40" />}
+          {song === "loading" ? (
+            <span className="relative size-5 animate-spin rounded-full border-[3px] border-night/30 border-t-night" />
+          ) : (
+            <span className="relative text-xl">{sounding ? "❚❚" : "▶"}</span>
+          )}
         </button>
       </div>
-      {!playing && <p className="mt-3 text-center font-cute text-sm text-gold">▶ 를 눌러 보세요</p>}
+      {!lit ? (
+        <p className="mt-3 text-center font-cute text-sm text-gold">▶ 를 눌러 보세요 · 소리가 나요</p>
+      ) : voiceGone && sounding ? (
+        <p className="mt-3 text-center font-cute text-sm text-mint">🎤 목소리만 쏙 빠졌죠? 이제 당신 차례</p>
+      ) : song === "error" ? (
+        <p className="mt-3 text-center text-xs text-stop">노래를 불러오지 못했어요</p>
+      ) : null}
     </div>
   );
+}
+
+type SongState = "off" | "loading" | "playing" | "paused" | "error";
+
+/** 원곡으로 틀었다가 잠시 뒤 목소리를 빼 반주만 남긴다. 화면 밖으로 나가거나 다른 곳이 소리를 내면 멈춘다 */
+function useHeroSong(sectionRef: React.RefObject<HTMLElement | null>) {
+  const [state, setState] = useState<SongState>("off");
+  const [voiceGone, setVoiceGone] = useState(false);
+  const playerRef = useRef<StemPlayer | null>(null);
+  const wanted = useRef(false);
+  const fadeTimer = useRef(0);
+
+  const pause = useCallback(() => {
+    wanted.current = false;
+    window.clearTimeout(fadeTimer.current);
+    playerRef.current?.pause();
+    setState((current) => (current === "playing" || current === "loading" ? "paused" : current));
+  }, []);
+
+  const start = useCallback(async () => {
+    claimAudio("hero");
+    wanted.current = true;
+    const ctx = audioContext();
+    void ctx.resume();
+    const urls = songUrls(heroSong.slug);
+    playerRef.current ??= new StemPlayer(ctx, { mix: urls.mix, inst: urls.inst }, "mix");
+    const player = playerRef.current;
+    setState("loading");
+    try {
+      await player.load();
+    } catch {
+      setState("error");
+      return;
+    }
+    if (!wanted.current) return; // 기다리는 사이 멈췄다
+    player.play();
+    setState("playing");
+    if (player.currentMode === "mix") {
+      // 불이 켜지고 간판이 다 설 즈음 목소리가 빠진다
+      fadeTimer.current = window.setTimeout(() => {
+        player.setMode("inst", 1.4);
+        setVoiceGone(true);
+      }, 2600);
+    }
+  }, []);
+
+  const toggle = useCallback(() => {
+    if (wanted.current) pause();
+    else void start();
+  }, [pause, start]);
+
+  useEffect(() => onAudioClaim((owner) => owner !== "hero" && pause()), [pause]);
+  useOnLeave(sectionRef, pause);
+  useEffect(
+    () => () => {
+      window.clearTimeout(fadeTimer.current);
+      playerRef.current?.dispose();
+    },
+    [],
+  );
+
+  return { state, voiceGone, toggle };
 }
 
 function Spotlights({ on }: { on: boolean }) {

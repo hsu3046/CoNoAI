@@ -2,6 +2,7 @@
 
 import { Feedback } from "@/components/Feedback";
 import { Hero, SiteHeader } from "@/components/Hero";
+import { ListenSection } from "@/components/ListenSection";
 import { ChallengeTeaser, Download, Faq, Features, Footer, HowTo, Shortcuts, Videos } from "@/components/Sections";
 import { SectionPager } from "@/components/SectionPager";
 import { StoryScroll } from "@/components/StoryScroll";
@@ -14,6 +15,7 @@ export default function Home() {
       <main>
         <Hero />
         <StoryScroll />
+        <ListenSection />
         <TryItLive />
         <Features />
         <HowTo />
