@@ -107,6 +107,8 @@ export class StemPlayer {
   private offset = 0;
   private mode: StemMode;
   playing = false;
+  /** 한 번이라도 틀었는지 (첫 재생 위치를 따로 정할 때) */
+  playedOnce = false;
 
   /** 필요한 트랙만 준다 (첫 화면은 원곡·반주만) */
   constructor(ctx: AudioContext, urls: Partial<StemUrls>, mode: StemMode = "mix") {
