@@ -85,12 +85,12 @@ export function ListenSection() {
 
   const toggle = () => {
     if (status === "playing") pause();
-    else void start(index, playerRef.current?.position ?? 0);
+    else void start(index, playerRef.current ? playerRef.current.position : (songs[index].lead ?? 0));
   };
 
   const choose = (next: number) => {
     if (next === index && status === "playing") return;
-    void start(next, 0);
+    void start(next, songs[next].lead ?? 0);
   };
 
   const switchMode = (next: StemMode) => {

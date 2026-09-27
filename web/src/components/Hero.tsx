@@ -446,8 +446,8 @@ function useHeroSong(sectionRef: React.RefObject<HTMLElement | null>) {
       return false;
     }
     if (!wanted.current) return false; // 기다리는 사이 멈췄다
-    // 처음 틀 때만 클립 0.5초 지점부터 (노래가 딱 시작하는 자리). 다시 누르면 멈춘 자리부터
-    player.play(player.playedOnce ? undefined : 0.5);
+    // 처음 틀 때만 곡의 lead 지점부터 (노래가 딱 시작하는 자리). 다시 누르면 멈춘 자리부터
+    player.play(player.playedOnce ? undefined : (heroSong.lead ?? 0));
     player.playedOnce = true;
     setState("playing");
     return true;
