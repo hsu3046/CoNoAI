@@ -448,7 +448,7 @@ export function Footer() {
           <a href={release.repositoryUrl} className="hover:text-ink">
             GitHub
           </a>
-          <a href="#feedback" className="hover:text-ink">
+          <a href="mailto:support@aib.vote" className="hover:text-ink">
             의견 보내기
           </a>
         </div>
