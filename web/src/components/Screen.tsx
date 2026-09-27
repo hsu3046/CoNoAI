@@ -45,7 +45,7 @@ export function SectionTitle({ kicker, title, align = "center", children }: { ki
     <div className={align === "center" ? "text-center" : "text-left"}>
       <p className="font-display text-sm tracking-[0.3em] text-pink">{kicker}</p>
       <h2 className="mt-3 text-balance font-cute text-4xl leading-tight sm:text-5xl">{title}</h2>
-      {children && <div className={`mt-4 text-base leading-relaxed text-ink2 ${align === "center" ? "mx-auto max-w-2xl" : "max-w-md"}`}>{children}</div>}
+      {children && <div className={`mt-4 text-base leading-relaxed text-ink2 ${align === "center" ? "mx-auto max-w-2xl" : "max-w-xl"}`}>{children}</div>}
     </div>
   );
 }
