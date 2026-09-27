@@ -599,7 +599,7 @@ export function SiteHeader() {
               {label}
             </a>
           ))}
-          <a href="#download" className="rounded-full bg-white/10 px-6 py-2 font-cute text-base transition hover:bg-gold hover:text-night">
+          <a href="#download" className="rounded-full bg-white/10 px-9 py-2 font-cute text-base transition hover:bg-gold hover:text-night">
             다운로드
           </a>
         </div>
