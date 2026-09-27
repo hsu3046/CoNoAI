@@ -44,35 +44,6 @@ export function useInView<T extends Element>(options: { once?: boolean; margin?:
   return [ref, inView];
 }
 
-/** 긴 섹션 안에서 스크롤이 얼마나 지났는지 0…1 (고정 화면 스토리용) */
-export function useScrollProgress<T extends HTMLElement>(): [RefObject<T | null>, number] {
-  const ref = useRef<T>(null);
-  const [progress, setProgress] = useState(0);
-  useEffect(() => {
-    let frame = 0;
-    const update = () => {
-      frame = 0;
-      const element = ref.current;
-      if (!element) return;
-      const rect = element.getBoundingClientRect();
-      const travel = rect.height - window.innerHeight;
-      setProgress(travel > 0 ? Math.min(1, Math.max(0, -rect.top / travel)) : 0);
-    };
-    const schedule = () => {
-      if (!frame) frame = requestAnimationFrame(update);
-    };
-    update();
-    window.addEventListener("scroll", schedule, { passive: true });
-    window.addEventListener("resize", schedule);
-    return () => {
-      window.removeEventListener("scroll", schedule);
-      window.removeEventListener("resize", schedule);
-      if (frame) cancelAnimationFrame(frame);
-    };
-  }, []);
-  return [ref, progress];
-}
-
 /** 캔버스를 기기 픽셀 비율에 맞추고 크기(CSS px)를 돌려준다 */
 export function fitCanvas(canvas: HTMLCanvasElement): { width: number; height: number; ctx: CanvasRenderingContext2D | null } {
   const ratio = Math.min(2, window.devicePixelRatio || 1);

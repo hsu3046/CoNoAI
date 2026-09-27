@@ -7,6 +7,7 @@
 
 import Image from "next/image";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useInView } from "@/fx/hooks";
 import { release } from "@/lib/release";
 
 type Phase = "idle" | "dark" | "sign" | "stamp" | "party";
@@ -21,16 +22,24 @@ const SEQUENCE: [Phase, number][] = [
 export function Hero() {
   const [phase, setPhase] = useState<Phase>("idle");
   const timers = useRef<number[]>([]);
+  // 화면 밖으로 나가면 반복 애니메이션(미러볼·스포트라이트·음표)을 멈춘다
+  const [sectionRef, inView] = useInView<HTMLElement>({ margin: "100px" });
 
-  const play = useCallback(() => {
+  const play = useCallback(async () => {
     timers.current.forEach(window.clearTimeout);
+    timers.current = [];
+    // 네온사인 글꼴이 도착한 뒤 시작 (도중에 글꼴이 바뀌면 그려지던 윤곽이 튄다). 느린 망이면 1.2초까지만 기다린다
+    const family = getComputedStyle(document.documentElement).getPropertyValue("--font-black-han-sans").trim();
+    if (family) {
+      await Promise.race([document.fonts.load(`170px ${family}`, "코인 노래방 집에서 나만의"), new Promise((resolve) => window.setTimeout(resolve, 1200))]).catch(() => undefined);
+    }
     timers.current = SEQUENCE.map(([next, delay]) => window.setTimeout(() => setPhase(next), delay));
   }, []);
 
   // 가만있어도 5초 뒤 시작 (움직임 줄이기면 바로 마지막 장면)
   useEffect(() => {
     const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    const auto = window.setTimeout(reduced ? () => setPhase("party") : play, reduced ? 0 : 5000);
+    const auto = window.setTimeout(reduced ? () => setPhase("party") : () => void play(), reduced ? 0 : 5000);
     const pending = timers.current;
     return () => {
       window.clearTimeout(auto);
@@ -42,7 +51,10 @@ export function Hero() {
   const at = (target: Phase) => SEQUENCE.findIndex(([p]) => p === phase) >= SEQUENCE.findIndex(([p]) => p === target);
 
   return (
-    <section className="relative isolate flex min-h-[max(100dvh,720px)] flex-col items-center justify-center overflow-hidden px-4 pb-16 pt-28">
+    <section
+      ref={sectionRef}
+      className={`relative isolate flex min-h-[max(100dvh,720px)] flex-col items-center justify-center overflow-hidden px-4 pb-16 pt-28 ${inView ? "" : "anim-paused"}`}
+    >
       {/* 방: 오후 햇살 → 소등 → 노래방 */}
       <div
         className="absolute inset-0 -z-20 transition-[background] duration-700"
@@ -90,7 +102,7 @@ export function Hero() {
             lit ? "mt-6 w-[min(360px,90vw)] scale-90 opacity-80" : "mt-2 w-[min(460px,92vw)]"
           }`}
         >
-          <MusicAppCard playing={lit} onPlay={play} />
+          <MusicAppCard playing={lit} onPlay={() => void play()} />
         </div>
 
         <div
@@ -120,7 +132,7 @@ export function Hero() {
             type="button"
             onClick={() => {
               setPhase("idle");
-              window.setTimeout(play, 400);
+              window.setTimeout(() => void play(), 400);
             }}
             className="text-sm text-faint underline-offset-4 hover:text-ink hover:underline"
           >
@@ -226,23 +238,46 @@ function Spotlights({ on }: { on: boolean }) {
   return (
     <div className={`pointer-events-none absolute inset-0 -z-10 transition-opacity duration-1000 ${on ? "opacity-100" : "opacity-0"}`} aria-hidden>
       {[
-        { left: "12%", color: "rgba(255,143,176,0.22)", delay: "0s" },
-        { left: "50%", color: "rgba(92,199,255,0.16)", delay: "-2s" },
-        { left: "88%", color: "rgba(94,224,184,0.2)", delay: "-4s" },
+        { left: "12%", color: "255,143,176", strength: 0.24, delay: "0s" },
+        { left: "50%", color: "92,199,255", strength: 0.18, delay: "-2s" },
+        { left: "88%", color: "94,224,184", strength: 0.22, delay: "-4s" },
       ].map((beam) => (
-        <div
-          key={beam.left}
-          className="absolute -top-24 h-[140%] w-[34vw] origin-top"
-          style={{
-            left: beam.left,
-            marginLeft: "-17vw",
-            background: `conic-gradient(from 168deg at 50% 0%, transparent 0deg, ${beam.color} 12deg, transparent 24deg)`,
-            animation: `sweep 7s ease-in-out ${beam.delay} infinite`,
-            filter: "blur(6px)",
-          }}
-        />
+        <Beam key={beam.left} {...beam} />
       ))}
     </div>
+  );
+}
+
+/** 빛줄기: 작은 캔버스에 한 번만 그리고 크게 늘려 돌린다.
+ *  (화면보다 큰 그라데이션을 레티나 해상도로 돌리면 프레임이 튄다 — 빛은 흐릿해서 늘려도 티가 안 난다) */
+function Beam({ left, color, strength, delay }: { left: string; color: string; strength: number; delay: string }) {
+  const ref = useRef<HTMLCanvasElement>(null);
+  useEffect(() => {
+    const canvas = ref.current;
+    const ctx = canvas?.getContext("2d");
+    if (!canvas || !ctx) return;
+    const { width, height } = canvas;
+    ctx.clearRect(0, 0, width, height);
+    // 위 꼭짓점에서 아래로 퍼지는 빛: 가로는 가운데가 밝고, 세로는 아래로 갈수록 옅게
+    for (let y = 0; y < height; y++) {
+      const spread = 1 + (y / height) * (width / 2 - 1);
+      const fade = 1 - (y / height) * 0.55;
+      const gradient = ctx.createLinearGradient(width / 2 - spread, 0, width / 2 + spread, 0);
+      gradient.addColorStop(0, `rgba(${color},0)`);
+      gradient.addColorStop(0.5, `rgba(${color},${strength * fade})`);
+      gradient.addColorStop(1, `rgba(${color},0)`);
+      ctx.fillStyle = gradient;
+      ctx.fillRect(width / 2 - spread, y, spread * 2, 1);
+    }
+  }, [color, strength]);
+  return (
+    <canvas
+      ref={ref}
+      width={64}
+      height={220}
+      className="absolute -top-24 h-[140%] w-[34vw] origin-top will-change-transform"
+      style={{ left, marginLeft: "-17vw", animation: `sweep 7s ease-in-out ${delay} infinite` }}
+    />
   );
 }
 
@@ -315,7 +350,7 @@ export function SiteHeader() {
   }, []);
   return (
     <header
-      className={`fixed inset-x-0 top-0 z-50 transition-all duration-300 ${scrolled ? "border-b border-white/10 bg-night/70 backdrop-blur-xl" : ""}`}
+      className={`fixed inset-x-0 top-0 z-50 transition-colors duration-300 ${scrolled ? "border-b border-white/10 bg-night/80 backdrop-blur-md" : ""}`}
     >
       <nav className="mx-auto flex h-16 max-w-6xl items-center justify-between px-4 sm:px-6">
         <a href="#" className="flex items-center gap-2.5">

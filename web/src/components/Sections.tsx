@@ -11,11 +11,23 @@ import { release, videos } from "@/lib/release";
 import { SectionTitle } from "./TryItLive";
 
 function Reveal({ children, delay = 0, className = "" }: { children: ReactNode; delay?: number; className?: string }) {
-  const [ref, inView] = useInView<HTMLDivElement>({ once: true, margin: "-60px" });
+  // 화면 아래 끝에 닿기 조금 전부터 나타나기 시작 (스크롤보다 늦게 튀어나오지 않게)
+  const [ref, inView] = useInView<HTMLDivElement>({ once: true, margin: "0px 0px 80px 0px" });
   return (
     <div ref={ref} className={`reveal ${inView ? "in" : ""} ${className}`} style={{ transitionDelay: `${delay}ms` }}>
       {children}
     </div>
+  );
+}
+
+/** 섹션마다 다른 색의 은은한 번짐 (같은 남색 배경이 이어져 단조롭지 않게) */
+function Glow({ color, x, y }: { color: string; x: string; y: string }) {
+  return (
+    <div
+      className="pointer-events-none absolute inset-0 -z-10 overflow-hidden"
+      aria-hidden
+      style={{ background: `radial-gradient(ellipse 55% 45% at ${x} ${y}, ${color}, transparent 70%)` }}
+    />
   );
 }
 
@@ -34,7 +46,8 @@ const FEATURES: { icon: string; title: string; body: string; tint: string }[] = 
 
 export function Features() {
   return (
-    <section className="relative px-4 py-24 sm:py-32">
+    <section className="relative isolate px-4 py-24 sm:py-32">
+      <Glow color="rgba(255,143,176,0.09)" x="15%" y="30%" />
       <SectionTitle kicker="FEATURES" title="노래방 기계, 이제 Mac 안에" />
       <div className="mx-auto mt-14 grid max-w-6xl gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {FEATURES.map((feature, index) => (
@@ -67,7 +80,8 @@ export function Features() {
 
 export function HowTo() {
   return (
-    <section id="how" className="relative px-4 py-24 sm:py-32">
+    <section id="how" className="relative isolate px-4 py-24 sm:py-32">
+      <Glow color="rgba(94,224,184,0.08)" x="85%" y="25%" />
       <SectionTitle kicker="HOW TO" title="처음 한 번만, 3단계" />
       <p className="mx-auto mt-4 max-w-2xl text-center text-ink2">조금 낯설 수 있는 건 권한 허용뿐이에요. 한 번 해 두면 다음부턴 음악만 틀면 됩니다.</p>
       <div className="mx-auto mt-14 grid max-w-6xl gap-6 lg:grid-cols-3">
@@ -229,7 +243,8 @@ function AutoStartDemo() {
 
 export function Videos() {
   return (
-    <section className="relative px-4 py-24 sm:py-32">
+    <section className="relative isolate px-4 py-24 sm:py-32">
+      <Glow color="rgba(92,199,255,0.08)" x="20%" y="60%" />
       <SectionTitle kicker="WATCH" title="영상으로 보기" />
       <div className="mx-auto mt-14 grid max-w-6xl gap-6 md:grid-cols-2">
         {videos.map((video, index) => (
@@ -330,7 +345,8 @@ const FAQ: [string, string][] = [
 export function Faq() {
   const [open, setOpen] = useState<number | null>(0);
   return (
-    <section id="faq" className="relative px-4 py-24 sm:py-32">
+    <section id="faq" className="relative isolate px-4 py-24 sm:py-32">
+      <Glow color="rgba(184,140,255,0.08)" x="80%" y="40%" />
       <SectionTitle kicker="FAQ" title="자주 묻는 질문" />
       <div className="mx-auto mt-12 max-w-3xl space-y-3">
         {FAQ.map(([question, answer], index) => {

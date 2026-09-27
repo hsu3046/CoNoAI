@@ -20,6 +20,8 @@
 
 html {
   scroll-behavior: smooth;
+  /* 메뉴로 이동할 때 고정 헤더(64px)에 제목이 가리지 않게 */
+  scroll-padding-top: 72px;
   /* 페이지마다 스크롤바 유무로 가운데 정렬이 밀리지 않게 */
   scrollbar-gutter: stable;
 }
@@ -115,12 +117,18 @@ body {
 
 .reveal {
   opacity: 0;
-  transform: translateY(28px);
-  transition: opacity 0.8s ease, transform 0.8s cubic-bezier(0.2, 0.8, 0.2, 1);
+  transform: translateY(20px);
+  transition: opacity 0.55s ease, transform 0.55s cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 .reveal.in {
   opacity: 1;
   transform: none;
+}
+
+/* 화면 밖 섹션의 반복 애니메이션 멈춤 */
+.anim-paused,
+.anim-paused * {
+  animation-play-state: paused !important;
 }
 
 /* 움직임 줄이기: 반복 애니메이션을 멈춘다 */

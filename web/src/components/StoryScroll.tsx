@@ -5,9 +5,9 @@
 
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { drawConfetti, drawFireworks, makeShow } from "@/fx/fireworks";
-import { canvasFonts, fitCanvas, useScrollProgress } from "@/fx/hooks";
+import { canvasFonts } from "@/fx/hooks";
 
 const SCENES = [
   {
@@ -45,50 +45,82 @@ const LOOP = 8;
 const LYRIC = "오늘 밤은 우리 집 무대 위로 올라가";
 
 export function StoryScroll() {
-  const [sectionRef, progress] = useScrollProgress<HTMLElement>();
+  const sectionRef = useRef<HTMLElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
+  // 스크롤 진행도는 ref 로만 (매 스크롤마다 다시 렌더하지 않는다). 글은 장면이 바뀔 때만 바뀐다
   const progressRef = useRef(0);
-  useEffect(() => {
-    progressRef.current = progress;
-  }, [progress]);
-  const scene = Math.min(3, Math.floor(progress * 4 * 0.9999));
+  const [scene, setScene] = useState(0);
 
   useEffect(() => {
+    const section = sectionRef.current;
     const canvas = canvasRef.current;
-    if (!canvas) return;
-    let frame = 0;
+    const stageElement = stageRef.current;
+    const ctx = canvas?.getContext("2d");
+    if (!section || !canvas || !stageElement || !ctx) return;
+
+    // 크기·무대 위치는 바뀔 때만 잰다 (매 프레임 재면 스크롤 중 레이아웃 계산이 끼어든다)
+    // 화면 전체 캔버스라 해상도는 1.5배까지만
+    const ratio = Math.min(1.5, window.devicePixelRatio || 1);
+    let width = 0;
+    let height = 0;
+    let stage = { x: 0, y: 0, w: 0, h: 0 };
+    const measure = () => {
+      width = canvas.clientWidth;
+      height = canvas.clientHeight;
+      canvas.width = Math.round(width * ratio);
+      canvas.height = Math.round(height * ratio);
+      const box = canvas.getBoundingClientRect();
+      const area = stageElement.getBoundingClientRect();
+      stage = { x: area.left - box.left, y: area.top - box.top, w: area.width, h: area.height };
+    };
+    measure();
+    const resize = new ResizeObserver(measure);
+    resize.observe(canvas);
+    resize.observe(stageElement);
+
+    const updateProgress = () => {
+      const rect = section.getBoundingClientRect();
+      const travel = rect.height - window.innerHeight;
+      progressRef.current = travel > 0 ? clamp(-rect.top / travel) : 0;
+      const next = Math.min(3, Math.floor(progressRef.current * 4 * 0.9999));
+      setScene((current) => (current === next ? current : next));
+    };
+    updateProgress();
+    window.addEventListener("scroll", updateProgress, { passive: true });
+
     const start = performance.now();
     const show = makeShow(92, 7, 0, 0.55);
     let fourthEnteredAt: number | null = null;
+    let frame = 0;
+    let visible = false;
 
     const draw = (now: number) => {
+      // 화면 밖이면 멈춘다 (불꽃 장면이 페이지 끝까지 따라오며 그리던 문제)
+      if (!visible) {
+        frame = 0;
+        return;
+      }
       frame = requestAnimationFrame(draw);
-      const { width, height, ctx } = fitCanvas(canvas);
-      if (!ctx || width === 0) return;
+      if (width === 0) return;
       const t = (now - start) / 1000;
       const p = progressRef.current * 4;
+      ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
       ctx.clearRect(0, 0, width, height);
-      // 파형·음정 바는 무대 영역에, 불꽃은 화면 전체에
-      const box = canvas.getBoundingClientRect();
-      const stage = stageRef.current?.getBoundingClientRect() ?? box;
-      const sx = stage.left - box.left;
-      const sy = stage.top - box.top;
-      const sw = stage.width;
-      const sh = stage.height;
 
       // 장면 섞임 정도
-      const wave = clamp(2 - p) ; // ①② 파형 (③부터 사라짐)
+      const wave = clamp(2 - p); // ①② 파형 (③부터 사라짐)
       const peel = clamp(p - 1); // ② 보컬 떼어내기
       const bar = clamp(p - 1.9); // ③④ 음정 바
       const sing = clamp(p - 2.9); // ④ 내 목소리
       if (sing > 0.2 && fourthEnteredAt === null) fourthEnteredAt = t;
       if (sing <= 0.05) fourthEnteredAt = null;
 
+      // 파형·음정 바는 무대 영역에, 불꽃은 화면 전체에
       ctx.save();
-      ctx.translate(sx, sy);
-      if (wave > 0) drawWave(ctx, sw, sh, t, peel, wave);
-      if (bar > 0) drawPitchBar(ctx, sw, sh, t, bar, sing);
+      ctx.translate(stage.x, stage.y);
+      if (wave > 0) drawWave(ctx, stage.w, stage.h, t, peel, wave);
+      if (bar > 0) drawPitchBar(ctx, stage.w, stage.h, t, bar, sing);
       ctx.restore();
       if (fourthEnteredAt !== null) {
         const since = t - fourthEnteredAt;
@@ -99,17 +131,28 @@ export function StoryScroll() {
         }
         const score = Math.min(92, Math.floor(92 * easeOut(Math.min(1, since / 2.2))));
         ctx.save();
-        ctx.translate(sx, sy);
-        drawScore(ctx, sw, sh, score, sing);
+        ctx.translate(stage.x, stage.y);
+        drawScore(ctx, stage.w, stage.h, score, sing);
         ctx.restore();
       }
     };
-    frame = requestAnimationFrame(draw);
-    return () => cancelAnimationFrame(frame);
+
+    const observer = new IntersectionObserver(([entry]) => {
+      visible = entry.isIntersecting;
+      if (visible && !frame) frame = requestAnimationFrame(draw);
+    });
+    observer.observe(section);
+
+    return () => {
+      observer.disconnect();
+      resize.disconnect();
+      window.removeEventListener("scroll", updateProgress);
+      cancelAnimationFrame(frame);
+    };
   }, []);
 
   return (
-    <section id="story" ref={sectionRef} className="relative h-[460vh]">
+    <section id="story" ref={sectionRef} className="relative h-[400vh]">
       <div className="sticky top-0 flex h-dvh flex-col overflow-hidden lg:flex-row">
         <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_70%_50%,#1f1238,transparent_70%)]" />
         <canvas ref={canvasRef} className="pointer-events-none absolute inset-0 size-full" aria-label="CoNo 가 노래를 노래방으로 바꾸는 과정 애니메이션" role="img" />
@@ -150,6 +193,7 @@ export function StoryScroll() {
 
 const clamp = (value: number) => Math.min(1, Math.max(0, value));
 const easeOut = (x: number) => 1 - Math.pow(1 - x, 3);
+const easeInOut = (x: number) => (x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2);
 
 /** 파형: 막대 = 민트 반주 + 분홍 보컬. peel 만큼 보컬이 떨어져 위로 빨려 나간다 */
 function drawWave(ctx: CanvasRenderingContext2D, width: number, height: number, t: number, peel: number, alpha: number) {
@@ -168,28 +212,43 @@ function drawWave(ctx: CanvasRenderingContext2D, width: number, height: number, 
     // 반주
     ctx.fillStyle = "#5ee0b8";
     roundRect(ctx, x, mid - accompaniment, w, accompaniment * 2, w / 2);
-    // 보컬: 떼어지면서 오른쪽 위(AI)로 날아간다
-    const delay = (index / count) * 0.5;
-    const local = clamp((peel - delay) / 0.5);
-    const flyX = x + (width * 0.84 - x) * easeOut(local);
-    const flyY = mid - accompaniment - vocal * 2 + (height * 0.22 - (mid - accompaniment - vocal * 2)) * easeOut(local);
-    ctx.globalAlpha = alpha * (1 - local * 0.9);
-    ctx.fillStyle = "#ff8fb0";
-    const size = 1 - local * 0.7;
-    roundRect(ctx, flyX, flyY, w * size, vocal * 2 * size, (w * size) / 2);
-    ctx.globalAlpha = alpha;
+    // 보컬: 떼어지면서 빛 알갱이로 줄어 AI 구슬로 빨려 들어간다 (살짝 휘는 궤적)
+    const delay = (index / count) * 0.55;
+    const local = clamp((peel - delay) / 0.45);
+    const startY = mid - accompaniment - vocal * 2;
+    if (local <= 0) {
+      ctx.fillStyle = "#ff8fb0";
+      roundRect(ctx, x, startY, w, vocal * 2, w / 2);
+    } else if (local < 1) {
+      const e = easeInOut(local);
+      const targetX = width * 0.84;
+      const targetY = height * 0.22;
+      const bend = Math.sin(local * Math.PI) * height * 0.12 * (index % 2 ? 1 : -1);
+      const fx = x + (targetX - x) * e + bend * 0.3;
+      const fy = startY + (targetY - startY) * e - Math.abs(bend);
+      // 막대 → 알갱이: 높이가 먼저 줄고, 끝으로 갈수록 작아지며 사라진다
+      const h = Math.max(w, vocal * 2 * (1 - Math.min(1, local * 2.2)));
+      const scale = 1 - local * 0.6;
+      ctx.globalAlpha = alpha * (1 - Math.pow(local, 3));
+      ctx.fillStyle = local > 0.4 ? "#ffd1df" : "#ff8fb0";
+      roundRect(ctx, fx, fy, w * scale, h * scale, (w * scale) / 2);
+      ctx.globalAlpha = alpha;
+    }
   }
   // AI 칩
   if (peel > 0) {
     ctx.globalAlpha = alpha * clamp(peel * 3);
     const cx = width * 0.84;
     const cy = height * 0.22;
-    const glow = ctx.createRadialGradient(cx, cy, 0, cx, cy, 70);
-    glow.addColorStop(0, "rgba(255,143,176,0.55)");
+    // 빨아들이는 동안 구슬이 부풀며 숨쉰다
+    const radius = 56 + 26 * Math.sin(Math.min(1, peel) * Math.PI) + 4 * Math.sin(t * 6);
+    const glow = ctx.createRadialGradient(cx, cy, 0, cx, cy, radius);
+    glow.addColorStop(0, "rgba(255,209,223,0.75)");
+    glow.addColorStop(0.35, "rgba(255,143,176,0.45)");
     glow.addColorStop(1, "rgba(255,143,176,0)");
     ctx.fillStyle = glow;
     ctx.beginPath();
-    ctx.arc(cx, cy, 70, 0, Math.PI * 2);
+    ctx.arc(cx, cy, radius, 0, Math.PI * 2);
     ctx.fill();
     ctx.fillStyle = "#fff";
     ctx.font = `20px ${canvasFonts().cute}`;

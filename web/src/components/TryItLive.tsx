@@ -179,6 +179,8 @@ export function TryItLive() {
       if (ctx) drawStage(ctx, width, height, -COUNT_IN_BEATS * BEAT_SECONDS - 0.5, [], melody.map(() => ({ frames: 0, hits: 0, seconds: 0 })));
     };
     paint();
+    // 글꼴이 늦게 도착하면 다시 그린다 (한 번만 그리는 첫 화면이 기본 글꼴로 남지 않게)
+    void document.fonts.ready.then(paint);
     window.addEventListener("resize", paint);
     return () => window.removeEventListener("resize", paint);
   }, [phase]);
