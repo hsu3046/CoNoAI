@@ -364,8 +364,7 @@ function MusicAppCard({
           <div className={`absolute inset-0 bg-black/20 ${lit || sounding ? "animate-[spin-slow_6s_linear_infinite]" : ""}`} />
         </div>
         <div className="min-w-0 flex-1">
-          <p className="truncate font-bold">{heroSong.title}</p>
-          <p className="truncate text-sm text-ink2">늘 듣던 그 노래</p>
+          <p className="truncate font-cute text-2xl leading-tight">{heroSong.title}</p>
           <div className="mt-3 flex h-6 items-end gap-[3px]" aria-hidden>
             {Array.from({ length: 26 }, (_, index) => (
               <span
