@@ -131,7 +131,7 @@ export function ListenSection() {
                   >
                     <Cover song={item} size={36} spinning={false} />
                     <span className="min-w-0 flex-1 truncate font-cute text-lg">{item.title}</span>
-                    {active && playing ? <Equalizer color={accent} /> : <span className="text-xs tabular-nums text-faint">{formatTime(item.duration)}</span>}
+                    {active && playing && <Equalizer color={accent} />}
                   </button>
                 </li>
               );
