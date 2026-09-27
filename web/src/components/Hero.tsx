@@ -158,7 +158,7 @@ export function Hero() {
     return cleanup;
   }, [fastForward, clearTimers, stopListening, dropVoice]);
 
-  // 가만있어도 1.5초 뒤 시작 (움직임 줄이기면 바로 마지막 장면)
+  // 열자마자 인트로부터 (음악 앱 카드만 보이던 첫 장면은 건너뛴다) (움직임 줄이기면 바로 마지막 장면)
   useEffect(() => {
     const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     const auto = window.setTimeout(
@@ -170,7 +170,7 @@ export function Hero() {
         : () => {
             if (!clicked.current) void play();
           },
-      reduced ? 0 : 1500,
+      0,
     );
     return () => {
       window.clearTimeout(auto);
@@ -220,11 +220,6 @@ export function Hero() {
 
       {/* 네온사인 */}
       <div className="relative z-10 w-full max-w-5xl text-center" aria-live="polite">
-        <p
-          className={`mb-4 font-cute text-lg text-ink2 transition-opacity duration-500 sm:text-xl ${lit ? "opacity-0" : "opacity-100"}`}
-        >
-          평범한 오후, 늘 듣던 노래…
-        </p>
         <h1 className="sr-only">코인 노래방 No! 집에서 나만의 노래방 — CoNo</h1>
         <div className={`relative mx-auto transition-all duration-500 ${lit ? "h-auto opacity-100" : "pointer-events-none h-0 opacity-0"}`} aria-hidden>
           <NeonTube text="코인 노래방" color="#ff8fb0" drawn={at("sign")} fast={fast} />
