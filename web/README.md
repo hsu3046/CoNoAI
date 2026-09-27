@@ -5,7 +5,7 @@ CoNo 를 알리고, 사용법을 보여 주고, 내려받게 하고, 의견을 �
 ## 구성
 | 섹션 | 파일 | 내용 |
 |---|---|---|
-| 첫 화면 | `src/components/Hero.tsx` | 음악 앱 ▶ → 소등 → 네온 "코인 노래방" + "No!" 도장 → "집에서 나만의 노래방" |
+| 첫 화면 | `src/components/Hero.tsx` | 음악 앱 ▶ → 실제 노래를 원곡으로 6초(`LISTEN_MS`) → **소등과 동시에 목소리가 빠짐** → 네온 "코인 노래방" + "No!" 도장 → "집에서 나만의 노래방". 누르지 않으면 5초 뒤 소리 없이 연출만 |
 | 스크롤 스토리 | `StoryScroll.tsx` | 고정 화면 4장면: 파형 → 보컬 분리 → 음정 바·가사 → 금색 선·점수·불꽃 |
 | 들어 보기 | `ListenSection.tsx` · `fx/stems.ts` · `lib/songs.ts` | 자작곡 4곡 하이라이트를 원곡 ↔ 반주 ↔ 보컬로 끊김 없이 바꿔 듣기 (앱의 스위치와 같은 모양) |
 | 브라우저 체험 | `TryItLive.tsx` · `fx/backing.ts` · `lib/pitch.ts` · `lib/melody.ts` | 자작곡 〈우리 집 무대〉 반주 + 마이크 음정(YIN) 채점, 끝나면 `ScoreShow` |

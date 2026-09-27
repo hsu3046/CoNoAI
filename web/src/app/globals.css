@@ -124,6 +124,10 @@ body {
 }
 
 /* 줄 흐르는 테두리 */
+@keyframes grow-x {
+  from { transform: scaleX(0); }
+  to { transform: scaleX(1); }
+}
 @keyframes spin-slow {
   to { transform: rotate(360deg); }
 }
