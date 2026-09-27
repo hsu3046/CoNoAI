@@ -16,6 +16,9 @@ CoNo 를 알리고, 사용법을 보여 주고, 내려받게 하고, 의견을 �
 - **영상**: `release.ts` 의 `videos[].src` 에 mp4 경로나 YouTube 임베드 주소를 넣으면 "촬영 중" 자리 대신 나온다.
 - **점수 연출 미리보기**: `/demo/score?score=92` (검색 노출 안 함 — 영상 촬영용)
 - **공유 이미지**: `public/og.png` (첫 화면을 1200×630 으로 찍은 것)
+- **아이콘**: `public/logo.png` = 배경 없는 마이크 그림 (`assets/AppIcon.icon/Assets/CoNo.png`) — 헤더·다운로드·바닥글.
+  `public/app-icon-dark.png` = iOS 다크 모드 아이콘 (`ictool assets/AppIcon.icon --export-image --platform iOS --rendition Dark …`) — 앱 아이콘을 흉내 내는 자리·파비콘.
+  같은 파일 이름으로 바꾸면 Next 이미지 캐시가 옛 그림을 내준다 → 이름을 바꿀 것.
 
 ## 개발
 ```bash

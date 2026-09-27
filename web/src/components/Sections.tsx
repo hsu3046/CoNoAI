@@ -159,8 +159,10 @@ function Step({ number, title, body, children }: { number: string; title: string
     <article className="flex h-full flex-col overflow-hidden rounded-3xl border border-white/10 bg-gradient-to-b from-white/[0.06] to-white/[0.02]">
       <div className="relative grid h-56 place-items-center overflow-hidden bg-black/25">{children}</div>
       <div className="flex-1 p-6">
-        <p className="font-display text-4xl text-pink/80">{number}</p>
-        <h3 className="mt-1 font-cute text-2xl">{title}</h3>
+        <h3 className="flex items-baseline gap-3 font-cute text-2xl">
+          <span className="font-display text-3xl text-pink/80">{number}</span>
+          {title}
+        </h3>
         <p className="mt-2 text-[15px] leading-relaxed text-ink2">{body}</p>
       </div>
     </article>
@@ -172,14 +174,14 @@ function InstallDemo() {
     <div className="relative flex w-[260px] items-center justify-between rounded-2xl border border-white/15 bg-[#1d1f33] px-8 py-7 shadow-xl">
       <div className="flex flex-col items-center gap-1.5">
         <Image
-          src="/app-icon.png"
+          src="/app-icon-dark.png"
           alt=""
           width={64}
           height={64}
           className="relative z-10 rounded-xl"
           style={{ animation: "drag-install 3.2s ease-in-out infinite", ["--dx" as string]: "128px" }}
         />
-        <Image src="/app-icon.png" alt="" width={64} height={64} className="absolute rounded-xl opacity-30" />
+        <Image src="/app-icon-dark.png" alt="" width={64} height={64} className="absolute rounded-xl opacity-30" />
         <span className="mt-16 text-xs text-ink2">CoNo</span>
       </div>
       <span className="text-3xl text-faint">→</span>
@@ -199,7 +201,7 @@ function PermissionDemo() {
       {rows.map((row, index) => (
         <div key={row} className="flex items-center justify-between rounded-lg px-2 py-2 odd:bg-white/5">
           <span className="flex items-center gap-2 text-sm">
-            <Image src="/app-icon.png" alt="" width={18} height={18} className="rounded" />
+            <Image src="/app-icon-dark.png" alt="" width={18} height={18} className="rounded" />
             {row}
           </span>
           <span
@@ -230,7 +232,7 @@ function AutoStartDemo() {
         ))}
       </div>
       <div className="rounded-2xl border border-mint/40 bg-[#131a2a] p-3 text-center shadow-[0_0_30px_rgba(94,224,184,0.25)]">
-        <Image src="/app-icon.png" alt="" width={56} height={56} className="mx-auto rounded-xl" />
+        <Image src="/app-icon-dark.png" alt="" width={56} height={56} className="mx-auto rounded-xl" />
         <p className="mt-2 flex items-center justify-center gap-1 text-xs font-bold text-mint">
           <span className="size-1.5 animate-pulse rounded-full bg-mint" /> LIVE
         </p>
@@ -383,7 +385,15 @@ export function Download() {
     <section id="download" className="relative overflow-hidden px-4 py-28 sm:py-36">
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_center,rgba(255,204,92,0.14),transparent_60%)]" />
       <div className="relative mx-auto max-w-3xl text-center">
-        <Image src="/app-icon.png" alt="CoNo 앱 아이콘" width={128} height={128} className="mx-auto rounded-[28px] shadow-[0_20px_60px_rgba(255,143,176,0.35)]" />
+        {/* 배경 없는 마이크 그림이 무대 빛에 녹아든다 */}
+        <Image
+          src="/logo.png"
+          alt="CoNo"
+          width={150}
+          height={150}
+          className="mx-auto drop-shadow-[0_0_36px_rgba(94,224,184,0.45)]"
+          style={{ animation: "floaty 5s ease-in-out infinite" }}
+        />
         <h2 className="mt-8 font-display text-[clamp(40px,8vw,72px)] leading-none">
           <span className="neon neon-gold">오늘 밤,</span> <span className="neon">우리 집이 무대</span>
         </h2>
@@ -468,7 +478,7 @@ export function Footer() {
     <footer className="border-t border-white/10 px-4 py-10 text-sm text-faint">
       <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-4 sm:flex-row">
         <div className="flex items-center gap-3">
-          <Image src="/app-icon.png" alt="" width={28} height={28} className="rounded-lg" />
+          <Image src="/logo.png" alt="" width={28} height={28} />
           <span>
             © 2026 <a href="https://www.aib.vote" className="text-ink2 hover:text-ink">AIB Inc.</a> · GNU GPL v3
           </span>

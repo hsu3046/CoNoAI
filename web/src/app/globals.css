@@ -84,6 +84,12 @@ body {
   50% { opacity: 1; transform: scale(1); }
 }
 
+/* 미러볼 빛 조각이 벽을 가로질러 흐름 */
+@keyframes drift {
+  from { translate: -12vw 0; }
+  to { translate: 12vw 3vh; }
+}
+
 /* 도장 쾅 */
 @keyframes stamp {
   0% { opacity: 0; transform: scale(3) rotate(-30deg); }

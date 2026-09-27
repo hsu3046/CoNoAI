@@ -27,7 +27,7 @@ export const metadata: Metadata = {
     images: [{ url: "/og.png", width: 1200, height: 630, alt: "코인 노래방 No! 집에서 나만의 노래방 — CoNo" }],
   },
   twitter: { card: "summary_large_image", images: ["/og.png"] },
-  icons: { icon: "/app-icon.png", apple: "/app-icon.png" },
+  icons: { icon: "/app-icon-dark.png", apple: "/app-icon-dark.png" },
 };
 
 export const viewport: Viewport = {

@@ -25,9 +25,11 @@ export function Hero() {
   // 화면 밖으로 나가면 반복 애니메이션(미러볼·스포트라이트·음표)을 멈춘다
   const [sectionRef, inView] = useInView<HTMLElement>({ margin: "100px" });
 
+  // 한 번 시작하면 다시 돌리지 않는다 — 누른 뒤 5초 자동 시작이 또 울려 간판이 꺼졌다 켜지던 문제
+  const started = useRef(false);
   const play = useCallback(async () => {
-    timers.current.forEach(window.clearTimeout);
-    timers.current = [];
+    if (started.current) return;
+    started.current = true;
     // 네온사인 글꼴이 도착한 뒤 시작 (도중에 글꼴이 바뀌면 그려지던 윤곽이 튄다). 느린 망이면 1.2초까지만 기다린다
     const family = getComputedStyle(document.documentElement).getPropertyValue("--font-black-han-sans").trim();
     if (family) {
@@ -35,17 +37,25 @@ export function Hero() {
     }
     timers.current = SEQUENCE.map(([next, delay]) => window.setTimeout(() => setPhase(next), delay));
   }, []);
+  const clearTimers = useCallback(() => timers.current.forEach(window.clearTimeout), []);
 
   // 가만있어도 5초 뒤 시작 (움직임 줄이기면 바로 마지막 장면)
   useEffect(() => {
     const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    const auto = window.setTimeout(reduced ? () => setPhase("party") : () => void play(), reduced ? 0 : 5000);
-    const pending = timers.current;
+    const auto = window.setTimeout(
+      reduced
+        ? () => {
+            started.current = true;
+            setPhase("party");
+          }
+        : () => void play(),
+      reduced ? 0 : 5000,
+    );
     return () => {
       window.clearTimeout(auto);
-      pending.forEach(window.clearTimeout);
+      clearTimers();
     };
-  }, [play]);
+  }, [play, clearTimers]);
 
   const lit = phase !== "idle";
   const at = (target: Phase) => SEQUENCE.findIndex(([p]) => p === phase) >= SEQUENCE.findIndex(([p]) => p === target);
@@ -64,9 +74,28 @@ export function Hero() {
             : "radial-gradient(ellipse at 70% 10%, #3d3350 0%, #1d1b2e 55%, #11121f 100%)",
         }}
       />
+      {/* 간판이 벽을 비춘다: 켜지는 순서대로 분홍 → 민트 빛이 번진다 */}
+      <div
+        className="pointer-events-none absolute inset-0 -z-10 transition-opacity duration-1000"
+        style={{
+          opacity: at("sign") ? 1 : 0,
+          background: "radial-gradient(ellipse 48% 30% at 50% 36%, rgba(255,143,176,0.16), transparent 70%)",
+        }}
+        aria-hidden
+      />
+      <div
+        className="pointer-events-none absolute inset-0 -z-10 transition-opacity duration-1000"
+        style={{
+          opacity: at("party") ? 1 : 0,
+          background: "radial-gradient(ellipse 50% 22% at 50% 52%, rgba(94,224,184,0.12), transparent 70%)",
+        }}
+        aria-hidden
+      />
       <Spotlights on={at("party")} />
-      <MirrorBall on={at("party")} />
+      <MirrorBallLights on={at("party")} />
       <FloatingNotes on={at("party")} />
+      {/* 바닥은 어둡게 가라앉혀 방의 깊이를 */}
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 -z-10 h-1/3 bg-gradient-to-t from-night via-night/60 to-transparent" aria-hidden />
 
       {/* 네온사인 */}
       <div className="relative z-10 w-full max-w-5xl text-center" aria-live="polite">
@@ -78,13 +107,15 @@ export function Hero() {
         <h1 className="sr-only">코인 노래방 No! 집에서 나만의 노래방 — CoNo</h1>
         <div className={`relative mx-auto transition-all duration-500 ${lit ? "h-auto opacity-100" : "pointer-events-none h-0 opacity-0"}`} aria-hidden>
           <NeonTube text="코인 노래방" color="#ff8fb0" drawn={at("sign")} />
+          {/* "No!": 같은 네온관, 빨간 빛 — 간판 오른쪽 위에 따로 걸린 작은 간판처럼 */}
           <span
-            className="absolute -right-[3%] -top-[10%] font-display text-[clamp(56px,12vw,150px)] leading-none text-stop"
+            className={`absolute right-[-1%] top-[-24%] font-display text-[clamp(40px,8.4vw,104px)] leading-none ${at("stamp") ? "flicker-once" : ""}`}
             style={{
               opacity: at("stamp") ? 1 : 0,
-              animation: at("stamp") ? "stamp 0.45s cubic-bezier(0.2,0.9,0.3,1.2) both" : undefined,
-              textShadow: "0 0 12px #ff6b6b, 0 0 36px #ff6b6b",
-              WebkitTextStroke: "3px #fff",
+              color: "#fff0f0",
+              transform: "rotate(-12deg)",
+              transition: "opacity 0.15s",
+              textShadow: "0 0 2px #fff, 0 0 8px #ff5a5a, 0 0 18px #ff5a5a, 0 0 42px #ff3b3b, 0 0 80px rgba(255,59,59,0.55)",
             }}
           >
             No!
@@ -128,16 +159,6 @@ export function Hero() {
               🎤 브라우저에서 불러보기
             </a>
           </div>
-          <button
-            type="button"
-            onClick={() => {
-              setPhase("idle");
-              window.setTimeout(() => void play(), 400);
-            }}
-            className="text-sm text-faint underline-offset-4 hover:text-ink hover:underline"
-          >
-            다시 보기 ↺
-          </button>
         </div>
       </div>
 
@@ -281,34 +302,29 @@ function Beam({ left, color, strength, delay }: { left: string; color: string; s
   );
 }
 
-function MirrorBall({ on }: { on: boolean }) {
+/** 미러볼이 벽에 뿌리는 빛 조각: 공은 보이지 않고, 부드러운 빛 점들이 천천히 벽을 지나간다 */
+function MirrorBallLights({ on }: { on: boolean }) {
+  const colors = ["255,255,255", "255,143,176", "92,199,255", "94,224,184", "255,204,92"];
   return (
-    <div
-      className={`pointer-events-none absolute left-1/2 top-0 -z-10 -translate-x-1/2 transition-all duration-1000 ${on ? "translate-y-0 opacity-100" : "-translate-y-40 opacity-0"}`}
-      aria-hidden
-    >
-      <div className="mx-auto h-16 w-px bg-white/30" />
-      <div
-        className="size-24 rounded-full animate-[spin-slow_10s_linear_infinite]"
-        style={{
-          background:
-            "repeating-conic-gradient(from 0deg, #d8dcf5 0deg 12deg, #6d7396 12deg 24deg), radial-gradient(circle at 35% 30%, #fff, #8a90b5)",
-          backgroundBlendMode: "multiply",
-          boxShadow: "0 0 60px rgba(255,255,255,0.35)",
-        }}
-      />
-      {Array.from({ length: 18 }, (_, index) => (
-        <span
-          key={index}
-          className="absolute size-1.5 rounded-full bg-white"
-          style={{
-            left: `${50 + Math.cos(index * 1.9) * (140 + (index % 4) * 90)}px`,
-            top: `${120 + Math.sin(index * 2.3) * 60 + (index % 5) * 70}px`,
-            animation: `twinkle ${1.2 + (index % 5) * 0.4}s ease-in-out ${index * 0.17}s infinite`,
-            boxShadow: "0 0 8px #fff",
-          }}
-        />
-      ))}
+    <div className={`pointer-events-none absolute inset-0 -z-10 overflow-hidden transition-opacity duration-[1500ms] ${on ? "opacity-100" : "opacity-0"}`} aria-hidden>
+      {Array.from({ length: 22 }, (_, index) => {
+        const size = 6 + ((index * 7) % 5) * 3;
+        const color = colors[index % colors.length];
+        return (
+          <span
+            key={index}
+            className="absolute rounded-full will-change-transform"
+            style={{
+              left: `${(index * 37) % 100}%`,
+              top: `${(index * 53) % 70}%`,
+              width: size,
+              height: size,
+              background: `radial-gradient(circle, rgba(${color},0.9), rgba(${color},0.25) 45%, transparent 70%)`,
+              animation: `drift ${14 + (index % 6) * 3}s linear ${-index * 1.7}s infinite, twinkle ${2.4 + (index % 4) * 0.7}s ease-in-out ${index * 0.3}s infinite`,
+            }}
+          />
+        );
+      })}
     </div>
   );
 }
@@ -354,7 +370,7 @@ export function SiteHeader() {
     >
       <nav className="mx-auto flex h-16 max-w-6xl items-center justify-between px-4 sm:px-6">
         <a href="#" className="flex items-center gap-2.5">
-          <Image src="/app-icon.png" alt="" width={32} height={32} className="rounded-lg" />
+          <Image src="/logo.png" alt="" width={34} height={34} className="drop-shadow-[0_0_10px_rgba(94,224,184,0.45)]" />
           <span className="font-display text-xl tracking-wide">CoNo</span>
         </a>
         <div className="flex items-center gap-1 text-sm sm:gap-2">
