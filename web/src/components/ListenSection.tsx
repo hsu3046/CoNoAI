@@ -10,6 +10,7 @@ import { useInView, useOnLeave } from "@/fx/hooks";
 import { StemPlayer, audioContext, claimAudio, onAudioClaim, type StemMode } from "@/fx/stems";
 import { songUrls, songs, type Song } from "@/lib/songs";
 import { Screen, SectionTitle } from "./Screen";
+import { PlayPauseIcon } from "./PlayIcons";
 
 const MODES: { mode: StemMode; label: string; hint: string; color: string }[] = [
   { mode: "inst", label: "반주", hint: "AI가 목소리를 지운 반주", color: "#5ee0b8" },
@@ -170,7 +171,7 @@ export function ListenSection() {
                 aria-label={playing ? "일시정지" : "재생"}
                 className="grid size-16 shrink-0 place-items-center rounded-full bg-ink text-2xl text-night shadow-[0_0_30px_rgba(237,240,255,0.25)] transition hover:scale-105"
               >
-                {status === "loading" ? <span className="size-6 animate-spin rounded-full border-[3px] border-night/30 border-t-night" /> : playing ? "❚❚" : "▶"}
+                {status === "loading" ? <span className="size-6 animate-spin rounded-full border-[3px] border-night/30 border-t-night" /> : <PlayPauseIcon playing={playing} size={26} />}
               </button>
               <div className="flex rounded-full bg-black/35 p-1.5" role="radiogroup" aria-label="들을 소리">
                 {MODES.map((item) => {

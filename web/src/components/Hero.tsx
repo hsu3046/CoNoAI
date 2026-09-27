@@ -14,6 +14,7 @@ import { StemPlayer, audioContext, claimAudio, onAudioClaim } from "@/fx/stems";
 import { heroSong, songUrls } from "@/lib/songs";
 import { release } from "@/lib/release";
 import { CONTAINER } from "./Screen";
+import { PlayPauseIcon } from "./PlayIcons";
 
 type Phase = "idle" | "dark" | "sign" | "stamp" | "party";
 
@@ -389,7 +390,7 @@ function MusicAppCard({
           {song === "loading" ? (
             <span className="relative size-5 animate-spin rounded-full border-[3px] border-night/30 border-t-night" />
           ) : (
-            <span className="relative text-xl">{sounding ? "❚❚" : "▶"}</span>
+            <span className="relative"><PlayPauseIcon playing={sounding} size={22} /></span>
           )}
         </button>
       </div>
