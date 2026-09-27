@@ -54,6 +54,24 @@ export function StoryScroll() {
   // ② 가이드 보컬 슬라이더 (0 = 반주만, 1 = 원곡처럼). 그리기 루프는 ref 로 읽는다
   const [guide, setGuide] = useState(0);
   const guideRef = useRef(0);
+  // 슬라이더 폭 = ② 설명 문단에서 가장 긴 줄의 실제 폭 (낱말 단위 줄바꿈이라 글줄이 칸보다 짧다)
+  const guideTextRef = useRef<HTMLParagraphElement>(null);
+  const [guideWidth, setGuideWidth] = useState<number | null>(null);
+  useEffect(() => {
+    const paragraph = guideTextRef.current;
+    if (!paragraph) return;
+    const measure = () => {
+      const range = document.createRange();
+      range.selectNodeContents(paragraph);
+      const left = paragraph.getBoundingClientRect().left;
+      const right = Math.max(...[...range.getClientRects()].map((rect) => rect.right));
+      if (Number.isFinite(right)) setGuideWidth(Math.ceil(right - left));
+    };
+    const observer = new ResizeObserver(measure);
+    observer.observe(paragraph);
+    void document.fonts.ready.then(measure);
+    return () => observer.disconnect();
+  }, []);
 
   useEffect(() => {
     const section = sectionRef.current;
@@ -179,7 +197,9 @@ export function StoryScroll() {
               >
                 <p className="font-display text-5xl text-pink/80 sm:text-6xl">{item.step}</p>
                 <h2 className="mt-1 font-cute text-3xl sm:text-4xl">{item.title}</h2>
-                <p className="mt-3 max-w-md text-base leading-relaxed text-ink2">{item.body}</p>
+                <p ref={index === 1 ? guideTextRef : undefined} className="mt-3 max-w-md text-base leading-relaxed text-ink2">
+                  {item.body}
+                </p>
                 <div className="mt-4 flex flex-wrap gap-2">
                   {item.chips.map((chip) => (
                     <span key={chip} className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-sm text-ink2">
@@ -189,6 +209,7 @@ export function StoryScroll() {
                 </div>
                 {index === 1 && (
                   <GuideSlider
+                    width={guideWidth}
                     value={guide}
                     onChange={(value) => {
                       guideRef.current = value;
@@ -208,10 +229,10 @@ export function StoryScroll() {
 }
 
 /** 가이드 보컬 슬라이더: 올리면 떼어 낸 분홍 보컬이 파형으로 다시 자라난다 (앱의 가이드 보컬과 같은 뜻) */
-function GuideSlider({ value, onChange }: { value: number; onChange: (value: number) => void }) {
+function GuideSlider({ width, value, onChange }: { width: number | null; value: number; onChange: (value: number) => void }) {
   const percent = Math.round(value * 100);
   return (
-    <label className="mt-5 block max-w-md rounded-2xl border border-pink/25 bg-pink/[0.06] px-4 py-3">
+    <label style={width ? { width } : undefined} className="mt-5 block max-w-md rounded-2xl border border-pink/25 bg-pink/[0.06] px-4 py-3">
       <span className="flex items-center justify-between font-cute text-base">
         <span>가이드 보컬</span>
         <span className="tabular-nums text-pink">{percent === 0 ? "0% · 반주만" : percent === 100 ? "100% · 원곡처럼" : `${percent}%`}</span>
@@ -253,7 +274,7 @@ function drawWave(ctx: CanvasRenderingContext2D, width: number, height: number, 
   const left = 24;
   const cx = width - 24 - 60;
   const cy = mid;
-  const gap = Math.max(0, cx - 84 - left) / count;
+  const gap = Math.max(0, cx - 28 - left) / count; // 막대가 구슬 빛 안까지 — 구슬에서 흘러나오는 것처럼
   ctx.save();
   ctx.globalAlpha = alpha;
   // AI 구슬 — 파형 뒤에 (막대가 앞을 지나간다)
