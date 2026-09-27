@@ -230,13 +230,13 @@ export function Hero() {
           <NeonTube text="코인 노래방" color="#ff8fb0" drawn={at("sign")} fast={fast} />
           {/* "No!": 같은 네온관, 빨간 빛 — 간판 오른쪽 위에 따로 걸린 작은 간판처럼 */}
           <span
-            className={`absolute right-[-1%] top-[-24%] font-display text-[clamp(40px,8.4vw,104px)] leading-none ${at("stamp") ? "flicker-once" : ""}`}
+            className={`absolute right-[4%] top-[-12%] font-display text-[clamp(32px,6.6vw,82px)] leading-none ${at("stamp") ? "flicker-once" : ""}`}
             style={{
               opacity: at("stamp") ? 1 : 0,
               color: "#fff0f0",
               transform: "rotate(20deg)",
               transition: "opacity 0.15s",
-              textShadow: "0 0 2px #fff, 0 0 8px #ff5a5a, 0 0 18px #ff5a5a, 0 0 42px #ff3b3b, 0 0 80px rgba(255,59,59,0.55)",
+              textShadow: "0 0 1px #fff, 0 0 6px #ff5a5a, 0 0 14px #ff5a5a, 0 0 34px rgba(255,59,59,0.8)",
             }}
           >
             No!
