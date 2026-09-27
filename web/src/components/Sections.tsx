@@ -116,18 +116,6 @@ export function Shortcuts() {
           <SectionTitle kicker="REMOTE" title="리모컨 대신 키보드" align="left">
             노래하면서도 한 손으로. 노래방 리모컨에 있던 버튼이 다 키보드에 있어요.
           </SectionTitle>
-          <div className="mt-8 space-y-3">
-            {[
-              ["🎧 블루투스 이어폰", "화면이 소리보다 빠르면 설정 › 가사 › 화면 싱크를 +150~250ms로"],
-              ["🔈 스피커로도 OK", "채점할 땐 마이크를 입 가까이. 반주가 새는 양은 CoNo가 재서 걸러요"],
-              ["⚡️ Apple Silicon 권장", "AI 반주는 M1 이상에서 가장 부드러워요"],
-            ].map(([title, body]) => (
-              <div key={title} className="rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3">
-                <p className="font-cute text-lg">{title}</p>
-                <p className="mt-0.5 text-sm leading-relaxed text-ink2">{body}</p>
-              </div>
-            ))}
-          </div>
         </div>
         <Reveal>
           <div className="grid gap-3 rounded-3xl border border-white/10 bg-white/[0.03] p-5 sm:grid-cols-2 sm:p-6">
