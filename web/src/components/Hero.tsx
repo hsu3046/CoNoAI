@@ -282,7 +282,7 @@ export function Hero() {
               href="#try"
               className="w-64 rounded-full border border-white/20 bg-white/5 py-3.5 text-center font-cute text-lg backdrop-blur transition hover:border-pink hover:text-pink"
             >
-              🎤 바로 테스트 해보기
+              바로 테스트 해보기 🎤
             </a>
           </div>
         </div>
