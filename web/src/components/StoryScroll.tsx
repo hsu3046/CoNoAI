@@ -51,6 +51,9 @@ export function StoryScroll() {
   // 스크롤 진행도는 ref 로만 (매 스크롤마다 다시 렌더하지 않는다). 글은 장면이 바뀔 때만 바뀐다
   const progressRef = useRef(0);
   const [scene, setScene] = useState(0);
+  // ② 가이드 보컬 슬라이더 (0 = 반주만, 1 = 원곡처럼). 그리기 루프는 ref 로 읽는다
+  const [guide, setGuide] = useState(0);
+  const guideRef = useRef(0);
 
   useEffect(() => {
     const section = sectionRef.current;
@@ -94,6 +97,7 @@ export function StoryScroll() {
     let fourthEnteredAt: number | null = null;
     let frame = 0;
     let visible = false;
+    let shownGuide = 0; // 슬라이더를 부드럽게 따라가는 값
 
     const draw = (now: number) => {
       // 화면 밖이면 멈춘다 (불꽃 장면이 페이지 끝까지 따라오며 그리던 문제)
@@ -109,8 +113,9 @@ export function StoryScroll() {
       ctx.clearRect(0, 0, width, height);
 
       // 장면 섞임 정도
-      const wave = clamp(2 - p); // ①② 파형 (③부터 사라짐)
-      const peel = clamp(p - 1); // ② 보컬 떼어내기
+      // ② 에서 보컬 떼어내기는 중반까지 끝내고, 파형은 ② 끝무렵에만 사라진다 — 그 사이 가이드 보컬 슬라이더를 만져 볼 수 있게
+      const wave = clamp((2.05 - p) / 0.25); // ①② 파형 (③ 직전에 사라짐)
+      const peel = clamp((p - 1) / 0.55); // ② 보컬 떼어내기
       const bar = clamp(p - 1.9); // ③④ 음정 바
       const sing = clamp((p - 2.55) / 0.35); // ③ 끝무렵부터 내 목소리
       // ④ 에 들어서는 순간 점수가 92에 닿으며 바로 불꽃 (시간이 아니라 스크롤에 맞춘다 — 기다려야 터지면 지나쳐 버린다)
@@ -120,7 +125,8 @@ export function StoryScroll() {
       // 파형·음정 바는 무대 영역에, 불꽃은 화면 전체에
       ctx.save();
       ctx.translate(stage.x, stage.y);
-      if (wave > 0) drawWave(ctx, stage.w, stage.h, t, peel, wave);
+      shownGuide += (guideRef.current - shownGuide) * 0.15;
+      if (wave > 0) drawWave(ctx, stage.w, stage.h, t, peel, wave, shownGuide);
       if (bar > 0) drawPitchBar(ctx, stage.w, stage.h, t, bar, sing);
       ctx.restore();
       if (fourthEnteredAt !== null) {
@@ -164,11 +170,11 @@ export function StoryScroll() {
               <span key={item.step} className={`h-1.5 rounded-full transition-all duration-500 ${index === scene ? "w-10 bg-pink" : "w-4 bg-white/15"}`} />
             ))}
           </div>
-          <div className="relative min-h-[230px] sm:min-h-[210px]">
+          <div className="relative min-h-[300px] sm:min-h-[280px]">
             {SCENES.map((item, index) => (
               <article
                 key={item.step}
-                className={`absolute inset-0 transition-all duration-500 ${index === scene ? "translate-y-0 opacity-100" : index < scene ? "-translate-y-6 opacity-0" : "translate-y-6 opacity-0"}`}
+                className={`absolute inset-0 transition-all duration-500 ${index === scene ? "translate-y-0 opacity-100" : index < scene ? "pointer-events-none -translate-y-6 opacity-0" : "pointer-events-none translate-y-6 opacity-0"}`}
                 aria-hidden={index !== scene}
               >
                 <p className="font-display text-5xl text-pink/80 sm:text-6xl">{item.step}</p>
@@ -181,6 +187,15 @@ export function StoryScroll() {
                     </span>
                   ))}
                 </div>
+                {index === 1 && (
+                  <GuideSlider
+                    value={guide}
+                    onChange={(value) => {
+                      guideRef.current = value;
+                      setGuide(value);
+                    }}
+                  />
+                )}
               </article>
             ))}
           </div>
@@ -189,6 +204,29 @@ export function StoryScroll() {
         <div ref={stageRef} className="relative min-h-0 flex-1" />
       </div>
     </section>
+  );
+}
+
+/** 가이드 보컬 슬라이더: 올리면 떼어 낸 분홍 보컬이 파형으로 다시 자라난다 (앱의 가이드 보컬과 같은 뜻) */
+function GuideSlider({ value, onChange }: { value: number; onChange: (value: number) => void }) {
+  const percent = Math.round(value * 100);
+  return (
+    <label className="mt-5 block max-w-md rounded-2xl border border-pink/25 bg-pink/[0.06] px-4 py-3">
+      <span className="flex items-center justify-between font-cute text-base">
+        <span>가이드 보컬</span>
+        <span className="tabular-nums text-pink">{percent === 0 ? "0% · 반주만" : percent === 100 ? "100% · 원곡처럼" : `${percent}%`}</span>
+      </span>
+      <input
+        type="range"
+        min={0}
+        max={100}
+        value={percent}
+        onChange={(event) => onChange(Number(event.target.value) / 100)}
+        aria-label="가이드 보컬 크기"
+        className="guide-range mt-2 w-full outline-none focus-visible:ring-2 focus-visible:ring-pink/60"
+        style={{ background: `linear-gradient(to right, #ff8fb0 ${percent}%, rgba(255,255,255,0.12) ${percent}%)` }}
+      />
+    </label>
   );
 }
 
@@ -208,7 +246,7 @@ const easeOut = (x: number) => 1 - Math.pow(1 - x, 3);
 const easeInOut = (x: number) => (x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2);
 
 /** 파형: 막대 = 민트 반주 + 분홍 보컬. peel 만큼 보컬이 떨어져 위로 빨려 나간다 */
-function drawWave(ctx: CanvasRenderingContext2D, width: number, height: number, t: number, peel: number, alpha: number) {
+function drawWave(ctx: CanvasRenderingContext2D, width: number, height: number, t: number, peel: number, alpha: number, guide: number) {
   const count = Math.max(28, Math.min(72, Math.floor(width / 12)));
   const gap = width * 0.8 / count;
   const left = width * 0.1;
@@ -244,6 +282,13 @@ function drawWave(ctx: CanvasRenderingContext2D, width: number, height: number, 
       ctx.globalAlpha = alpha * (1 - Math.pow(local, 3));
       ctx.fillStyle = local > 0.4 ? "#ffd1df" : "#ff8fb0";
       roundRect(ctx, fx, fy, w * scale, h * scale, (w * scale) / 2);
+      ctx.globalAlpha = alpha;
+    } else if (guide > 0.01) {
+      // 가이드 보컬: 슬라이더만큼 분홍 보컬이 반주 위로 다시 자란다
+      const h = vocal * 2 * guide;
+      ctx.globalAlpha = alpha * (0.55 + 0.45 * guide);
+      ctx.fillStyle = "#ff8fb0";
+      roundRect(ctx, x, mid - accompaniment - h, w, h, Math.min(w / 2, h / 2));
       ctx.globalAlpha = alpha;
     }
   }

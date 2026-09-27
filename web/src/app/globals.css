@@ -158,3 +158,28 @@ body {
     scroll-behavior: auto !important;
   }
 }
+
+/* 가이드 보컬 슬라이더 (스토리 ②) — 채운 부분은 인라인 그라데이션 */
+.guide-range {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 8px;
+  border-radius: 999px;
+  cursor: pointer;
+}
+.guide-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  background: #fff;
+  box-shadow: 0 0 0 4px rgba(255, 143, 176, 0.45), 0 0 18px rgba(255, 143, 176, 0.8);
+}
+.guide-range::-moz-range-thumb {
+  width: 22px;
+  height: 22px;
+  border: 0;
+  border-radius: 999px;
+  background: #fff;
+  box-shadow: 0 0 0 4px rgba(255, 143, 176, 0.45), 0 0 18px rgba(255, 143, 176, 0.8);
+}
