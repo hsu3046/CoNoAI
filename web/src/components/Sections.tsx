@@ -77,7 +77,7 @@ export function HowTo() {
       </SectionTitle>
       <div className="mt-10 grid gap-5 lg:grid-cols-3">
         <Reveal>
-          <Step number="1" title="다운로드 및 설치" body="다운로드한 DMG 파일을 열고 CoNo를 응용 프로그램 폴더로 끌어다 놓으세요. Apple 공증을 받은 앱이라 바로 열려요.">
+          <Step number="1" title="다운로드 및 설치" body="다운로드한 DMG 파일을 열고 CoNo를 응용 프로그램 폴더로 끌어다 놓으세요.">
             <InstallDemo />
           </Step>
         </Reveal>
