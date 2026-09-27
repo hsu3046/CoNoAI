@@ -588,6 +588,8 @@ export function SiteHeader() {
         </a>
         <div className="flex items-center gap-1 text-sm sm:gap-2">
           {[
+            ["#", "홈"],
+            ["#listen", "들어보기"],
             ["#try", "불러보기"],
             ["#how", "사용법"],
             ["#faq", "FAQ"],
