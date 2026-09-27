@@ -266,9 +266,9 @@ export function Hero() {
           className={`mt-8 flex flex-col items-center gap-5 transition-all duration-700 ${at("party") ? "translate-y-0 opacity-100" : "pointer-events-none translate-y-6 opacity-0"}`}
         >
           <p className="max-w-2xl text-balance text-base leading-relaxed text-ink2 sm:text-lg">
-            Apple Music · YouTube Music · Spotify… Mac 에서 나오는 <b className="text-ink">그 노래 그대로</b>.
+            Apple Music · YouTube Music · Spotify에서 나오는 <b className="text-ink">그 노래 그대로</b>
             <br className="hidden sm:block" />
-            목소리는 AI 가 지우고, 가사 · 음정 바 · 채점은 CoNo 가.
+            코인 노래방 가지 말고, 집에서 공짜로 즐겨요!
           </p>
           <div className="flex flex-wrap items-center justify-center gap-3">
             <a
