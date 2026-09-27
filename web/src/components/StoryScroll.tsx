@@ -315,7 +315,7 @@ function drawWave(ctx: CanvasRenderingContext2D, width: number, height: number, 
     // 반주
     ctx.fillStyle = "#5ee0b8";
     roundRect(ctx, x, mid - accompaniment, w, accompaniment * 2, w / 2);
-    // 보컬: 떼어지면서 빛 알갱이로 줄어 AI 구슬로 빨려 들어간다 (살짝 휘는 궤적)
+    // 보컬: 떼어 내는 동안 볼륨을 내리듯 줄어든다
     const delay = (index / count) * 0.55;
     const local = clamp((peel - delay) / 0.45);
     const startY = mid - accompaniment - vocal * 2;
@@ -331,18 +331,13 @@ function drawWave(ctx: CanvasRenderingContext2D, width: number, height: number, 
       ctx.fillStyle = "#ff8fb0";
       roundRect(ctx, x, startY, w, vocal * 2, w / 2);
     } else if (local < 1) {
-      const e = easeInOut(local);
-      const targetX = cx;
-      const targetY = cy;
-      const bend = Math.sin(local * Math.PI) * height * 0.12 * (index % 2 ? 1 : -1);
-      const fx = x + (targetX - x) * e + bend * 0.3;
-      const fy = startY + (targetY - startY) * e - Math.abs(bend);
-      // 막대 → 알갱이: 높이가 먼저 줄고, 끝으로 갈수록 작아지며 사라진다
-      const h = Math.max(w, vocal * 2 * (1 - Math.min(1, local * 2.2)));
-      const scale = 1 - local * 0.6;
-      ctx.globalAlpha = alpha * (1 - Math.pow(local, 3));
-      ctx.fillStyle = local > 0.4 ? "#ffd1df" : "#ff8fb0";
-      roundRect(ctx, fx, fy, w * scale, h * scale, (w * scale) / 2);
+      // 볼륨을 내리듯 위에서 아래로 줄어든다 (아래쪽은 반주 위에 붙은 채). 줄어드는 끝은 밝게
+      const h = vocal * 2 * (1 - easeInOut(local));
+      ctx.fillStyle = "#ff8fb0";
+      roundRect(ctx, x, mid - accompaniment - h, w, h, Math.min(w / 2, h / 2));
+      ctx.fillStyle = "#ffd1df";
+      ctx.globalAlpha = alpha * (1 - local);
+      roundRect(ctx, x, mid - accompaniment - h - 1, w, Math.min(h, w), w / 2);
       ctx.globalAlpha = alpha;
     }
   }
