@@ -134,10 +134,10 @@ export function StoryScroll() {
       // 장면 섞임 정도
       // ② 에서 보컬 떼어내기는 중반까지 끝내고, 파형은 ② 끝무렵에만 사라진다 — 그 사이 가이드 보컬 슬라이더를 만져 볼 수 있게
       const wave = clamp((2.05 - p) / 0.25); // ①② 파형 (③ 직전에 사라짐)
-      // ② 보컬 떼어내기: 들어선 순간부터 시간으로 3초 (스크롤에 묶으면 휠 몇 칸에 끝나 안 보인다). ① 로 돌아가면 처음부터
+      // ② 보컬 떼어내기: 들어선 순간부터 시간으로 1.5초 (스크롤에 묶으면 휠 몇 칸에 끝나 안 보인다). ① 로 돌아가면 처음부터
       if (p >= 1 && secondEnteredAt === null) secondEnteredAt = t;
       if (p < 0.95) secondEnteredAt = null;
-      const peel = secondEnteredAt === null ? 0 : clamp((t - secondEnteredAt) / 3);
+      const peel = secondEnteredAt === null ? 0 : clamp((t - secondEnteredAt) / 1.5);
       const bar = clamp(p - 1.9); // ③④ 음정 바
       const sing = clamp((p - 2.55) / 0.35); // ③ 끝무렵부터 내 목소리
       // ④ 에 들어서는 순간 점수가 92에 닿으며 바로 불꽃 (시간이 아니라 스크롤에 맞춘다 — 기다려야 터지면 지나쳐 버린다)
