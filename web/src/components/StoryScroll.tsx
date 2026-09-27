@@ -263,12 +263,10 @@ function drawWave(ctx: CanvasRenderingContext2D, width: number, height: number, 
     ctx.arc(cx, cy, radius, 0, Math.PI * 2);
     ctx.fill();
     ctx.fillStyle = "#fff";
-    ctx.font = `20px ${canvasFonts().cute}`;
+    ctx.font = `34px ${canvasFonts().cute}`;
     ctx.textAlign = "center";
-    ctx.fillText("AI 🎤", cx, cy + 7);
-    ctx.fillStyle = "#99a1c7";
-    ctx.font = `15px ${canvasFonts().sans}`;
-    ctx.fillText("보컬은 여기로", cx, cy + 34);
+    ctx.textBaseline = "middle";
+    ctx.fillText("AI", cx, cy);
   }
   ctx.restore();
 }
