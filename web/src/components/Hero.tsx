@@ -273,14 +273,14 @@ export function Hero() {
           <div className="flex flex-wrap items-center justify-center gap-3">
             <a
               href="#download"
-              className="group relative rounded-full bg-gold px-7 py-3.5 font-cute text-lg text-night shadow-[0_0_30px_rgba(255,204,92,0.55)] transition hover:scale-105"
+              className="group relative w-64 rounded-full bg-gold py-3.5 text-center font-cute text-lg text-night shadow-[0_0_30px_rgba(255,204,92,0.55)] transition hover:scale-105"
             >
               Mac 용 무료 다운로드
               <span className="ml-2 text-sm opacity-70">v{release.version}</span>
             </a>
             <a
               href="#try"
-              className="rounded-full border border-white/20 bg-white/5 px-7 py-3.5 font-cute text-lg backdrop-blur transition hover:border-pink hover:text-pink"
+              className="w-64 rounded-full border border-white/20 bg-white/5 py-3.5 text-center font-cute text-lg backdrop-blur transition hover:border-pink hover:text-pink"
             >
               🎤 브라우저에서 불러보기
             </a>
@@ -599,7 +599,7 @@ export function SiteHeader() {
               {label}
             </a>
           ))}
-          <a href="#download" className="rounded-full bg-white/10 px-4 py-2 font-cute text-base transition hover:bg-gold hover:text-night">
+          <a href="#download" className="rounded-full bg-white/10 px-6 py-2 font-cute text-base transition hover:bg-gold hover:text-night">
             다운로드
           </a>
         </div>
