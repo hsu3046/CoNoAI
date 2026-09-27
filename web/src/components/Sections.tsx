@@ -26,7 +26,7 @@ const FEATURES: { icon: string; title: string; body: string; tint: string }[] = 
   { icon: "🎧", title: "어떤 앱이든", body: "Apple Music, 브라우저의 YouTube, Spotify, 멜론… Mac에서 소리가 나면 노래방이 됩니다.", tint: "#5cc7ff" },
   { icon: "🪄", title: "AI 반주", body: "Mac 안에서 목소리만 지워요. 인터넷으로 보내지 않고, 곡을 미리 받아 둘 필요도 없어요.", tint: "#ff8fb0" },
   { icon: "🎼", title: "글자마다 색칠되는 가사", body: "여러 가사 저장소에서 찾아 목소리에 맞춰 자동 싱크. Apple Music 계정을 연결하면 음절 단위까지.", tint: "#5ee0b8" },
-  { icon: "📈", title: "3.5초 먼저 보는 음정 바", body: "소리를 조금 늦게 들려주는 대신, 다음에 부를 음을 미리 보여 줘요.", tint: "#ffcc5c" },
+  { icon: "📈", title: "원곡 음정 바", body: "AI가 원곡 가수의 음정을 자동으로 읽어 막대로 보여 줘요. 어디서 올리고 내릴지 한눈에.", tint: "#ffcc5c" },
   { icon: "🎚️", title: "내 키 · 가이드 보컬", body: "원곡 음역을 재서 내 목소리에 맞는 키로. 헷갈리는 부분은 원곡 목소리를 살짝 섞어서.", tint: "#b88cff" },
   { icon: "🏆", title: "채점과 불꽃놀이", body: "마이크로 부르면 실시간 채점. 곡이 끝나면 드럼롤, 쾅, 팡팡. 스피커로 틀어도 반주는 걸러요.", tint: "#ff734d" },
   { icon: "🔇", title: "광고는 알아서 음소거", body: "YouTube 광고를 알아채 소리를 끄고 \"광고 재생 중\" 이라고 알려 줘요.", tint: "#5cc7ff" },
