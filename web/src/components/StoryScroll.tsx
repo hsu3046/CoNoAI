@@ -47,6 +47,8 @@ const LYRIC = "오늘 밤은 우리 집 무대 위로 올라가";
 export function StoryScroll() {
   const sectionRef = useRef<HTMLElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  // 점수만 그리는 맨 위 캔버스 (설명 글보다 위에)
+  const scoreCanvasRef = useRef<HTMLCanvasElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
   // 스크롤 진행도는 ref 로만 (매 스크롤마다 다시 렌더하지 않는다). 글은 장면이 바뀔 때만 바뀐다
   const progressRef = useRef(0);
@@ -78,7 +80,9 @@ export function StoryScroll() {
     const canvas = canvasRef.current;
     const stageElement = stageRef.current;
     const ctx = canvas?.getContext("2d");
-    if (!section || !canvas || !stageElement || !ctx) return;
+    const scoreCanvas = scoreCanvasRef.current;
+    const scoreCtx = scoreCanvas?.getContext("2d");
+    if (!section || !canvas || !stageElement || !ctx || !scoreCanvas || !scoreCtx) return;
 
     // 크기·무대 위치는 바뀔 때만 잰다 (매 프레임 재면 스크롤 중 레이아웃 계산이 끼어든다)
     // 화면 전체 캔버스라 해상도는 1.5배까지만
@@ -91,6 +95,8 @@ export function StoryScroll() {
       height = canvas.clientHeight;
       canvas.width = Math.round(width * ratio);
       canvas.height = Math.round(height * ratio);
+      scoreCanvas.width = canvas.width;
+      scoreCanvas.height = canvas.height;
       const box = canvas.getBoundingClientRect();
       const area = stageElement.getBoundingClientRect();
       stage = { x: area.left - box.left, y: area.top - box.top, w: area.width, h: area.height };
@@ -158,10 +164,10 @@ export function StoryScroll() {
       }
       // 점수: ④ 에 들어선 순간부터 시간으로 2.4초 동안 올라간다 (스크롤에 묶으면 한 번 넘길 때 순식간에 끝나 안 보인다)
       const count = fourthEnteredAt === null ? 0 : clamp((t - fourthEnteredAt) / 2.4);
-      if (count > 0) {
-        // 점수는 무대가 아니라 화면 한가운데에 크게
-        drawScore(ctx, width, height, Math.floor(92 * easeOut(count)), Math.min(1, count * 3));
-      }
+      // 점수는 무대가 아니라 화면 한가운데에 크게, 설명 글보다 위 캔버스에
+      scoreCtx.setTransform(ratio, 0, 0, ratio, 0, 0);
+      scoreCtx.clearRect(0, 0, width, height);
+      if (count > 0) drawScore(scoreCtx, width, height, Math.floor(92 * easeOut(count)), Math.min(1, count * 3));
     };
 
     const observer = new IntersectionObserver(([entry]) => {
@@ -183,6 +189,7 @@ export function StoryScroll() {
       <div className="sticky top-0 flex h-dvh flex-col overflow-hidden lg:flex-row">
         <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_70%_50%,#1f1238,transparent_70%)]" />
         <canvas ref={canvasRef} className="pointer-events-none absolute inset-0 size-full" aria-label="CoNo가 노래를 노래방으로 바꾸는 과정 애니메이션" role="img" />
+        <canvas ref={scoreCanvasRef} className="pointer-events-none absolute inset-0 z-20 size-full" aria-hidden />
         {/* 설명 */}
         <div className="relative z-10 flex shrink-0 flex-col justify-end px-6 pb-4 pt-24 lg:w-[42%] lg:justify-center lg:py-0 lg:pl-[calc(max(0px,(100vw-1280px)/2)+48px)]">
           {/* 장면 표시 — 누르면 그 장면으로 (장면 구간의 60% 지점: ② 보컬 떼어내기가 끝난 뒤, ④ 불꽃이 터진 뒤) */}
