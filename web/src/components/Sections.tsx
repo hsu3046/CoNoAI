@@ -386,7 +386,7 @@ export function Download() {
         <h2 className="mt-8 font-display text-[clamp(40px,8vw,72px)] leading-none">
           <span className="neon neon-gold">오늘 밤,</span> <span className="neon">우리 집이 무대</span>
         </h2>
-        <p className="mt-5 text-ink2">무료 · 오픈소스 · Apple 공증 완료</p>
+        <p className="mt-5 text-ink2">무료 · 오픈소스</p>
         <a
           href={release.downloadUrl}
           className="group relative mt-9 inline-flex items-center gap-3 rounded-full bg-gold px-10 py-5 font-cute text-2xl text-night shadow-[0_0_50px_rgba(255,204,92,0.6)] transition hover:scale-105"
