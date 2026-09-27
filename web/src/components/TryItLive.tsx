@@ -202,7 +202,8 @@ export function TryItLive() {
     <Screen id="try" innerRef={sectionRef} glow={{ color: "rgba(255,143,176,0.1)", x: "70%", y: "55%" }}>
       <div className="grid items-center gap-10 lg:grid-cols-[minmax(0,0.8fr)_minmax(0,1.7fr)]">
         <SectionTitle kicker="TRY IT NOW" title="다운로드 전에 한 번 불러 보세요" align="left">
-          <ul className="space-y-2 text-sm">
+          <p>AI가 혼자 작곡한 테스트 곡이니 귀엽게 봐주세요!</p>
+          <ul className="mt-5 space-y-2 text-sm">
             <li>🎵 높든 낮든 — 옥타브는 상관없어요</li>
             <li>🎧 이어폰이 더 정확해요 · 스피커도 괜찮아요</li>
             <li>🔒 녹음되거나 외부로 전송되지 않아요</li>
