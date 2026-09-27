@@ -173,7 +173,7 @@ export function TryItLive() {
       const name = caught instanceof DOMException ? caught.name : "";
       setError(
         name === "NotAllowedError"
-          ? "마이크 권한이 필요해요. 주소창 옆 🔒 에서 마이크를 허용한 뒤 다시 눌러 주세요."
+          ? "마이크 권한이 필요해요.\n주소창 옆 🔒에서 마이크를 허용한 뒤 다시 눌러 주세요."
           : name === "NotFoundError"
             ? "마이크를 찾지 못했어요. 마이크를 연결하고 다시 시도해 주세요."
             : "시작하지 못했어요. 다른 브라우저(Chrome·Safari)로 시도해 주세요.",
@@ -227,7 +227,7 @@ export function TryItLive() {
                 <input type="checkbox" checked={guide} onChange={(event) => setGuide(event.target.checked)} className="size-4 accent-pink" />
                 가이드 멜로디 같이 듣기
               </label>
-              {error && <p className="max-w-md rounded-xl bg-stop/15 px-4 py-2 text-sm text-stop">{error}</p>}
+              {error && <p className="max-w-md whitespace-pre-line rounded-xl bg-stop/15 px-4 py-2 text-sm text-stop">{error}</p>}
             </div>
           )}
         </div>
