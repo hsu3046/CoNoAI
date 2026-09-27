@@ -183,9 +183,27 @@ export function StoryScroll() {
         <canvas ref={canvasRef} className="pointer-events-none absolute inset-0 size-full" aria-label="CoNo가 노래를 노래방으로 바꾸는 과정 애니메이션" role="img" />
         {/* 설명 */}
         <div className="relative z-10 flex shrink-0 flex-col justify-end px-6 pb-4 pt-24 lg:w-[42%] lg:justify-center lg:py-0 lg:pl-[calc(max(0px,(100vw-1280px)/2)+48px)]">
-          <div className="mb-6 flex gap-2" aria-hidden>
+          {/* 장면 표시 — 누르면 그 장면으로 (장면 구간의 60% 지점: ② 보컬 떼어내기가 끝난 뒤, ④ 불꽃이 터진 뒤) */}
+          <div className="mb-4 flex gap-1" role="tablist" aria-label="장면">
             {SCENES.map((item, index) => (
-              <span key={item.step} className={`h-1.5 rounded-full transition-all duration-500 ${index === scene ? "w-10 bg-pink" : "w-4 bg-white/15"}`} />
+              <button
+                key={item.step}
+                type="button"
+                role="tab"
+                aria-selected={index === scene}
+                aria-label={`${item.step} ${item.title}`}
+                onClick={() => {
+                  const section = sectionRef.current;
+                  if (!section) return;
+                  const progress = SCENE_BOUNDS[index] + (SCENE_BOUNDS[index + 1] - SCENE_BOUNDS[index]) * 0.6;
+                  window.scrollTo({ top: section.offsetTop + (section.offsetHeight - window.innerHeight) * progress, behavior: "smooth" });
+                }}
+                className="group py-2.5"
+              >
+                <span
+                  className={`block h-1.5 rounded-full transition-all duration-500 ${index === scene ? "w-10 bg-pink" : "w-4 bg-white/15 group-hover:w-6 group-hover:bg-white/40"}`}
+                />
+              </button>
             ))}
           </div>
           <div className="relative min-h-[300px] sm:min-h-[280px]">
@@ -280,7 +298,7 @@ function drawWave(ctx: CanvasRenderingContext2D, width: number, height: number, 
   // AI 글자는 파형 뒤에, 빛 번짐은 파형 위에 (막대가 빛 속에서 흘러나오는 것처럼)
   const orbAlpha = alpha * clamp(peel * 3);
   // 빨아들이는 동안 구슬이 부풀며 숨쉰다
-  const radius = 56 + 26 * Math.sin(Math.min(1, peel) * Math.PI) + 4 * Math.sin(t * 6);
+  const radius = 110 + 26 * Math.sin(Math.min(1, peel) * Math.PI) + 5 * Math.sin(t * 6);
   if (peel > 0) {
     ctx.globalAlpha = orbAlpha;
     ctx.fillStyle = "#fff";
@@ -333,8 +351,11 @@ function drawWave(ctx: CanvasRenderingContext2D, width: number, height: number, 
   if (peel > 0) {
     ctx.globalAlpha = orbAlpha;
     const glow = ctx.createRadialGradient(cx, cy, 0, cx, cy, radius);
+    // 넓게, 바깥으로 갈수록 서서히 옅어지게 (가운데 밝기는 그대로)
     glow.addColorStop(0, "rgba(255,209,223,0.75)");
-    glow.addColorStop(0.35, "rgba(255,143,176,0.45)");
+    glow.addColorStop(0.18, "rgba(255,160,190,0.5)");
+    glow.addColorStop(0.45, "rgba(255,143,176,0.2)");
+    glow.addColorStop(0.75, "rgba(255,143,176,0.06)");
     glow.addColorStop(1, "rgba(255,143,176,0)");
     ctx.fillStyle = glow;
     ctx.beginPath();
