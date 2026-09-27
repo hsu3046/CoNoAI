@@ -184,7 +184,7 @@ export function Hero() {
   return (
     <section
       ref={sectionRef}
-      className={`relative isolate flex min-h-[max(100dvh,720px)] snap-start flex-col items-center justify-center overflow-hidden px-4 pb-16 pt-28 ${inView ? "" : "anim-paused"}`}
+      className={`relative isolate flex min-h-[max(100dvh,720px)] snap-start flex-col items-center justify-center overflow-hidden px-4 pb-16 pt-40 sm:pt-44 ${inView ? "" : "anim-paused"}`}
     >
       {/* 방: 오후 햇살 → 소등 → 노래방 */}
       <div
