@@ -23,7 +23,7 @@ function Reveal({ children, delay = 0, className = "" }: { children: ReactNode; 
 // MARK: - 기능
 
 const FEATURES: { icon: string; title: string; body: string; tint: string }[] = [
-  { icon: "🎧", title: "어떤 앱이든", body: "Apple Music, 브라우저의 YouTube, Spotify, 멜론… Mac 에서 소리가 나면 노래방이 됩니다.", tint: "#5cc7ff" },
+  { icon: "🎧", title: "어떤 앱이든", body: "Apple Music, 브라우저의 YouTube, Spotify, 멜론… Mac에서 소리가 나면 노래방이 됩니다.", tint: "#5cc7ff" },
   { icon: "🪄", title: "AI 반주", body: "Mac 안에서 목소리만 지워요. 인터넷으로 보내지 않고, 곡을 미리 받아 둘 필요도 없어요.", tint: "#ff8fb0" },
   { icon: "🎼", title: "글자마다 색칠되는 가사", body: "여러 가사 저장소에서 찾아 목소리에 맞춰 자동 싱크. Apple Music 계정을 연결하면 음절 단위까지.", tint: "#5ee0b8" },
   { icon: "📈", title: "3.5초 먼저 보는 음정 바", body: "소리를 조금 늦게 들려주는 대신, 다음에 부를 음을 미리 보여 줘요.", tint: "#ffcc5c" },
@@ -80,17 +80,17 @@ export function HowTo() {
       </SectionTitle>
       <div className="mt-10 grid gap-5 lg:grid-cols-3">
         <Reveal>
-          <Step number="1" title="설치" body="내려받은 DMG 를 열고 CoNo 를 응용 프로그램 폴더로 끌어다 놓으세요. Apple 공증을 받은 앱이라 바로 열려요.">
+          <Step number="1" title="설치" body="내려받은 DMG를 열고 CoNo를 응용 프로그램 폴더로 끌어다 놓으세요. Apple 공증을 받은 앱이라 바로 열려요.">
             <InstallDemo />
           </Step>
         </Reveal>
         <Reveal delay={100}>
-          <Step number="2" title="권한 허용" body="처음 켜면 macOS 가 물어봐요. 셋 다 허용하면 끝. 설정 › 일반 › 권한에서 언제든 다시 열 수 있어요.">
+          <Step number="2" title="권한 허용" body="처음 켜면 macOS가 물어봐요. 셋 다 허용하면 끝. 설정 › 일반 › 권한에서 언제든 다시 열 수 있어요.">
             <PermissionDemo />
           </Step>
         </Reveal>
         <Reveal delay={200}>
-          <Step number="3" title="음악 틀기" body="음악 앱에서 노래를 틀면 CoNo 가 알아서 시작해요. 도크의 채점 버튼을 누르면 마이크 채점까지.">
+          <Step number="3" title="음악 틀기" body="음악 앱에서 노래를 틀면 CoNo가 알아서 시작해요. 도크의 채점 버튼을 누르면 마이크 채점까지.">
             <AutoStartDemo />
           </Step>
         </Reveal>
@@ -121,8 +121,8 @@ export function Shortcuts() {
           </SectionTitle>
           <div className="mt-8 space-y-3">
             {[
-              ["🎧 블루투스 이어폰", "화면이 소리보다 빠르면 설정 › 가사 › 화면 싱크를 +150~250ms 로"],
-              ["🔈 스피커로도 OK", "채점할 땐 마이크를 입 가까이. 반주가 새는 양은 CoNo 가 재서 걸러요"],
+              ["🎧 블루투스 이어폰", "화면이 소리보다 빠르면 설정 › 가사 › 화면 싱크를 +150~250ms로"],
+              ["🔈 스피커로도 OK", "채점할 땐 마이크를 입 가까이. 반주가 새는 양은 CoNo가 재서 걸러요"],
               ["⚡️ Apple Silicon 권장", "AI 반주는 M1 이상에서 가장 부드러워요"],
             ].map(([title, body]) => (
               <div key={title} className="rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3">
@@ -337,14 +337,14 @@ export function ChallengeTeaser() {
 // MARK: - 자주 묻는 질문
 
 const FAQ: [string, string][] = [
-  ["정말 무료인가요?", "네. CoNo 는 GNU GPL v3 오픈소스예요. 광고도, 결제도 없어요."],
-  ["어떤 Mac 에서 되나요?", `${release.minimumMacOS}. AI 반주는 Apple Silicon(M1 이상)에서 가장 부드러워요.`],
-  ["어떤 음악 앱을 쓸 수 있나요?", "Mac 에서 소리를 내는 앱이면 대부분 돼요. Apple Music 은 곡 정보·재생 위치까지 가장 정확하고, 브라우저의 YouTube, Spotify, 멜론도 곡 정보를 읽어 가사를 찾아요."],
+  ["정말 무료인가요?", "네. CoNo는 GNU GPL v3 오픈소스예요. 광고도, 결제도 없어요."],
+  ["어떤 Mac에서 되나요?", `${release.minimumMacOS}. AI 반주는 Apple Silicon(M1 이상)에서 가장 부드러워요.`],
+  ["어떤 음악 앱을 쓸 수 있나요?", "Mac에서 소리를 내는 앱이면 대부분 돼요. Apple Music은 곡 정보·재생 위치까지 가장 정확하고, 브라우저의 YouTube, Spotify, 멜론도 곡 정보를 읽어 가사를 찾아요."],
   ["제 목소리나 음악이 어디로 보내지나요?", "아니요. 보컬 분리와 채점은 모두 Mac 안에서 해요. 인터넷은 가사를 찾을 때만 써요. 이 사이트의 체험도 브라우저 안에서만 음정을 재요."],
   ["가사가 안 나오거나 어긋나요", "가사를 찾지 못한 곡은 음정 바만 나와요. 조금 어긋나면 가사 위에 마우스를 올려 ± 로, 또는 [ ] 키로 맞추세요. 맞춘 값은 곡마다 기억해요."],
-  ["블루투스 이어폰은요?", "돼요. 다만 블루투스는 소리가 늦게 나와서 화면이 앞서 보일 수 있어요. 설정 › 가사 › 화면 싱크를 +150~250ms 로 맞추세요. 블루투스 마이크는 이어폰 음질을 떨어뜨리니 채점은 Mac 마이크로."],
-  ["YouTube 광고가 나오면요?", "광고를 알아채 소리를 끄고 가사 자리에 \"광고 재생 중\" 을 띄워요. 건너뛰기는 YouTube 에서 직접 눌러 주세요."],
-  ["Windows 나 iPhone 은요?", "지금은 Mac 전용이에요. 원하시면 아래 의견에 남겨 주세요 — 많이 들리면 우선순위가 올라가요."],
+  ["블루투스 이어폰은요?", "돼요. 다만 블루투스는 소리가 늦게 나와서 화면이 앞서 보일 수 있어요. 설정 › 가사 › 화면 싱크를 +150~250ms로 맞추세요. 블루투스 마이크는 이어폰 음질을 떨어뜨리니 채점은 Mac 마이크로."],
+  ["YouTube 광고가 나오면요?", "광고를 알아채 소리를 끄고 가사 자리에 \"광고 재생 중\"을 띄워요. 건너뛰기는 YouTube에서 직접 눌러 주세요."],
+  ["Windows나 iPhone은요?", "지금은 Mac 전용이에요. 원하시면 아래 의견에 남겨 주세요 — 많이 들리면 우선순위가 올라가요."],
 ];
 
 export function Faq() {
@@ -407,7 +407,7 @@ export function Download() {
           href={release.downloadUrl}
           className="group relative mt-9 inline-flex items-center gap-3 rounded-full bg-gold px-10 py-5 font-cute text-2xl text-night shadow-[0_0_50px_rgba(255,204,92,0.6)] transition hover:scale-105"
         >
-          Mac 용 다운로드
+          Mac용 다운로드
           <span className="rounded-full bg-night/15 px-2.5 py-0.5 text-base">v{release.version}</span>
         </a>
         <p className="mt-4 text-sm text-faint">
@@ -458,18 +458,18 @@ function SendToMac() {
           const url = `${window.location.origin}/#download`;
           try {
             if (navigator.share) {
-              await navigator.share({ title: "CoNo — 집에서 나만의 노래방", text: "Mac 에서 열어서 설치하기", url });
+              await navigator.share({ title: "CoNo — 집에서 나만의 노래방", text: "Mac에서 열어서 설치하기", url });
               return;
             }
             await navigator.clipboard.writeText(url);
-            setNote("링크를 복사했어요. Mac 으로 보내 주세요");
+            setNote("링크를 복사했어요. Mac으로 보내 주세요");
           } catch {
             // 공유 창을 닫은 경우
           }
         }}
         className="rounded-full border border-white/20 bg-white/5 px-6 py-3 font-cute text-lg"
       >
-        📲 Mac 으로 링크 보내기
+        📲 Mac으로 링크 보내기
       </button>
       <p className="mt-2 h-4 text-xs text-mint">{note ?? ""}</p>
     </div>

@@ -226,7 +226,7 @@ export function ScoreShow({
         </div>
         {shared && <p className="mt-3 text-sm text-mint">{shared}</p>}
         <p className="mt-4 text-xs text-faint" style={{ opacity: reveal(1.8) * 0.8 }}>
-          바깥을 누르거나 Esc 로 닫기
+          바깥을 누르거나 Esc로 닫기
         </p>
       </div>
       {/* 번쩍: 번쩍일 때만 그린다 (혼합 모드 막이 늘 있으면 회전한 게이지와 합성 경계가 네모로 보인다) */}

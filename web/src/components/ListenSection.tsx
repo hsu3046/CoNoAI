@@ -12,8 +12,8 @@ import { songUrls, songs, type Song } from "@/lib/songs";
 import { Screen, SectionTitle } from "./Screen";
 
 const MODES: { mode: StemMode; label: string; hint: string; color: string }[] = [
-  { mode: "inst", label: "반주", hint: "AI 가 목소리를 지운 반주", color: "#5ee0b8" },
-  { mode: "vocal", label: "보컬", hint: "AI 가 걸러 낸 목소리만", color: "#ff8fb0" },
+  { mode: "inst", label: "반주", hint: "AI가 목소리를 지운 반주", color: "#5ee0b8" },
+  { mode: "vocal", label: "보컬", hint: "AI가 걸러 낸 목소리만", color: "#ff8fb0" },
   { mode: "mix", label: "원곡", hint: "원래 노래 그대로", color: "#ffcc5c" },
 ];
 
@@ -115,7 +115,7 @@ export function ListenSection() {
       <div className="grid items-center gap-10 lg:grid-cols-[minmax(0,0.85fr)_minmax(0,1.5fr)]">
         <div>
           <SectionTitle kicker="LISTEN" title="원곡에서 목소리만 쏙, 들어 보세요" align="left">
-            CoNo 의 AI 가 실제로 분리한 소리예요. 재생하고 <b className="text-ink">반주 · 보컬 · 원곡</b>을 눌러 바꿔 보세요 — 앱의 스위치와 똑같아요.
+            CoNo의 AI가 실제로 분리한 소리예요. 재생하고 <b className="text-ink">반주 · 보컬 · 원곡</b>을 눌러 바꿔 보세요 — 앱의 스위치와 똑같아요.
           </SectionTitle>
           <ul className="mt-6 space-y-1.5">
             {songs.map((item, itemIndex) => {

@@ -18,14 +18,14 @@ const SCENES = [
   },
   {
     step: "02",
-    title: "AI 가 목소리만 쏙",
-    body: "Mac 안에서 AI 가 보컬을 걸러 반주만 남겨요. 인터넷으로 보내지 않아요. 원곡 목소리를 살짝 섞는 가이드 보컬도 있어요.",
+    title: "AI가 목소리만 쏙",
+    body: "Mac 안에서 AI가 보컬을 걸러 반주만 남겨요. 인터넷으로 보내지 않아요. 원곡 목소리를 살짝 섞는 가이드 보컬도 있어요.",
     chips: ["인터넷 없이", "실시간", "가이드 보컬"],
   },
   {
     step: "03",
     title: "3.5초 미래를 미리 봅니다",
-    body: "CoNo 는 소리를 3.5초 늦게 들려줘요. 그 덕에 다음 음정과 가사를 먼저 보여 주죠. 가사는 여러 곳에서 찾아 목소리에 맞춰 자동 싱크.",
+    body: "CoNo는 소리를 3.5초 늦게 들려줘요. 그 덕에 다음 음정과 가사를 먼저 보여 주죠. 가사는 여러 곳에서 찾아 목소리에 맞춰 자동 싱크.",
     chips: ["음정 바", "글자마다 색칠되는 가사", "자동 싱크"],
   },
   {
@@ -156,7 +156,7 @@ export function StoryScroll() {
     <section id="story" ref={sectionRef} className="relative h-[440vh] snap-start">
       <div className="sticky top-0 flex h-dvh flex-col overflow-hidden lg:flex-row">
         <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_70%_50%,#1f1238,transparent_70%)]" />
-        <canvas ref={canvasRef} className="pointer-events-none absolute inset-0 size-full" aria-label="CoNo 가 노래를 노래방으로 바꾸는 과정 애니메이션" role="img" />
+        <canvas ref={canvasRef} className="pointer-events-none absolute inset-0 size-full" aria-label="CoNo가 노래를 노래방으로 바꾸는 과정 애니메이션" role="img" />
         {/* 설명 */}
         <div className="relative z-10 flex shrink-0 flex-col justify-end px-6 pb-4 pt-24 lg:w-[42%] lg:justify-center lg:py-0 lg:pl-[calc(max(0px,(100vw-1280px)/2)+48px)]">
           <div className="mb-6 flex gap-2" aria-hidden>

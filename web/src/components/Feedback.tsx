@@ -142,7 +142,7 @@ export function Feedback() {
               <p className="rounded-xl bg-stop/15 px-4 py-2 text-sm text-stop">
                 {status.message}{" "}
                 <a href={`${release.repositoryUrl}/issues/new`} className="underline underline-offset-2">
-                  GitHub 로 남기기
+                  GitHub로 남기기
                 </a>
               </p>
             )}

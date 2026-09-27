@@ -275,7 +275,7 @@ export function Hero() {
               href="#download"
               className="group relative w-64 rounded-full bg-gold py-3.5 text-center font-cute text-lg text-night shadow-[0_0_30px_rgba(255,204,92,0.55)] transition hover:scale-105"
             >
-              Mac 용 무료 다운로드
+              Mac용 무료 다운로드
               <span className="ml-2 text-sm opacity-70">v{release.version}</span>
             </a>
             <a
@@ -395,7 +395,7 @@ function MusicAppCard({
       </div>
       {listening && sounding ? (
         <div className="mt-3">
-          <p className="text-center font-cute text-sm text-pink">🎵 지금은 원곡 — 가수 목소리 들리죠? 곧 CoNo 가 켜져요</p>
+          <p className="text-center font-cute text-sm text-pink">🎵 지금은 원곡 — 가수 목소리 들리죠? 곧 CoNo가 켜져요</p>
           {/* 남은 시간: 차오르면 불이 꺼지고 목소리가 빠진다 */}
           <div className="mt-2 h-1 overflow-hidden rounded-full bg-white/10">
             <div className="h-full origin-left rounded-full bg-gradient-to-r from-pink to-gold" style={{ animation: `grow-x ${LISTEN_MS}ms linear forwards` }} />
