@@ -115,7 +115,7 @@ export function ListenSection() {
       <div className="grid items-center gap-10 lg:grid-cols-[minmax(0,0.85fr)_minmax(0,1.5fr)]">
         <div>
           <SectionTitle kicker="LISTEN" title="노래 연습하려면, 원곡에서 가수 목소리만 들어보세요" align="left">
-            CoNo의 AI가 실제로 분리한 소리예요. 재생하고 <b className="text-ink">반주 · 보컬 · 원곡</b>을 눌러 바꿔 보세요
+            CoNo의 AI가 실제로 분리한 소리예요. 재생하고 <b className="text-ink">반주 · 보컬 · 원곡</b>을 눌러 바꿔 보세요.
           </SectionTitle>
           <ul className="mt-6 space-y-1.5">
             {songs.map((item, itemIndex) => {
