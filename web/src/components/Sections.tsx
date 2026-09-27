@@ -441,7 +441,7 @@ export function Footer() {
         <div className="flex items-center gap-3">
           <Image src="/logo.png" alt="" width={28} height={28} />
           <span>
-            © 2026 <a href="https://www.aib.vote" className="text-ink2 hover:text-ink">AIB Inc.</a> · GNU GPL v3
+            © 2026 <a href="https://www.aib.vote" className="text-ink2 hover:text-ink">AIB Inc.</a>
           </span>
         </div>
         <div className="flex flex-wrap items-center justify-center gap-4">
@@ -451,8 +451,6 @@ export function Footer() {
           <a href="#feedback" className="hover:text-ink">
             의견 보내기
           </a>
-          <span>효과음 드럼롤: Freesound #569113 (CC0)</span>
-          <span>사이트의 노래는 모두 자작곡 · All rights reserved (GPL 대상 아님)</span>
         </div>
       </div>
     </footer>
