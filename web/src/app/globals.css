@@ -163,7 +163,10 @@ body {
 .guide-range {
   -webkit-appearance: none;
   appearance: none;
-  height: 8px;
+  /* 세로 슬라이더: 아래가 0, 위가 100 */
+  writing-mode: vertical-lr;
+  direction: rtl;
+  width: 8px;
   border-radius: 999px;
   cursor: pointer;
 }

@@ -170,7 +170,7 @@ export function StoryScroll() {
               <span key={item.step} className={`h-1.5 rounded-full transition-all duration-500 ${index === scene ? "w-10 bg-pink" : "w-4 bg-white/15"}`} />
             ))}
           </div>
-          <div className="relative min-h-[300px] sm:min-h-[280px]">
+          <div className="relative min-h-[230px] sm:min-h-[210px]">
             {SCENES.map((item, index) => (
               <article
                 key={item.step}
@@ -179,23 +179,27 @@ export function StoryScroll() {
               >
                 <p className="font-display text-5xl text-pink/80 sm:text-6xl">{item.step}</p>
                 <h2 className="mt-1 font-cute text-3xl sm:text-4xl">{item.title}</h2>
-                <p className="mt-3 max-w-md text-base leading-relaxed text-ink2">{item.body}</p>
-                <div className="mt-4 flex flex-wrap gap-2">
-                  {item.chips.map((chip) => (
-                    <span key={chip} className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-sm text-ink2">
-                      {chip}
-                    </span>
-                  ))}
+                <div className="flex items-start gap-5">
+                  <div className="min-w-0">
+                    <p className="mt-3 max-w-md text-base leading-relaxed text-ink2">{item.body}</p>
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      {item.chips.map((chip) => (
+                        <span key={chip} className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-sm text-ink2">
+                          {chip}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                  {index === 1 && (
+                    <GuideSlider
+                      value={guide}
+                      onChange={(value) => {
+                        guideRef.current = value;
+                        setGuide(value);
+                      }}
+                    />
+                  )}
                 </div>
-                {index === 1 && (
-                  <GuideSlider
-                    value={guide}
-                    onChange={(value) => {
-                      guideRef.current = value;
-                      setGuide(value);
-                    }}
-                  />
-                )}
               </article>
             ))}
           </div>
@@ -211,10 +215,11 @@ export function StoryScroll() {
 function GuideSlider({ value, onChange }: { value: number; onChange: (value: number) => void }) {
   const percent = Math.round(value * 100);
   return (
-    <label className="mt-5 block max-w-md rounded-2xl border border-pink/25 bg-pink/[0.06] px-4 py-3">
-      <span className="flex items-center justify-between font-cute text-base">
-        <span>가이드 보컬</span>
-        <span className="tabular-nums text-pink">{percent === 0 ? "0% · 반주만" : percent === 100 ? "100% · 원곡처럼" : `${percent}%`}</span>
+    <label className="mt-3 flex w-16 shrink-0 flex-col items-center gap-2 rounded-2xl border border-pink/25 bg-pink/[0.06] px-2 py-3">
+      <span className="text-center font-cute text-xs leading-tight">
+        가이드
+        <br />
+        보컬
       </span>
       <input
         type="range"
@@ -223,9 +228,10 @@ function GuideSlider({ value, onChange }: { value: number; onChange: (value: num
         value={percent}
         onChange={(event) => onChange(Number(event.target.value) / 100)}
         aria-label="가이드 보컬 크기"
-        className="guide-range mt-2 w-full outline-none focus-visible:ring-2 focus-visible:ring-pink/60"
-        style={{ background: `linear-gradient(to right, #ff8fb0 ${percent}%, rgba(255,255,255,0.12) ${percent}%)` }}
+        className="guide-range h-24 outline-none focus-visible:ring-2 focus-visible:ring-pink/60"
+        style={{ background: `linear-gradient(to top, #ff8fb0 ${percent}%, rgba(255,255,255,0.12) ${percent}%)` }}
       />
+      <span className="font-cute text-sm tabular-nums text-pink">{percent}%</span>
     </label>
   );
 }
@@ -253,46 +259,7 @@ function drawWave(ctx: CanvasRenderingContext2D, width: number, height: number, 
   const mid = height * 0.58;
   ctx.save();
   ctx.globalAlpha = alpha;
-  for (let index = 0; index < count; index++) {
-    const phase = index * 0.45 + t * 3.2;
-    const accompaniment = (0.18 + 0.12 * Math.sin(phase) + 0.08 * Math.sin(phase * 2.3 + 1)) * height * 0.5;
-    const vocal = (0.1 + 0.1 * Math.abs(Math.sin(index * 0.2 + t * 1.7))) * height * 0.5;
-    const x = left + index * gap;
-    const w = Math.max(3, gap * 0.55);
-    // 반주
-    ctx.fillStyle = "#5ee0b8";
-    roundRect(ctx, x, mid - accompaniment, w, accompaniment * 2, w / 2);
-    // 보컬: 떼어지면서 빛 알갱이로 줄어 AI 구슬로 빨려 들어간다 (살짝 휘는 궤적)
-    const delay = (index / count) * 0.55;
-    const local = clamp((peel - delay) / 0.45);
-    const startY = mid - accompaniment - vocal * 2;
-    if (local <= 0) {
-      ctx.fillStyle = "#ff8fb0";
-      roundRect(ctx, x, startY, w, vocal * 2, w / 2);
-    } else if (local < 1) {
-      const e = easeInOut(local);
-      const targetX = width * 0.84;
-      const targetY = height * 0.22;
-      const bend = Math.sin(local * Math.PI) * height * 0.12 * (index % 2 ? 1 : -1);
-      const fx = x + (targetX - x) * e + bend * 0.3;
-      const fy = startY + (targetY - startY) * e - Math.abs(bend);
-      // 막대 → 알갱이: 높이가 먼저 줄고, 끝으로 갈수록 작아지며 사라진다
-      const h = Math.max(w, vocal * 2 * (1 - Math.min(1, local * 2.2)));
-      const scale = 1 - local * 0.6;
-      ctx.globalAlpha = alpha * (1 - Math.pow(local, 3));
-      ctx.fillStyle = local > 0.4 ? "#ffd1df" : "#ff8fb0";
-      roundRect(ctx, fx, fy, w * scale, h * scale, (w * scale) / 2);
-      ctx.globalAlpha = alpha;
-    } else if (guide > 0.01) {
-      // 가이드 보컬: 슬라이더만큼 분홍 보컬이 반주 위로 다시 자란다
-      const h = vocal * 2 * guide;
-      ctx.globalAlpha = alpha * (0.55 + 0.45 * guide);
-      ctx.fillStyle = "#ff8fb0";
-      roundRect(ctx, x, mid - accompaniment - h, w, h, Math.min(w / 2, h / 2));
-      ctx.globalAlpha = alpha;
-    }
-  }
-  // AI 칩
+  // AI 구슬 — 파형 뒤에 (막대가 앞을 지나간다)
   if (peel > 0) {
     ctx.globalAlpha = alpha * clamp(peel * 3);
     const cx = width * 0.84;
@@ -312,6 +279,47 @@ function drawWave(ctx: CanvasRenderingContext2D, width: number, height: number, 
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
     ctx.fillText("AI", cx, cy);
+  }
+  ctx.globalAlpha = alpha;
+  for (let index = 0; index < count; index++) {
+    const phase = index * 0.45 + t * 3.2;
+    const accompaniment = (0.18 + 0.12 * Math.sin(phase) + 0.08 * Math.sin(phase * 2.3 + 1)) * height * 0.5;
+    const vocal = (0.1 + 0.1 * Math.abs(Math.sin(index * 0.2 + t * 1.7))) * height * 0.5;
+    const x = left + index * gap;
+    const w = Math.max(3, gap * 0.55);
+    // 반주
+    ctx.fillStyle = "#5ee0b8";
+    roundRect(ctx, x, mid - accompaniment, w, accompaniment * 2, w / 2);
+    // 보컬: 떼어지면서 빛 알갱이로 줄어 AI 구슬로 빨려 들어간다 (살짝 휘는 궤적)
+    const delay = (index / count) * 0.55;
+    const local = clamp((peel - delay) / 0.45);
+    const startY = mid - accompaniment - vocal * 2;
+    if (local > 0 && guide > 0.01) {
+      // 가이드 보컬: 떼어 내기 시작한 막대마다 슬라이더만큼 분홍 보컬이 반주 위로 다시 자란다
+      const h = vocal * 2 * guide;
+      ctx.globalAlpha = alpha * (0.55 + 0.45 * guide);
+      ctx.fillStyle = "#ff8fb0";
+      roundRect(ctx, x, mid - accompaniment - h, w, h, Math.min(w / 2, h / 2));
+      ctx.globalAlpha = alpha;
+    }
+    if (local <= 0) {
+      ctx.fillStyle = "#ff8fb0";
+      roundRect(ctx, x, startY, w, vocal * 2, w / 2);
+    } else if (local < 1) {
+      const e = easeInOut(local);
+      const targetX = width * 0.84;
+      const targetY = height * 0.22;
+      const bend = Math.sin(local * Math.PI) * height * 0.12 * (index % 2 ? 1 : -1);
+      const fx = x + (targetX - x) * e + bend * 0.3;
+      const fy = startY + (targetY - startY) * e - Math.abs(bend);
+      // 막대 → 알갱이: 높이가 먼저 줄고, 끝으로 갈수록 작아지며 사라진다
+      const h = Math.max(w, vocal * 2 * (1 - Math.min(1, local * 2.2)));
+      const scale = 1 - local * 0.6;
+      ctx.globalAlpha = alpha * (1 - Math.pow(local, 3));
+      ctx.fillStyle = local > 0.4 ? "#ffd1df" : "#ff8fb0";
+      roundRect(ctx, fx, fy, w * scale, h * scale, (w * scale) / 2);
+      ctx.globalAlpha = alpha;
+    }
   }
   ctx.restore();
 }
