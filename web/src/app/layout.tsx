@@ -15,7 +15,7 @@ export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
   title: "CoNo — 코인 노래방 No! 집에서 나만의 노래방",
   description:
-    "듣던 노래 그대로 노래방으로. Apple Music·YouTube Music·Spotify 등 Mac 에서 나오는 노래의 목소리를 AI 로 지우고, 가사·음정 바·채점까지. 무료 macOS 앱.",
+    "듣던 노래 그대로 노래방으로. Apple Music·YouTube·Spotify 등 Mac 에서 나오는 노래의 목소리를 AI 로 지우고, 가사·음정 바·채점까지. 무료 macOS 앱.",
   applicationName: "CoNo",
   keywords: ["노래방", "가라오케", "Mac", "AI 반주", "보컬 제거", "음정", "채점", "CoNo"],
   openGraph: {

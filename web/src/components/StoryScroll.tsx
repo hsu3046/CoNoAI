@@ -13,8 +13,8 @@ const SCENES = [
   {
     step: "01",
     title: "음악 앱에서, 아무 노래나 ▶",
-    body: "Apple Music · YouTube Music · Spotify · 멜론… 소리만 나면 됩니다. CoNo 가 그 앱의 소리를 받아 옵니다.",
-    chips: ["Apple Music", "YouTube Music", "Spotify", "멜론", "브라우저 영상"],
+    body: "Apple Music · YouTube · Spotify · 멜론… 소리만 나면 됩니다. CoNo 가 그 앱의 소리를 받아 옵니다.",
+    chips: ["Apple Music", "YouTube", "Spotify", "멜론", "브라우저 영상"],
   },
   {
     step: "02",

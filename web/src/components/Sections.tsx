@@ -23,7 +23,7 @@ function Reveal({ children, delay = 0, className = "" }: { children: ReactNode; 
 // MARK: - 기능
 
 const FEATURES: { icon: string; title: string; body: string; tint: string }[] = [
-  { icon: "🎧", title: "어떤 앱이든", body: "Apple Music, 브라우저의 YouTube Music, Spotify, 멜론… Mac 에서 소리가 나면 노래방이 됩니다.", tint: "#5cc7ff" },
+  { icon: "🎧", title: "어떤 앱이든", body: "Apple Music, 브라우저의 YouTube, Spotify, 멜론… Mac 에서 소리가 나면 노래방이 됩니다.", tint: "#5cc7ff" },
   { icon: "🪄", title: "AI 반주", body: "Mac 안에서 목소리만 지워요. 인터넷으로 보내지 않고, 곡을 미리 받아 둘 필요도 없어요.", tint: "#ff8fb0" },
   { icon: "🎼", title: "글자마다 색칠되는 가사", body: "여러 가사 저장소에서 찾아 목소리에 맞춰 자동 싱크. Apple Music 계정을 연결하면 음절 단위까지.", tint: "#5ee0b8" },
   { icon: "📈", title: "3.5초 먼저 보는 음정 바", body: "소리를 조금 늦게 들려주는 대신, 다음에 부를 음을 미리 보여 줘요.", tint: "#ffcc5c" },
@@ -339,7 +339,7 @@ export function ChallengeTeaser() {
 const FAQ: [string, string][] = [
   ["정말 무료인가요?", "네. CoNo 는 GNU GPL v3 오픈소스예요. 광고도, 결제도 없어요."],
   ["어떤 Mac 에서 되나요?", `${release.minimumMacOS}. AI 반주는 Apple Silicon(M1 이상)에서 가장 부드러워요.`],
-  ["어떤 음악 앱을 쓸 수 있나요?", "Mac 에서 소리를 내는 앱이면 대부분 돼요. Apple Music 은 곡 정보·재생 위치까지 가장 정확하고, 브라우저의 YouTube Music·YouTube, Spotify, 멜론도 곡 정보를 읽어 가사를 찾아요."],
+  ["어떤 음악 앱을 쓸 수 있나요?", "Mac 에서 소리를 내는 앱이면 대부분 돼요. Apple Music 은 곡 정보·재생 위치까지 가장 정확하고, 브라우저의 YouTube, Spotify, 멜론도 곡 정보를 읽어 가사를 찾아요."],
   ["제 목소리나 음악이 어디로 보내지나요?", "아니요. 보컬 분리와 채점은 모두 Mac 안에서 해요. 인터넷은 가사를 찾을 때만 써요. 이 사이트의 체험도 브라우저 안에서만 음정을 재요."],
   ["가사가 안 나오거나 어긋나요", "가사를 찾지 못한 곡은 음정 바만 나와요. 조금 어긋나면 가사 위에 마우스를 올려 ± 로, 또는 [ ] 키로 맞추세요. 맞춘 값은 곡마다 기억해요."],
   ["블루투스 이어폰은요?", "돼요. 다만 블루투스는 소리가 늦게 나와서 화면이 앞서 보일 수 있어요. 설정 › 가사 › 화면 싱크를 +150~250ms 로 맞추세요. 블루투스 마이크는 이어폰 음질을 떨어뜨리니 채점은 Mac 마이크로."],
