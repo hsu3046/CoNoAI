@@ -1,6 +1,7 @@
 // CoNo — Copyright (C) 2026 AIB Inc. (https://www.aib.vote) — GPL-3.0-or-later
 //
-// 넓은 화면에서 한 섹션씩 넘기기: 휠·키보드 한 번에 다음(이전) 섹션으로 착 넘어간다.
+// 넓은 화면에서 한 섹션씩 넘기기: 아래로 휠·키보드 한 번에 다음 섹션으로 착 넘어간다.
+// 위로는 걸지 않는다 — 올리는 건 방금 본 걸 다시 찾는 동작이라 자유 스크롤이 자연스럽다 (넘기는 중이면 멈추고 넘겨준다).
 // CSS scroll-snap mandatory 는 마우스 휠 한 칸(≈100px)을 원래 섹션으로 되돌려 다음 섹션으로 못 넘어가서 직접 한다.
 //   - 스크롤 스토리(화면보다 긴 섹션) 안에서는 자유 스크롤. 끝에 닿은 뒤 더 내리면 다음 섹션으로
 //   - 넘기는 동안과 직후 잠깐은 트랙패드 관성 휠을 무시 (두 칸씩 튀지 않게)
@@ -61,29 +62,39 @@ export function SectionPager() {
       frame = requestAnimationFrame(step);
     };
 
-    /** 방향으로 한 칸. 처리했으면 true (기본 스크롤을 막는다) */
-    const page = (direction: 1 | -1): boolean => {
+    /** 아래로 한 칸. 처리했으면 true (기본 스크롤을 막는다) */
+    const pageDown = (): boolean => {
       const y = window.scrollY;
       const { stops, free } = layout();
       // 긴 섹션 안(끝에 닿기 전)은 자유 스크롤
-      const inside = free.find(([top, end]) => (direction > 0 ? y >= top - 2 && y < end - 2 : y > top + 2 && y <= end + 2));
-      if (inside) return false;
-      const target = direction > 0 ? stops.find((stop) => stop > y + 2) : [...stops].reverse().find((stop) => stop < y - 2);
+      if (free.some(([top, end]) => y >= top - 2 && y < end - 2)) return false;
+      const target = stops.find((stop) => stop > y + 2);
       if (target === undefined) return false;
       animateTo(target);
       return true;
     };
 
+    const stopAnimation = () => {
+      cancelAnimationFrame(frame);
+      animating = false;
+      lockedUntil = 0;
+    };
+
     const onWheel = (event: WheelEvent) => {
       if (!wide.matches || reduced.matches || event.defaultPrevented || event.ctrlKey) return;
       if (Math.abs(event.deltaY) < Math.abs(event.deltaX)) return;
+      if (event.deltaY < 0) {
+        // 위로는 자유: 넘기는 중이면 그 자리에서 멈추고 브라우저에 맡긴다
+        if (animating) stopAnimation();
+        return;
+      }
       if (animating || performance.now() < lockedUntil) {
         // 넘기는 중·직후의 관성 휠: 자유 구간 안이 아니면 삼킨다
         event.preventDefault();
         return;
       }
       if (Math.abs(event.deltaY) < 2) return;
-      if (page(event.deltaY > 0 ? 1 : -1)) event.preventDefault();
+      if (pageDown()) event.preventDefault();
     };
 
     const onKey = (event: KeyboardEvent) => {
@@ -92,13 +103,17 @@ export function SectionPager() {
       if (target?.closest("input, textarea, select, [contenteditable], [role=dialog]")) return;
       const down = event.key === "ArrowDown" || event.key === "PageDown" || (event.key === " " && !event.shiftKey);
       const up = event.key === "ArrowUp" || event.key === "PageUp" || (event.key === " " && event.shiftKey);
-      if (!down && !up) return;
+      if (up) {
+        if (animating) stopAnimation(); // 위로는 브라우저 기본 스크롤
+        return;
+      }
+      if (!down) return;
       if (target?.closest("button, a") && event.key === " ") return; // 버튼의 스페이스는 누르기
       if (animating) {
         event.preventDefault();
         return;
       }
-      if (page(down ? 1 : -1)) event.preventDefault();
+      if (pageDown()) event.preventDefault();
     };
 
     window.addEventListener("wheel", onWheel, { passive: false });

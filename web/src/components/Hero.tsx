@@ -455,7 +455,7 @@ function useHeroSong(sectionRef: React.RefObject<HTMLElement | null>) {
     const player = playerRef.current;
     if (dropped.current || !player || !wanted.current) return;
     dropped.current = true;
-    player.setMode("inst", 1.5);
+    player.setMode("inst", 2);
     setVoiceGone(true);
   }, []);
   const voiceDropped = useCallback(() => dropped.current, []);
