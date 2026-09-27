@@ -277,19 +277,12 @@ function drawWave(ctx: CanvasRenderingContext2D, width: number, height: number, 
   const gap = Math.max(0, cx - 28 - left) / count; // 막대가 구슬 빛 안까지 — 구슬에서 흘러나오는 것처럼
   ctx.save();
   ctx.globalAlpha = alpha;
-  // AI 구슬 — 파형 뒤에 (막대가 앞을 지나간다)
+  // AI 글자는 파형 뒤에, 빛 번짐은 파형 위에 (막대가 빛 속에서 흘러나오는 것처럼)
+  const orbAlpha = alpha * clamp(peel * 3);
+  // 빨아들이는 동안 구슬이 부풀며 숨쉰다
+  const radius = 56 + 26 * Math.sin(Math.min(1, peel) * Math.PI) + 4 * Math.sin(t * 6);
   if (peel > 0) {
-    ctx.globalAlpha = alpha * clamp(peel * 3);
-    // 빨아들이는 동안 구슬이 부풀며 숨쉰다
-    const radius = 56 + 26 * Math.sin(Math.min(1, peel) * Math.PI) + 4 * Math.sin(t * 6);
-    const glow = ctx.createRadialGradient(cx, cy, 0, cx, cy, radius);
-    glow.addColorStop(0, "rgba(255,209,223,0.75)");
-    glow.addColorStop(0.35, "rgba(255,143,176,0.45)");
-    glow.addColorStop(1, "rgba(255,143,176,0)");
-    ctx.fillStyle = glow;
-    ctx.beginPath();
-    ctx.arc(cx, cy, radius, 0, Math.PI * 2);
-    ctx.fill();
+    ctx.globalAlpha = orbAlpha;
     ctx.fillStyle = "#fff";
     ctx.font = `34px ${canvasFonts().cute}`;
     ctx.textAlign = "center";
@@ -336,6 +329,17 @@ function drawWave(ctx: CanvasRenderingContext2D, width: number, height: number, 
       roundRect(ctx, fx, fy, w * scale, h * scale, (w * scale) / 2);
       ctx.globalAlpha = alpha;
     }
+  }
+  if (peel > 0) {
+    ctx.globalAlpha = orbAlpha;
+    const glow = ctx.createRadialGradient(cx, cy, 0, cx, cy, radius);
+    glow.addColorStop(0, "rgba(255,209,223,0.75)");
+    glow.addColorStop(0.35, "rgba(255,143,176,0.45)");
+    glow.addColorStop(1, "rgba(255,143,176,0)");
+    ctx.fillStyle = glow;
+    ctx.beginPath();
+    ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+    ctx.fill();
   }
   ctx.restore();
 }
