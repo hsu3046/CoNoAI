@@ -152,13 +152,11 @@ export function StoryScroll() {
         drawFireworks(ctx, show, local, width, height);
         drawConfetti(ctx, local, width, height, 5);
       }
-      // 점수: ③→④ 로 넘어가는 스크롤 동안 올라간다
-      const count = clamp((p - 2.72) / 0.28);
+      // 점수: ④ 에 들어선 순간부터 시간으로 2.4초 동안 올라간다 (스크롤에 묶으면 한 번 넘길 때 순식간에 끝나 안 보인다)
+      const count = fourthEnteredAt === null ? 0 : clamp((t - fourthEnteredAt) / 2.4);
       if (count > 0) {
-        ctx.save();
-        ctx.translate(stage.x, stage.y);
-        drawScore(ctx, stage.w, stage.h, Math.floor(92 * easeOut(count)), Math.min(1, count * 3));
-        ctx.restore();
+        // 점수는 무대가 아니라 화면 한가운데에 크게
+        drawScore(ctx, width, height, Math.floor(92 * easeOut(count)), Math.min(1, count * 3));
       }
     };
 
@@ -486,25 +484,35 @@ function noteAt(time: number): number | null {
   return null;
 }
 
+/** 점수: 화면 정중앙, 크게. 뒤를 살짝 어둡게 눌러 음정 바·불꽃 위에서도 읽히게 */
 function drawScore(ctx: CanvasRenderingContext2D, width: number, height: number, score: number, alpha: number) {
   ctx.save();
   ctx.globalAlpha = alpha;
-  const x = width * 0.5;
-  const y = height * 0.94;
+  const x = width / 2;
+  const y = height / 2;
+  const size = Math.max(110, Math.min(240, Math.min(width, height) / 3.2));
+  const shade = ctx.createRadialGradient(x, y, 0, x, y, size * 1.4);
+  shade.addColorStop(0, "rgba(11,13,26,0.55)");
+  shade.addColorStop(1, "rgba(11,13,26,0)");
+  ctx.fillStyle = shade;
+  ctx.fillRect(x - size * 1.4, y - size * 1.4, size * 2.8, size * 2.8);
   ctx.textAlign = "center";
-  ctx.font = `${Math.max(56, Math.min(110, width / 7))}px ${canvasFonts().display}`;
+  ctx.textBaseline = "middle";
+  ctx.font = `${size}px ${canvasFonts().display}`;
   ctx.shadowColor = "#ff9a33";
-  ctx.shadowBlur = 28;
-  const gradient = ctx.createLinearGradient(0, y - 80, 0, y);
+  ctx.shadowBlur = size * 0.3;
+  const gradient = ctx.createLinearGradient(0, y - size / 2, 0, y + size / 2);
   gradient.addColorStop(0, "#fff7c7");
   gradient.addColorStop(1, "#ff8a38");
   ctx.fillStyle = gradient;
   ctx.fillText(String(score), x, y);
+  const half = ctx.measureText(String(score)).width / 2;
   ctx.shadowBlur = 0;
-  ctx.font = `18px ${canvasFonts().cute}`;
-  ctx.fillStyle = "#99a1c7";
+  ctx.font = `${Math.round(size * 0.2)}px ${canvasFonts().cute}`;
+  ctx.fillStyle = "#c9cfee";
   ctx.textAlign = "left";
-  ctx.fillText("점", x + Math.max(56, Math.min(110, width / 7)) * 0.62, y);
+  ctx.textBaseline = "alphabetic";
+  ctx.fillText("점", x + half + size * 0.06, y + size * 0.36);
   ctx.restore();
 }
 
