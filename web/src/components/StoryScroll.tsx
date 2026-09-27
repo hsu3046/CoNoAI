@@ -189,6 +189,8 @@ export function StoryScroll() {
       <div className="sticky top-0 flex h-dvh flex-col overflow-hidden lg:flex-row">
         <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_70%_50%,#1f1238,transparent_70%)]" />
         <canvas ref={canvasRef} className="pointer-events-none absolute inset-0 size-full" aria-label="CoNo가 노래를 노래방으로 바꾸는 과정 애니메이션" role="img" />
+        {/* 아래 끝을 배경색으로 녹인다 — 섹션이 끝날 때 불꽃이 칼로 자른 듯 끊기지 않게 */}
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 h-32 bg-gradient-to-b from-transparent to-night" aria-hidden />
         <canvas ref={scoreCanvasRef} className="pointer-events-none absolute inset-0 z-20 size-full" aria-hidden />
         {/* 설명 */}
         <div className="relative z-10 flex shrink-0 flex-col justify-end px-6 pb-4 pt-24 lg:w-[42%] lg:justify-center lg:py-0 lg:pl-[calc(max(0px,(100vw-1280px)/2)+48px)]">
