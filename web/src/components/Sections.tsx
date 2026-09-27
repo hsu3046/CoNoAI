@@ -371,7 +371,6 @@ export function Faq() {
 // MARK: - 다운로드
 
 export function Download() {
-  const [copied, setCopied] = useState(false);
   return (
     <Screen id="download" glow={{ color: "rgba(255,204,92,0.14)", x: "50%", y: "50%" }}>
       <div className="relative mx-auto max-w-3xl text-center">
@@ -399,34 +398,6 @@ export function Download() {
           {release.sizeLabel} · {release.minimumMacOS} · Apple Silicon 권장
         </p>
         <SendToMac />
-        <div className="mx-auto mt-8 max-w-xl rounded-2xl border border-white/10 bg-black/30 px-4 py-3 text-left">
-          <p className="text-xs text-faint">SHA-256 (내려받은 파일이 온전한지 확인용)</p>
-          <div className="mt-1 flex items-center gap-2">
-            <code className="min-w-0 flex-1 truncate text-xs text-ink2">{release.sha256}</code>
-            <button
-              type="button"
-              onClick={async () => {
-                try {
-                  await navigator.clipboard.writeText(release.sha256);
-                  setCopied(true);
-                  window.setTimeout(() => setCopied(false), 1600);
-                } catch {
-                  setCopied(false);
-                }
-              }}
-              className="shrink-0 rounded-lg bg-white/10 px-3 py-1 text-xs transition hover:bg-white/20"
-            >
-              {copied ? "복사됨 ✓" : "복사"}
-            </button>
-          </div>
-        </div>
-        <p className="mt-6 text-sm text-faint">
-          지난 버전·소스 코드는{" "}
-          <a href={release.releasesUrl} className="text-ink2 underline underline-offset-4 hover:text-ink">
-            GitHub
-          </a>
-          에서
-        </p>
       </div>
     </Screen>
   );
