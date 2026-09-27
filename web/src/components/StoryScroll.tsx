@@ -19,7 +19,7 @@ const SCENES = [
   {
     step: "02",
     title: "AI가 목소리만 쏙 분리",
-    body: "내 컴퓨터 안에서 AI가 보컬을 제거하고 반주만 남깁니다. 가이드가 필요하면, 원곡 가수 목소리를 살짝 섞어보세요.",
+    body: "내 컴퓨터 안에서 AI가 보컬을 제거하고 반주만 남깁니다.\n가이드가 필요할 땐, 가수 목소리를 살짝 섞어보세요.",
     chips: ["내 컴퓨터 안에서", "실시간", "가이드 보컬"],
   },
   {
@@ -217,7 +217,7 @@ export function StoryScroll() {
               >
                 <p className="font-display text-5xl text-pink/80 sm:text-6xl">{item.step}</p>
                 <h2 className="mt-1 font-cute text-3xl sm:text-4xl">{item.title}</h2>
-                <p ref={index === 1 ? guideTextRef : undefined} className="mt-3 max-w-md text-base leading-relaxed text-ink2">
+                <p ref={index === 1 ? guideTextRef : undefined} className="mt-3 max-w-md whitespace-pre-line text-base leading-relaxed text-ink2">
                   {item.body}
                 </p>
                 <div className="mt-4 flex flex-wrap gap-2">
