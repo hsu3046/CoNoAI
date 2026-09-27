@@ -6,6 +6,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { drawConfetti, drawFireworks, flashAmount, makeShow, shake } from "@/fx/fireworks";
 import { fitCanvas } from "@/fx/hooks";
 import { playCelebration } from "@/fx/sfx";
@@ -97,7 +98,8 @@ export function ScoreShow({
     }
   };
 
-  return (
+  // body 로 띄운다: 섹션이 쌓임 맥락(isolate)을 만들면 고정 헤더가 연출 위로 올라온다
+  return createPortal(
     <div
       className="fixed inset-0 z-[100] flex items-center justify-center overflow-hidden px-4"
       role="dialog"
@@ -229,7 +231,8 @@ export function ScoreShow({
       </div>
       {/* 번쩍: 번쩍일 때만 그린다 (혼합 모드 막이 늘 있으면 회전한 게이지와 합성 경계가 네모로 보인다) */}
       {flash > 0.002 && <div className="pointer-events-none absolute inset-0 mix-blend-plus-lighter" style={{ background: "#ffdb9e", opacity: flash }} />}
-    </div>
+    </div>,
+    document.body,
   );
 }
 

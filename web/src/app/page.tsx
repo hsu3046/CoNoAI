@@ -2,7 +2,8 @@
 
 import { Feedback } from "@/components/Feedback";
 import { Hero, SiteHeader } from "@/components/Hero";
-import { ChallengeTeaser, Download, Faq, Features, Footer, HowTo, Videos } from "@/components/Sections";
+import { ChallengeTeaser, Download, Faq, Features, Footer, HowTo, Shortcuts, Videos } from "@/components/Sections";
+import { SectionPager } from "@/components/SectionPager";
 import { StoryScroll } from "@/components/StoryScroll";
 import { TryItLive } from "@/components/TryItLive";
 
@@ -16,6 +17,7 @@ export default function Home() {
         <TryItLive />
         <Features />
         <HowTo />
+        <Shortcuts />
         <Videos />
         <ChallengeTeaser />
         <Faq />
@@ -23,6 +25,7 @@ export default function Home() {
         <Feedback />
       </main>
       <Footer />
+      <SectionPager />
     </>
   );
 }

@@ -8,7 +8,7 @@ import Image from "next/image";
 import { useState, type ReactNode } from "react";
 import { useInView } from "@/fx/hooks";
 import { release, videos } from "@/lib/release";
-import { SectionTitle } from "./TryItLive";
+import { CONTAINER, Screen, SectionTitle } from "./Screen";
 
 function Reveal({ children, delay = 0, className = "" }: { children: ReactNode; delay?: number; className?: string }) {
   // 화면 아래 끝에 닿기 조금 전부터 나타나기 시작 (스크롤보다 늦게 튀어나오지 않게)
@@ -17,17 +17,6 @@ function Reveal({ children, delay = 0, className = "" }: { children: ReactNode; 
     <div ref={ref} className={`reveal ${inView ? "in" : ""} ${className}`} style={{ transitionDelay: `${delay}ms` }}>
       {children}
     </div>
-  );
-}
-
-/** 섹션마다 다른 색의 은은한 번짐 (같은 남색 배경이 이어져 단조롭지 않게) */
-function Glow({ color, x, y }: { color: string; x: string; y: string }) {
-  return (
-    <div
-      className="pointer-events-none absolute inset-0 -z-10 overflow-hidden"
-      aria-hidden
-      style={{ background: `radial-gradient(ellipse 55% 45% at ${x} ${y}, ${color}, transparent 70%)` }}
-    />
   );
 }
 
@@ -46,33 +35,38 @@ const FEATURES: { icon: string; title: string; body: string; tint: string }[] = 
 
 export function Features() {
   return (
-    <section className="relative isolate px-4 py-24 sm:py-32">
-      <Glow color="rgba(255,143,176,0.09)" x="15%" y="30%" />
-      <SectionTitle kicker="FEATURES" title="노래방 기계, 이제 Mac 안에" />
-      <div className="mx-auto mt-14 grid max-w-6xl gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        {FEATURES.map((feature, index) => (
-          <Reveal key={feature.title} delay={(index % 4) * 80}>
-            <article
-              className="group relative h-full overflow-hidden rounded-3xl border border-white/10 bg-white/[0.035] p-6 transition duration-300 hover:-translate-y-1.5 hover:border-white/25"
-              style={{ boxShadow: `inset 0 1px 0 rgba(255,255,255,0.06)` }}
-            >
-              <div
-                className="pointer-events-none absolute -right-10 -top-10 size-40 rounded-full opacity-25 blur-3xl transition-opacity duration-500 group-hover:opacity-60"
-                style={{ background: feature.tint }}
-              />
-              <div
-                className="grid size-14 place-items-center rounded-2xl text-3xl transition-transform duration-500 group-hover:rotate-[-8deg] group-hover:scale-110"
-                style={{ background: `${feature.tint}22`, boxShadow: `0 0 24px ${feature.tint}33` }}
-              >
-                {feature.icon}
-              </div>
-              <h3 className="mt-5 font-cute text-2xl">{feature.title}</h3>
-              <p className="mt-2 text-[15px] leading-relaxed text-ink2">{feature.body}</p>
-            </article>
-          </Reveal>
-        ))}
+    <Screen glow={{ color: "rgba(255,143,176,0.09)", x: "15%", y: "40%" }}>
+      <div className="grid items-center gap-10 lg:grid-cols-[minmax(0,0.75fr)_minmax(0,1.8fr)]">
+        <SectionTitle kicker="FEATURES" title="노래방 기계, 이제 Mac 안에" align="left">
+          <p>따로 곡을 받거나 반주를 찾을 필요 없어요. 늘 쓰던 음악 앱이 그대로 노래방 기계가 됩니다.</p>
+          <a href="#try" className="mt-6 inline-block rounded-full border border-white/20 bg-white/5 px-5 py-2.5 font-cute text-lg text-ink transition hover:border-pink hover:text-pink">
+            🎤 먼저 불러보기
+          </a>
+        </SectionTitle>
+        <div className="grid gap-3 sm:grid-cols-2">
+          {FEATURES.map((feature, index) => (
+            <Reveal key={feature.title} delay={(index % 2) * 60 + Math.floor(index / 2) * 60}>
+              <article className="group relative flex h-full gap-4 overflow-hidden rounded-2xl border border-white/10 bg-white/[0.035] p-4 transition duration-300 hover:-translate-y-1 hover:border-white/25">
+                <div
+                  className="pointer-events-none absolute -right-8 -top-8 size-28 rounded-full opacity-20 blur-2xl transition-opacity duration-500 group-hover:opacity-50"
+                  style={{ background: feature.tint }}
+                />
+                <div
+                  className="grid size-12 shrink-0 place-items-center rounded-xl text-2xl transition-transform duration-500 group-hover:rotate-[-8deg] group-hover:scale-110"
+                  style={{ background: `${feature.tint}22`, boxShadow: `0 0 20px ${feature.tint}33` }}
+                >
+                  {feature.icon}
+                </div>
+                <div className="min-w-0">
+                  <h3 className="font-cute text-xl">{feature.title}</h3>
+                  <p className="mt-1 text-sm leading-relaxed text-ink2">{feature.body}</p>
+                </div>
+              </article>
+            </Reveal>
+          ))}
+        </div>
       </div>
-    </section>
+    </Screen>
   );
 }
 
@@ -80,85 +74,93 @@ export function Features() {
 
 export function HowTo() {
   return (
-    <section id="how" className="relative isolate px-4 py-24 sm:py-32">
-      <Glow color="rgba(94,224,184,0.08)" x="85%" y="25%" />
-      <SectionTitle kicker="HOW TO" title="처음 한 번만, 3단계" />
-      <p className="mx-auto mt-4 max-w-2xl text-center text-ink2">조금 낯설 수 있는 건 권한 허용뿐이에요. 한 번 해 두면 다음부턴 음악만 틀면 됩니다.</p>
-      <div className="mx-auto mt-14 grid max-w-6xl gap-6 lg:grid-cols-3">
+    <Screen id="how" glow={{ color: "rgba(94,224,184,0.08)", x: "85%", y: "30%" }}>
+      <SectionTitle kicker="HOW TO" title="처음 한 번만, 3단계">
+        조금 낯설 수 있는 건 권한 허용뿐이에요. 한 번 해 두면 다음부턴 음악만 틀면 됩니다.
+      </SectionTitle>
+      <div className="mt-10 grid gap-5 lg:grid-cols-3">
         <Reveal>
           <Step number="1" title="설치" body="내려받은 DMG 를 열고 CoNo 를 응용 프로그램 폴더로 끌어다 놓으세요. Apple 공증을 받은 앱이라 바로 열려요.">
             <InstallDemo />
           </Step>
         </Reveal>
-        <Reveal delay={120}>
-          <Step
-            number="2"
-            title="권한 허용"
-            body="처음 켜면 macOS 가 물어봐요. 셋 다 허용하면 끝. 설정 › 일반 › 권한에서 언제든 다시 열 수 있어요."
-          >
+        <Reveal delay={100}>
+          <Step number="2" title="권한 허용" body="처음 켜면 macOS 가 물어봐요. 셋 다 허용하면 끝. 설정 › 일반 › 권한에서 언제든 다시 열 수 있어요.">
             <PermissionDemo />
           </Step>
         </Reveal>
-        <Reveal delay={240}>
+        <Reveal delay={200}>
           <Step number="3" title="음악 틀기" body="음악 앱에서 노래를 틀면 CoNo 가 알아서 시작해요. 도크의 채점 버튼을 누르면 마이크 채점까지.">
             <AutoStartDemo />
           </Step>
         </Reveal>
       </div>
+    </Screen>
+  );
+}
 
-      <Reveal className="mx-auto mt-16 max-w-4xl">
-        <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-6 sm:p-8">
-          <h3 className="text-center font-cute text-2xl">리모컨 대신 키보드</h3>
-          <div className="mt-6 grid gap-3 sm:grid-cols-2">
+const SHORTCUTS: [string[], string][] = [
+  [["Space"], "재생 · 일시정지"],
+  [["Esc"], "곡 끝내기 (채점 중이면 점수)"],
+  [["↑", "↓"], "키 반음씩 올리고 내리기"],
+  [["K"], "내 키 (내 목소리에 맞추기)"],
+  [["1", "2", "3"], "반주 · 보컬 · 원곡"],
+  [["[", "]"], "가사가 늦거나 빠를 때"],
+  [["→"], "간주 점프"],
+  [["⌘", ","], "설정"],
+];
+
+/** 리모컨 대신 키보드 + 알아 두면 좋은 것 */
+export function Shortcuts() {
+  return (
+    <Screen glow={{ color: "rgba(255,204,92,0.07)", x: "20%", y: "60%" }}>
+      <div className="grid items-center gap-10 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.5fr)]">
+        <div>
+          <SectionTitle kicker="REMOTE" title="리모컨 대신 키보드" align="left">
+            노래하면서도 한 손으로. 노래방 리모컨에 있던 버튼이 다 키보드에 있어요.
+          </SectionTitle>
+          <div className="mt-8 space-y-3">
             {[
-              [["Space"], "재생 · 일시정지"],
-              [["Esc"], "곡 끝내기 (채점 중이면 점수)"],
-              [["↑", "↓"], "키 반음씩 올리고 내리기"],
-              [["K"], "내 키 (내 목소리에 맞추기)"],
-              [["1", "2", "3"], "반주 · 보컬 · 원곡"],
-              [["[", "]"], "가사가 늦거나 빠를 때"],
-              [["→"], "간주 점프"],
-              [["⌘", ","], "설정"],
-            ].map(([keys, label]) => (
-              <div key={label as string} className="flex items-center gap-3 rounded-2xl bg-black/20 px-4 py-3">
+              ["🎧 블루투스 이어폰", "화면이 소리보다 빠르면 설정 › 가사 › 화면 싱크를 +150~250ms 로"],
+              ["🔈 스피커로도 OK", "채점할 땐 마이크를 입 가까이. 반주가 새는 양은 CoNo 가 재서 걸러요"],
+              ["⚡️ Apple Silicon 권장", "AI 반주는 M1 이상에서 가장 부드러워요"],
+            ].map(([title, body]) => (
+              <div key={title} className="rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3">
+                <p className="font-cute text-lg">{title}</p>
+                <p className="mt-0.5 text-sm leading-relaxed text-ink2">{body}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+        <Reveal>
+          <div className="grid gap-3 rounded-3xl border border-white/10 bg-white/[0.03] p-5 sm:grid-cols-2 sm:p-6">
+            {SHORTCUTS.map(([keys, label]) => (
+              <div key={label} className="flex items-center gap-3 rounded-2xl bg-black/20 px-4 py-3.5">
                 <span className="flex shrink-0 gap-1.5">
-                  {(keys as string[]).map((key) => (
+                  {keys.map((key) => (
                     <kbd
                       key={key}
-                      className="min-w-9 rounded-lg border border-white/20 border-b-4 bg-white/10 px-2 py-1 text-center font-sans text-sm font-bold shadow-[0_2px_0_rgba(0,0,0,0.4)] transition active:translate-y-0.5 active:border-b-2"
+                      className="min-w-10 rounded-lg border border-white/20 border-b-4 bg-white/10 px-2 py-1.5 text-center font-sans text-base font-bold shadow-[0_2px_0_rgba(0,0,0,0.4)] transition active:translate-y-0.5 active:border-b-2"
                     >
                       {key}
                     </kbd>
                   ))}
                 </span>
-                <span className="text-sm text-ink2">{label}</span>
+                <span className="text-[15px] text-ink2">{label}</span>
               </div>
             ))}
           </div>
-        </div>
-      </Reveal>
-
-      <Reveal className="mx-auto mt-8 grid max-w-4xl gap-3 sm:grid-cols-3">
-        {[
-          ["🎧 블루투스 이어폰", "화면이 소리보다 빠르면 설정 › 가사 › 화면 싱크를 +150~250ms 로"],
-          ["🔈 스피커로도 OK", "채점할 땐 마이크를 입 가까이. 반주가 새는 양은 CoNo 가 재서 걸러요"],
-          ["⚡️ Apple Silicon 권장", "AI 반주는 M1 이상에서 가장 부드러워요"],
-        ].map(([title, body]) => (
-          <div key={title} className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
-            <p className="font-cute text-lg">{title}</p>
-            <p className="mt-1 text-sm leading-relaxed text-ink2">{body}</p>
-          </div>
-        ))}
-      </Reveal>
-    </section>
+        </Reveal>
+      </div>
+    </Screen>
   );
 }
 
 function Step({ number, title, body, children }: { number: string; title: string; body: string; children: ReactNode }) {
   return (
     <article className="flex h-full flex-col overflow-hidden rounded-3xl border border-white/10 bg-gradient-to-b from-white/[0.06] to-white/[0.02]">
-      <div className="relative grid h-56 place-items-center overflow-hidden bg-black/25">{children}</div>
-      <div className="flex-1 p-6">
+      <div className="relative grid h-48 place-items-center overflow-hidden bg-black/25">{children}</div>
+      <div className="flex-1 p-5">
         <h3 className="flex items-baseline gap-3 font-cute text-2xl">
           <span className="font-display text-3xl text-pink/80">{number}</span>
           {title}
@@ -245,14 +247,13 @@ function AutoStartDemo() {
 
 export function Videos() {
   return (
-    <section className="relative isolate px-4 py-24 sm:py-32">
-      <Glow color="rgba(92,199,255,0.08)" x="20%" y="60%" />
+    <Screen glow={{ color: "rgba(92,199,255,0.08)", x: "20%", y: "60%" }}>
       <SectionTitle kicker="WATCH" title="영상으로 보기" />
-      <div className="mx-auto mt-14 grid max-w-6xl gap-6 md:grid-cols-2">
+      <div className="mt-10 grid gap-6 md:grid-cols-2">
         {videos.map((video, index) => (
           <Reveal key={video.id} delay={index * 120}>
             <figure className="overflow-hidden rounded-3xl border border-white/10 bg-black/40">
-              <div className="relative aspect-video">
+              <div className="relative aspect-video max-h-[52dvh] w-full">
                 {video.src ? (
                   video.src.includes("youtube") ? (
                     <iframe src={video.src} title={video.title} className="absolute inset-0 size-full" allow="autoplay; encrypted-media; picture-in-picture" allowFullScreen />
@@ -271,7 +272,7 @@ export function Videos() {
           </Reveal>
         ))}
       </div>
-    </section>
+    </Screen>
   );
 }
 
@@ -301,33 +302,35 @@ export function ChallengeTeaser() {
     ["5", "고음불가", 91],
   ] as const;
   return (
-    <section className="relative px-4 py-24 sm:py-32">
-      <SectionTitle kicker="COMING SOON" title="이번 주 챌린지 곡, 1등은 누구?" />
-      <p className="mx-auto mt-4 max-w-2xl text-center text-ink2">
-        같은 곡을 불러 점수를 겨루는 챌린지를 준비하고 있어요. 앱에서 받은 점수를 한 번에 올리고, 친구에게 도전장을 보내세요.
-      </p>
-      <Reveal className="relative mx-auto mt-12 max-w-xl">
-        <div className="rounded-3xl border border-gold/30 bg-gradient-to-b from-gold/10 to-transparent p-6 shadow-[0_0_60px_rgba(255,204,92,0.15)]">
-          <p className="text-center font-cute text-lg text-gold">🎤 이번 주: 〈우리 집 무대〉</p>
-          <ol className="mt-5 space-y-2 blur-[3px]" aria-hidden>
-            {rows.map(([rank, name, score]) => (
-              <li key={name} className="flex items-center justify-between rounded-xl bg-black/30 px-4 py-3">
-                <span className="flex items-center gap-3">
-                  <span className="w-6 text-center font-display">{rank}</span>
-                  {name}
-                </span>
-                <span className="font-display text-xl text-gold">{score}</span>
-              </li>
-            ))}
-          </ol>
-        </div>
-        <div className="absolute inset-0 grid place-items-center">
-          <a href="#feedback" className="rounded-full bg-gold px-6 py-3 font-cute text-lg text-night shadow-[0_0_30px_rgba(255,204,92,0.6)] transition hover:scale-105">
+    <Screen glow={{ color: "rgba(255,204,92,0.09)", x: "75%", y: "50%" }}>
+      <div className="grid items-center gap-10 lg:grid-cols-2">
+        <SectionTitle kicker="COMING SOON" title="이번 주 챌린지 곡, 1등은 누구?" align="left">
+          <p>같은 곡을 불러 점수를 겨루는 챌린지를 준비하고 있어요. 앱에서 받은 점수를 한 번에 올리고, 친구에게 도전장을 보내세요.</p>
+          <a href="#feedback" className="mt-6 inline-block rounded-full bg-gold px-6 py-3 font-cute text-lg text-night shadow-[0_0_30px_rgba(255,204,92,0.6)] transition hover:scale-105">
             소식 먼저 받기 →
           </a>
-        </div>
-      </Reveal>
-    </section>
+        </SectionTitle>
+        <Reveal className="relative">
+          <div className="rounded-3xl border border-gold/30 bg-gradient-to-b from-gold/10 to-transparent p-6 shadow-[0_0_60px_rgba(255,204,92,0.15)]">
+            <p className="text-center font-cute text-lg text-gold">🎤 이번 주: 〈우리 집 무대〉</p>
+            <ol className="mt-5 space-y-2 blur-[3px]" aria-hidden>
+              {rows.map(([rank, name, score]) => (
+                <li key={name} className="flex items-center justify-between rounded-xl bg-black/30 px-4 py-3">
+                  <span className="flex items-center gap-3">
+                    <span className="w-6 text-center font-display">{rank}</span>
+                    {name}
+                  </span>
+                  <span className="font-display text-xl text-gold">{score}</span>
+                </li>
+              ))}
+            </ol>
+          </div>
+          <div className="absolute inset-0 grid place-items-center">
+            <span className="neon neon-gold rotate-[-6deg] font-display text-4xl">곧 열려요</span>
+          </div>
+        </Reveal>
+      </div>
+    </Screen>
   );
 }
 
@@ -347,10 +350,12 @@ const FAQ: [string, string][] = [
 export function Faq() {
   const [open, setOpen] = useState<number | null>(0);
   return (
-    <section id="faq" className="relative isolate px-4 py-24 sm:py-32">
-      <Glow color="rgba(184,140,255,0.08)" x="80%" y="40%" />
-      <SectionTitle kicker="FAQ" title="자주 묻는 질문" />
-      <div className="mx-auto mt-12 max-w-3xl space-y-3">
+    <Screen id="faq" glow={{ color: "rgba(184,140,255,0.08)", x: "80%", y: "40%" }}>
+      <div className="grid items-start gap-10 lg:grid-cols-[minmax(0,0.7fr)_minmax(0,1.6fr)]">
+      <SectionTitle kicker="FAQ" title="자주 묻는 질문" align="left">
+        <p>더 궁금한 건 아래 의견으로 남겨 주세요. 하나하나 답해 드려요.</p>
+      </SectionTitle>
+      <div className="space-y-2.5">
         {FAQ.map(([question, answer], index) => {
           const isOpen = open === index;
           return (
@@ -359,7 +364,7 @@ export function Faq() {
                 type="button"
                 onClick={() => setOpen(isOpen ? null : index)}
                 aria-expanded={isOpen}
-                className="flex w-full items-center justify-between gap-4 px-5 py-4 text-left"
+                className="flex w-full items-center justify-between gap-4 px-5 py-3.5 text-left"
               >
                 <span className="font-cute text-lg">{question}</span>
                 <span className={`text-xl text-pink transition-transform duration-300 ${isOpen ? "rotate-45" : ""}`}>+</span>
@@ -373,7 +378,8 @@ export function Faq() {
           );
         })}
       </div>
-    </section>
+      </div>
+    </Screen>
   );
 }
 
@@ -382,8 +388,7 @@ export function Faq() {
 export function Download() {
   const [copied, setCopied] = useState(false);
   return (
-    <section id="download" className="relative overflow-hidden px-4 py-28 sm:py-36">
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_center,rgba(255,204,92,0.14),transparent_60%)]" />
+    <Screen id="download" glow={{ color: "rgba(255,204,92,0.14)", x: "50%", y: "50%" }}>
       <div className="relative mx-auto max-w-3xl text-center">
         {/* 배경 없는 마이크 그림이 무대 빛에 녹아든다 */}
         <Image
@@ -438,7 +443,7 @@ export function Download() {
           에서
         </p>
       </div>
-    </section>
+    </Screen>
   );
 }
 
@@ -475,8 +480,8 @@ function SendToMac() {
 
 export function Footer() {
   return (
-    <footer className="border-t border-white/10 px-4 py-10 text-sm text-faint">
-      <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-4 sm:flex-row">
+    <footer className="snap-end border-t border-white/10 py-10 text-sm text-faint">
+      <div className={`${CONTAINER} flex flex-col items-center justify-between gap-4 sm:flex-row`}>
         <div className="flex items-center gap-3">
           <Image src="/logo.png" alt="" width={28} height={28} />
           <span>

@@ -6,7 +6,7 @@
 
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { release } from "@/lib/release";
-import { SectionTitle } from "./TryItLive";
+import { Screen, SectionTitle } from "./Screen";
 
 const MOODS = [
   { value: 1, emoji: "😴", label: "글쎄요" },
@@ -52,13 +52,16 @@ export function Feedback() {
   };
 
   return (
-    <section id="feedback" className="relative px-4 py-24 sm:py-32">
-      <SectionTitle kicker="FEEDBACK" title="써 보니 어떠세요?" />
-      <p className="mx-auto mt-4 max-w-xl text-center text-ink2">
-        불편한 점, 바라는 기능, 칭찬 한 스푼 — 무엇이든 좋아요. 이메일을 남기면 챌린지·새 버전 소식을 먼저 보내 드려요.
-      </p>
+    <Screen id="feedback" glow={{ color: "rgba(255,143,176,0.09)", x: "25%", y: "50%" }}>
+      <div className="grid items-center gap-10 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.3fr)]">
+      <SectionTitle kicker="FEEDBACK" title="써 보니 어떠세요?" align="left">
+        <p>불편한 점, 바라는 기능, 칭찬 한 스푼 — 무엇이든 좋아요. 이메일을 남기면 챌린지·새 버전 소식을 먼저 보내 드려요.</p>
+        <p className="mt-6 text-6xl" style={{ animation: "floaty 4s ease-in-out infinite" }} aria-hidden>
+          💌
+        </p>
+      </SectionTitle>
 
-      <div className="mx-auto mt-12 max-w-2xl">
+      <div>
         {status.kind === "sent" ? (
           <div className="rounded-3xl border border-mint/40 bg-mint/10 p-10 text-center">
             <p className="text-6xl" style={{ animation: "floaty 3s ease-in-out infinite" }}>
@@ -68,7 +71,7 @@ export function Feedback() {
             <p className="mt-2 text-ink2">하나하나 다 읽고 있어요.</p>
           </div>
         ) : (
-          <form onSubmit={submit} className="space-y-6 rounded-3xl border border-white/10 bg-white/[0.03] p-6 sm:p-8" noValidate>
+          <form onSubmit={submit} className="space-y-5 rounded-3xl border border-white/10 bg-white/[0.03] p-6 sm:p-7" noValidate>
             <fieldset>
               <legend className="font-cute text-lg">지금 기분은?</legend>
               <div className="mt-3 grid grid-cols-5 gap-2">
@@ -101,7 +104,7 @@ export function Feedback() {
                 value={message}
                 onChange={(event) => setMessage(event.target.value)}
                 maxLength={2000}
-                rows={4}
+                rows={3}
                 placeholder="예: 가사 싱크가 딱 맞아서 놀랐어요 / 멜론에서도 가사가 나오면 좋겠어요"
                 className="mt-2 w-full resize-y rounded-2xl border border-white/10 bg-black/30 px-4 py-3 text-base text-ink placeholder:text-faint focus:border-pink focus:outline-none"
               />
@@ -155,6 +158,7 @@ export function Feedback() {
           </form>
         )}
       </div>
-    </section>
+      </div>
+    </Screen>
   );
 }

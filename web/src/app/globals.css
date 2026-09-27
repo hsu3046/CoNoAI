@@ -20,8 +20,9 @@
 
 html {
   scroll-behavior: smooth;
-  /* 메뉴로 이동할 때 고정 헤더(64px)에 제목이 가리지 않게 */
-  scroll-padding-top: 72px;
+  /* 작은 화면·터치: 섹션 시작 가까이에서만 살짝 걸린다 (proximity).
+     넓은 화면은 SectionPager 가 휠·키보드 한 번에 한 섹션씩 넘긴다 — CSS mandatory 는 마우스 휠 한 칸을 되돌려 갇힌다 */
+  scroll-snap-type: y proximity;
   /* 페이지마다 스크롤바 유무로 가운데 정렬이 밀리지 않게 */
   scrollbar-gutter: stable;
 }
@@ -40,6 +41,12 @@ body {
 
 ::selection {
   background: color-mix(in srgb, var(--color-pink) 45%, transparent);
+}
+
+@media (min-width: 1024px) and (min-height: 700px) {
+  html {
+    scroll-snap-type: none;
+  }
 }
 
 /* 네온 글씨: 흰 심 + 색 번짐 */

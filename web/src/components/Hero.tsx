@@ -9,6 +9,7 @@ import Image from "next/image";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useInView } from "@/fx/hooks";
 import { release } from "@/lib/release";
+import { CONTAINER } from "./Screen";
 
 type Phase = "idle" | "dark" | "sign" | "stamp" | "party";
 
@@ -39,6 +40,73 @@ export function Hero() {
   }, []);
   const clearTimers = useCallback(() => timers.current.forEach(window.clearTimeout), []);
 
+  // 빨리 감기: 연출이 끝나기 전에 스크롤하면 남은 단계를 짧은 간격으로 이어 붙인다 (약 0.9초)
+  const [fast, setFast] = useState(false);
+  const phaseRef = useRef<Phase>("idle");
+  useEffect(() => {
+    phaseRef.current = phase;
+  }, [phase]);
+  const fastForward = useCallback(() => {
+    clearTimers();
+    started.current = true;
+    setFast(true);
+    const current = SEQUENCE.findIndex(([p]) => p === phaseRef.current);
+    const remaining = SEQUENCE.slice(current + 1);
+    timers.current = remaining.map(([next], index) => window.setTimeout(() => setPhase(next), 40 + index * 200));
+    // 마지막 단계 뒤 네온이 다 켜질 때까지
+    return 40 + Math.max(0, remaining.length - 1) * 200 + 380;
+  }, [clearTimers]);
+
+  // 연출이 끝나기 전에 스크롤하면: 딱 한 번, 스크롤을 잠깐 붙잡고 빨리 감은 뒤 스토리로 부드럽게 내려간다.
+  // 스크롤바를 끌어 붙잡을 수 없으면 바로 마지막 장면으로.
+  useEffect(() => {
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    let intercepted = false;
+    let holding = false;
+    const keys = new Set([" ", "ArrowDown", "PageDown", "End"]);
+    const cleanup = () => {
+      window.removeEventListener("wheel", onIntent);
+      window.removeEventListener("touchmove", onIntent);
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("scroll", onScroll);
+    };
+    const onIntent = (event: Event) => {
+      if (holding) {
+        event.preventDefault();
+        return;
+      }
+      if (intercepted || phaseRef.current === "party" || window.scrollY > 40) return;
+      if (event instanceof WheelEvent && event.deltaY <= 0) return; // 위로 굴리면 그대로
+      intercepted = true;
+      holding = true;
+      event.preventDefault();
+      const settle = fastForward();
+      window.setTimeout(() => {
+        holding = false;
+        cleanup();
+        document.getElementById("story")?.scrollIntoView({ behavior: "smooth" });
+      }, settle + 150);
+    };
+    const onKey = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (target?.closest("input, textarea, button, a, [contenteditable]")) return;
+      if (keys.has(event.key)) onIntent(event);
+    };
+    const onScroll = () => {
+      if (intercepted || phaseRef.current === "party" || window.scrollY <= 40) return;
+      intercepted = true;
+      clearTimers();
+      started.current = true;
+      setPhase("party");
+      cleanup();
+    };
+    window.addEventListener("wheel", onIntent, { passive: false });
+    window.addEventListener("touchmove", onIntent, { passive: false });
+    window.addEventListener("keydown", onKey);
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return cleanup;
+  }, [fastForward, clearTimers]);
+
   // 가만있어도 5초 뒤 시작 (움직임 줄이기면 바로 마지막 장면)
   useEffect(() => {
     const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -63,7 +131,7 @@ export function Hero() {
   return (
     <section
       ref={sectionRef}
-      className={`relative isolate flex min-h-[max(100dvh,720px)] flex-col items-center justify-center overflow-hidden px-4 pb-16 pt-28 ${inView ? "" : "anim-paused"}`}
+      className={`relative isolate flex min-h-[max(100dvh,720px)] snap-start flex-col items-center justify-center overflow-hidden px-4 pb-16 pt-28 ${inView ? "" : "anim-paused"}`}
     >
       {/* 방: 오후 햇살 → 소등 → 노래방 */}
       <div
@@ -106,7 +174,7 @@ export function Hero() {
         </p>
         <h1 className="sr-only">코인 노래방 No! 집에서 나만의 노래방 — CoNo</h1>
         <div className={`relative mx-auto transition-all duration-500 ${lit ? "h-auto opacity-100" : "pointer-events-none h-0 opacity-0"}`} aria-hidden>
-          <NeonTube text="코인 노래방" color="#ff8fb0" drawn={at("sign")} />
+          <NeonTube text="코인 노래방" color="#ff8fb0" drawn={at("sign")} fast={fast} />
           {/* "No!": 같은 네온관, 빨간 빛 — 간판 오른쪽 위에 따로 걸린 작은 간판처럼 */}
           <span
             className={`absolute right-[-1%] top-[-24%] font-display text-[clamp(40px,8.4vw,104px)] leading-none ${at("stamp") ? "flicker-once" : ""}`}
@@ -174,7 +242,7 @@ export function Hero() {
 }
 
 /** 네온관: 글자 윤곽이 그려진 뒤 빛이 들어온다 */
-function NeonTube({ text, color, drawn }: { text: string; color: string; drawn: boolean }) {
+function NeonTube({ text, color, drawn, fast }: { text: string; color: string; drawn: boolean; fast: boolean }) {
   return (
     <svg viewBox="0 0 1000 190" className="mx-auto w-full max-w-4xl overflow-visible" role="presentation">
       <defs>
@@ -201,7 +269,7 @@ function NeonTube({ text, color, drawn }: { text: string; color: string; drawn: 
         style={{
           strokeDasharray: 2600,
           strokeDashoffset: drawn ? 0 : 2600,
-          transition: "stroke-dashoffset 1.3s ease-in-out, fill 0.4s ease 1.1s",
+          transition: fast ? "stroke-dashoffset 0.45s ease-out, fill 0.2s ease 0.35s" : "stroke-dashoffset 1.3s ease-in-out, fill 0.4s ease 1.1s",
           paintOrder: "stroke",
         }}
       >
@@ -368,7 +436,7 @@ export function SiteHeader() {
     <header
       className={`fixed inset-x-0 top-0 z-50 transition-colors duration-300 ${scrolled ? "border-b border-white/10 bg-night/80 backdrop-blur-md" : ""}`}
     >
-      <nav className="mx-auto flex h-16 max-w-6xl items-center justify-between px-4 sm:px-6">
+      <nav className={`${CONTAINER} flex h-16 items-center justify-between`}>
         <a href="#" className="flex items-center gap-2.5">
           <Image src="/logo.png" alt="" width={34} height={34} className="drop-shadow-[0_0_10px_rgba(94,224,184,0.45)]" />
           <span className="font-display text-xl tracking-wide">CoNo</span>

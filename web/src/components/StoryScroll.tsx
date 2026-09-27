@@ -83,7 +83,7 @@ export function StoryScroll() {
       const rect = section.getBoundingClientRect();
       const travel = rect.height - window.innerHeight;
       progressRef.current = travel > 0 ? clamp(-rect.top / travel) : 0;
-      const next = Math.min(3, Math.floor(progressRef.current * 4 * 0.9999));
+      const next = Math.min(3, Math.floor(sceneProgress(progressRef.current) * 0.9999));
       setScene((current) => (current === next ? current : next));
     };
     updateProgress();
@@ -104,7 +104,7 @@ export function StoryScroll() {
       frame = requestAnimationFrame(draw);
       if (width === 0) return;
       const t = (now - start) / 1000;
-      const p = progressRef.current * 4;
+      const p = sceneProgress(progressRef.current);
       ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
       ctx.clearRect(0, 0, width, height);
 
@@ -112,9 +112,10 @@ export function StoryScroll() {
       const wave = clamp(2 - p); // ①② 파형 (③부터 사라짐)
       const peel = clamp(p - 1); // ② 보컬 떼어내기
       const bar = clamp(p - 1.9); // ③④ 음정 바
-      const sing = clamp(p - 2.9); // ④ 내 목소리
-      if (sing > 0.2 && fourthEnteredAt === null) fourthEnteredAt = t;
-      if (sing <= 0.05) fourthEnteredAt = null;
+      const sing = clamp((p - 2.55) / 0.35); // ③ 끝무렵부터 내 목소리
+      // ④ 에 들어서는 순간 점수가 92에 닿으며 바로 불꽃 (시간이 아니라 스크롤에 맞춘다 — 기다려야 터지면 지나쳐 버린다)
+      if (p >= 3 && fourthEnteredAt === null) fourthEnteredAt = t;
+      if (p < 2.95) fourthEnteredAt = null;
 
       // 파형·음정 바는 무대 영역에, 불꽃은 화면 전체에
       ctx.save();
@@ -123,16 +124,16 @@ export function StoryScroll() {
       if (bar > 0) drawPitchBar(ctx, stage.w, stage.h, t, bar, sing);
       ctx.restore();
       if (fourthEnteredAt !== null) {
-        const since = t - fourthEnteredAt;
-        const local = (since - 2.2) % 7;
-        if (since > 2.2) {
-          drawFireworks(ctx, show, local, width, height);
-          drawConfetti(ctx, local, width, height, 5);
-        }
-        const score = Math.min(92, Math.floor(92 * easeOut(Math.min(1, since / 2.2))));
+        const local = (t - fourthEnteredAt) % 7;
+        drawFireworks(ctx, show, local, width, height);
+        drawConfetti(ctx, local, width, height, 5);
+      }
+      // 점수: ③→④ 로 넘어가는 스크롤 동안 올라간다
+      const count = clamp((p - 2.72) / 0.28);
+      if (count > 0) {
         ctx.save();
         ctx.translate(stage.x, stage.y);
-        drawScore(ctx, stage.w, stage.h, score, sing);
+        drawScore(ctx, stage.w, stage.h, Math.floor(92 * easeOut(count)), Math.min(1, count * 3));
         ctx.restore();
       }
     };
@@ -152,12 +153,12 @@ export function StoryScroll() {
   }, []);
 
   return (
-    <section id="story" ref={sectionRef} className="relative h-[400vh]">
+    <section id="story" ref={sectionRef} className="relative h-[440vh] snap-start">
       <div className="sticky top-0 flex h-dvh flex-col overflow-hidden lg:flex-row">
         <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_70%_50%,#1f1238,transparent_70%)]" />
         <canvas ref={canvasRef} className="pointer-events-none absolute inset-0 size-full" aria-label="CoNo 가 노래를 노래방으로 바꾸는 과정 애니메이션" role="img" />
         {/* 설명 */}
-        <div className="relative z-10 flex shrink-0 flex-col justify-end px-6 pb-4 pt-24 lg:w-[42%] lg:justify-center lg:py-0 lg:pl-[max(24px,calc((100vw-1152px)/2))]">
+        <div className="relative z-10 flex shrink-0 flex-col justify-end px-6 pb-4 pt-24 lg:w-[42%] lg:justify-center lg:py-0 lg:pl-[calc(max(0px,(100vw-1280px)/2)+48px)]">
           <div className="mb-6 flex gap-2" aria-hidden>
             {SCENES.map((item, index) => (
               <span key={item.step} className={`h-1.5 rounded-full transition-all duration-500 ${index === scene ? "w-10 bg-pink" : "w-4 bg-white/15"}`} />
@@ -192,6 +193,17 @@ export function StoryScroll() {
 }
 
 const clamp = (value: number) => Math.min(1, Math.max(0, value));
+
+/** 섹션 스크롤 진행도(0…1) → 장면 진행도(0…4). ④(불꽃)에 스크롤을 더 준다 — 지나치기 전에 충분히 보게 */
+const SCENE_BOUNDS = [0, 0.2, 0.4, 0.6, 1];
+function sceneProgress(progress: number): number {
+  for (let index = 0; index < 4; index++) {
+    const from = SCENE_BOUNDS[index];
+    const to = SCENE_BOUNDS[index + 1];
+    if (progress < to || index === 3) return index + clamp((progress - from) / (to - from));
+  }
+  return 4;
+}
 const easeOut = (x: number) => 1 - Math.pow(1 - x, 3);
 const easeInOut = (x: number) => (x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2);
 

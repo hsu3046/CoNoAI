@@ -13,6 +13,7 @@ import { loadSfx } from "@/fx/sfx";
 import { BEAT_SECONDS, COUNT_IN_BEATS, SONG_SECONDS, hzToMidi, lyricLines, melody, type MelodyNote } from "@/lib/melody";
 import { detectPitch, foldedOffset, scoreSong, type NoteTally, type SongScore } from "@/lib/pitch";
 import { ScoreShow } from "./ScoreShow";
+import { Screen, SectionTitle } from "./Screen";
 
 type Phase = "idle" | "starting" | "running" | "done" | "error";
 
@@ -186,16 +187,19 @@ export function TryItLive() {
   }, [phase]);
 
   return (
-    <section id="try" ref={sectionRef} className="relative px-4 py-24 sm:py-32">
-      <div className="mx-auto max-w-5xl">
-        <SectionTitle kicker="TRY IT NOW" title="설치 전에, 지금 여기서 불러 보세요" />
-        <p className="mx-auto mt-4 max-w-2xl text-center text-ink2">
+    <Screen id="try" innerRef={sectionRef} glow={{ color: "rgba(255,143,176,0.1)", x: "70%", y: "55%" }}>
+      <div className="grid items-center gap-10 lg:grid-cols-[minmax(0,0.8fr)_minmax(0,1.7fr)]">
+        <SectionTitle kicker="TRY IT NOW" title="설치 전에, 지금 여기서 불러 보세요" align="left">
           CoNo 가 직접 만든 20초짜리 곡 <b className="text-ink">〈우리 집 무대〉</b>. 마이크를 허용하고 금색 선을 음표 위에 올려 보세요.
-          높든 낮든 옥타브는 상관없어요. 목소리는 이 브라우저 밖으로 나가지 않아요.
-        </p>
+          <ul className="mt-5 space-y-2 text-sm">
+            <li>🎵 높든 낮든 — 옥타브는 상관없어요</li>
+            <li>🎧 이어폰이 더 정확해요 · 스피커도 괜찮아요</li>
+            <li>🔒 목소리는 이 브라우저 밖으로 나가지 않아요</li>
+          </ul>
+        </SectionTitle>
 
-        <div className="relative mt-10 overflow-hidden rounded-[28px] border border-white/10 bg-gradient-to-b from-[#1b1030] to-[#0e0f1f] p-3 shadow-[0_30px_120px_-20px_rgba(255,143,176,0.35)] sm:p-5">
-          <canvas ref={canvasRef} className="block h-[360px] w-full sm:h-[440px]" role="img" aria-label="체험곡 음정 바와 가사" />
+        <div className="relative overflow-hidden rounded-[28px] border border-white/10 bg-gradient-to-b from-[#1b1030] to-[#0e0f1f] p-3 shadow-[0_30px_120px_-20px_rgba(255,143,176,0.35)] sm:p-5">
+          <canvas ref={canvasRef} className="block h-[360px] w-full sm:h-[min(520px,62dvh)]" role="img" aria-label="체험곡 음정 바와 가사" />
 
           {phase !== "running" && (
             <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 bg-night/55 px-6 text-center backdrop-blur-[2px]">
@@ -212,7 +216,6 @@ export function TryItLive() {
                 <input type="checkbox" checked={guide} onChange={(event) => setGuide(event.target.checked)} className="size-4 accent-pink" />
                 가이드 멜로디 같이 듣기
               </label>
-              <p className="text-xs text-faint">이어폰을 끼면 더 정확해요 · 스피커도 괜찮아요 (브라우저가 반주를 걸러 줘요)</p>
               {error && <p className="max-w-md rounded-xl bg-stop/15 px-4 py-2 text-sm text-stop">{error}</p>}
             </div>
           )}
@@ -230,16 +233,7 @@ export function TryItLive() {
           }}
         />
       )}
-    </section>
-  );
-}
-
-export function SectionTitle({ kicker, title }: { kicker: string; title: string }) {
-  return (
-    <div className="text-center">
-      <p className="font-display text-sm tracking-[0.3em] text-pink">{kicker}</p>
-      <h2 className="mt-3 text-balance font-cute text-4xl leading-tight sm:text-5xl">{title}</h2>
-    </div>
+    </Screen>
   );
 }
 
