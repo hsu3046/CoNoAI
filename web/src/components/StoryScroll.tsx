@@ -14,7 +14,7 @@ const SCENES = [
     step: "01",
     title: "음악 앱에서, 아무 노래나 ▶",
     body: "Apple Music · YouTube · Spotify · 멜론… 소리만 나면 뭐든 OK! CoNo가 반주만 남기고, 가사 표시와 채점까지 진행합니다.",
-    chips: ["Apple Music", "YouTube", "Spotify", "멜론", "브라우저 영상"],
+    chips: ["Apple Music", "YouTube", "Spotify", "멜론", "그 외 다양한 음악앱"],
   },
   {
     step: "02",
