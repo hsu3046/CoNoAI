@@ -25,7 +25,7 @@ function Reveal({ children, delay = 0, className = "" }: { children: ReactNode; 
 const FEATURES: { icon: string; title: string; body: string; tint: string }[] = [
   { icon: "🎧", title: "어떤 앱이든", body: "Apple Music, 브라우저의 YouTube, Spotify, 멜론… Mac에서 소리가 나면 노래방이 됩니다.", tint: "#5cc7ff" },
   { icon: "🪄", title: "AI 반주", body: "내 컴퓨터 안에서 노래의 보컬만 제거합니다. 곡을 다운로드하거나 전송하지 않아요.", tint: "#ff8fb0" },
-  { icon: "🎼", title: "가사 표시 및 싱크", body: "여러 가사 저장소에서 찾아 목소리에 맞춰 자동 싱크. Apple Music 계정을 연결하면 음절 단위까지.", tint: "#5ee0b8" },
+  { icon: "🎼", title: "가사 표시 및 싱크", body: "가사를 찾아와 목소리에 맞춰 자동 싱크. Apple Music 계정을 연결하면 음절 단위까지.", tint: "#5ee0b8" },
   { icon: "📈", title: "원곡 음정 바", body: "AI가 원곡 가수의 음정을 자동으로 읽어 막대로 보여 줘요. 어디서 올리고 내릴지 한눈에.", tint: "#ffcc5c" },
   { icon: "🎚️", title: "내 키 · 가이드 보컬", body: "원곡 음역을 재서 내 목소리에 맞는 키로. 헷갈리는 부분은 원곡 목소리를 살짝 섞어서.", tint: "#b88cff" },
   { icon: "🏆", title: "정확한 AI 채점", body: "마이크로 부르면 AI가 정확하게 실시간 채점. 100점 만점에 도전해보세요!", tint: "#ff734d" },
@@ -72,12 +72,12 @@ export function Features() {
 export function HowTo() {
   return (
     <Screen id="how" glow={{ color: "rgba(94,224,184,0.08)", x: "85%", y: "30%" }}>
-      <SectionTitle kicker="HOW TO" title="처음 한 번만, 3단계">
-        조금 낯설 수 있는 건 권한 허용뿐이에요. 한 번 해 두면 다음부턴 음악만 틀면 됩니다.
+      <SectionTitle kicker="HOW TO" title="설치 방법">
+        지금은 Mac에서만 사용할 수 있어요. Windows나 스마트폰은 조금 기다려 주세요.
       </SectionTitle>
       <div className="mt-10 grid gap-5 lg:grid-cols-3">
         <Reveal>
-          <Step number="1" title="설치" body="내려받은 DMG를 열고 CoNo를 응용 프로그램 폴더로 끌어다 놓으세요. Apple 공증을 받은 앱이라 바로 열려요.">
+          <Step number="1" title="다운로드 및 설치" body="다운로드한 DMG 파일을 열고 CoNo를 응용 프로그램 폴더로 끌어다 놓으세요. Apple 공증을 받은 앱이라 바로 열려요.">
             <InstallDemo />
           </Step>
         </Reveal>
@@ -87,7 +87,7 @@ export function HowTo() {
           </Step>
         </Reveal>
         <Reveal delay={200}>
-          <Step number="3" title="음악 틀기" body="음악 앱에서 노래를 틀면 CoNo가 알아서 시작해요. 도크의 채점 버튼을 누르면 마이크 채점까지.">
+          <Step number="3" title="음악 틀기" body="음악 앱에서 노래를 틀면 CoNo가 알아서 시작해요. 채점 버튼을 누르면 AI 채점이 시작됩니다.">
             <AutoStartDemo />
           </Step>
         </Reveal>
