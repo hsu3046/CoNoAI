@@ -39,9 +39,6 @@ export function Features() {
       <div className="grid items-center gap-10 lg:grid-cols-[minmax(0,0.75fr)_minmax(0,1.8fr)]">
         <SectionTitle kicker="FEATURES" title="노래방 기계가 내 Mac 안으로" align="left">
           <p>따로 곡을 받거나 반주를 찾을 필요 없어요. 늘 쓰던 음악 앱이 그대로 노래방 기계가 됩니다.</p>
-          <a href="#try" className="mt-6 inline-block rounded-full border border-white/20 bg-white/5 px-5 py-2.5 font-cute text-lg text-ink transition hover:border-pink hover:text-pink">
-            🎤 먼저 불러보기
-          </a>
         </SectionTitle>
         <div className="grid gap-3 sm:grid-cols-2">
           {FEATURES.map((feature, index) => (
