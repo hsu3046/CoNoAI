@@ -170,7 +170,7 @@ export function StoryScroll() {
               <span key={item.step} className={`h-1.5 rounded-full transition-all duration-500 ${index === scene ? "w-10 bg-pink" : "w-4 bg-white/15"}`} />
             ))}
           </div>
-          <div className="relative min-h-[230px] sm:min-h-[210px]">
+          <div className="relative min-h-[300px] sm:min-h-[280px]">
             {SCENES.map((item, index) => (
               <article
                 key={item.step}
@@ -179,27 +179,23 @@ export function StoryScroll() {
               >
                 <p className="font-display text-5xl text-pink/80 sm:text-6xl">{item.step}</p>
                 <h2 className="mt-1 font-cute text-3xl sm:text-4xl">{item.title}</h2>
-                <div className="flex items-start gap-5">
-                  <div className="min-w-0">
-                    <p className="mt-3 max-w-md text-base leading-relaxed text-ink2">{item.body}</p>
-                    <div className="mt-4 flex flex-wrap gap-2">
-                      {item.chips.map((chip) => (
-                        <span key={chip} className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-sm text-ink2">
-                          {chip}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                  {index === 1 && (
-                    <GuideSlider
-                      value={guide}
-                      onChange={(value) => {
-                        guideRef.current = value;
-                        setGuide(value);
-                      }}
-                    />
-                  )}
+                <p className="mt-3 max-w-md text-base leading-relaxed text-ink2">{item.body}</p>
+                <div className="mt-4 flex flex-wrap gap-2">
+                  {item.chips.map((chip) => (
+                    <span key={chip} className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-sm text-ink2">
+                      {chip}
+                    </span>
+                  ))}
                 </div>
+                {index === 1 && (
+                  <GuideSlider
+                    value={guide}
+                    onChange={(value) => {
+                      guideRef.current = value;
+                      setGuide(value);
+                    }}
+                  />
+                )}
               </article>
             ))}
           </div>
@@ -215,11 +211,10 @@ export function StoryScroll() {
 function GuideSlider({ value, onChange }: { value: number; onChange: (value: number) => void }) {
   const percent = Math.round(value * 100);
   return (
-    <label className="mt-3 flex w-16 shrink-0 flex-col items-center gap-2 rounded-2xl border border-pink/25 bg-pink/[0.06] px-2 py-3">
-      <span className="text-center font-cute text-xs leading-tight">
-        가이드
-        <br />
-        보컬
+    <label className="mt-5 block max-w-md rounded-2xl border border-pink/25 bg-pink/[0.06] px-4 py-3">
+      <span className="flex items-center justify-between font-cute text-base">
+        <span>가이드 보컬</span>
+        <span className="tabular-nums text-pink">{percent === 0 ? "0% · 반주만" : percent === 100 ? "100% · 원곡처럼" : `${percent}%`}</span>
       </span>
       <input
         type="range"
@@ -228,10 +223,9 @@ function GuideSlider({ value, onChange }: { value: number; onChange: (value: num
         value={percent}
         onChange={(event) => onChange(Number(event.target.value) / 100)}
         aria-label="가이드 보컬 크기"
-        className="guide-range h-24 outline-none focus-visible:ring-2 focus-visible:ring-pink/60"
-        style={{ background: `linear-gradient(to top, #ff8fb0 ${percent}%, rgba(255,255,255,0.12) ${percent}%)` }}
+        className="guide-range mt-2 w-full outline-none focus-visible:ring-2 focus-visible:ring-pink/60"
+        style={{ background: `linear-gradient(to right, #ff8fb0 ${percent}%, rgba(255,255,255,0.12) ${percent}%)` }}
       />
-      <span className="font-cute text-sm tabular-nums text-pink">{percent}%</span>
     </label>
   );
 }
@@ -254,16 +248,17 @@ const easeInOut = (x: number) => (x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x 
 /** 파형: 막대 = 민트 반주 + 분홍 보컬. peel 만큼 보컬이 떨어져 위로 빨려 나간다 */
 function drawWave(ctx: CanvasRenderingContext2D, width: number, height: number, t: number, peel: number, alpha: number, guide: number) {
   const count = Math.max(28, Math.min(72, Math.floor(width / 12)));
-  const gap = width * 0.8 / count;
-  const left = width * 0.1;
   const mid = height * 0.58;
+  // AI 구슬은 파형 오른쪽 끝, 파형 가운데선에. 파형은 설명 문단 왼쪽(24px)부터 구슬 앞까지
+  const left = 24;
+  const cx = width - 24 - 60;
+  const cy = mid;
+  const gap = Math.max(0, cx - 84 - left) / count;
   ctx.save();
   ctx.globalAlpha = alpha;
   // AI 구슬 — 파형 뒤에 (막대가 앞을 지나간다)
   if (peel > 0) {
     ctx.globalAlpha = alpha * clamp(peel * 3);
-    const cx = width * 0.84;
-    const cy = height * 0.22;
     // 빨아들이는 동안 구슬이 부풀며 숨쉰다
     const radius = 56 + 26 * Math.sin(Math.min(1, peel) * Math.PI) + 4 * Math.sin(t * 6);
     const glow = ctx.createRadialGradient(cx, cy, 0, cx, cy, radius);
@@ -307,8 +302,8 @@ function drawWave(ctx: CanvasRenderingContext2D, width: number, height: number, 
       roundRect(ctx, x, startY, w, vocal * 2, w / 2);
     } else if (local < 1) {
       const e = easeInOut(local);
-      const targetX = width * 0.84;
-      const targetY = height * 0.22;
+      const targetX = cx;
+      const targetY = cy;
       const bend = Math.sin(local * Math.PI) * height * 0.12 * (index % 2 ? 1 : -1);
       const fx = x + (targetX - x) * e + bend * 0.3;
       const fy = startY + (targetY - startY) * e - Math.abs(bend);
