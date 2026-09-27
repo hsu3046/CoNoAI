@@ -34,6 +34,13 @@ npm run dev -- --port 3100
 ```
 의견 저장까지 시험하려면 `.env.example` 을 `.env.local` 로 복사해 채운다 (없으면 폼이 "준비 중" 으로 답한다).
 
+## 배포 (Vercel)
+- 주소: **https://cono.aib.vote** (AIB 팀 프로젝트 `cono`, Root Directory = `web`)
+- `main` 에 push 하면 자동 배포 (다른 브랜치는 Preview). 앱(Swift)만 바뀐 push 는 건너뛴다 —
+  `vercel.json` 의 `ignoreCommand` 가 **마지막 성공 배포 커밋(`VERCEL_GIT_PREVIOUS_SHA`) 이후** `web/` 변경을 본다.
+  `HEAD^` 와만 비교하면 여러 커밋을 한 번에 올릴 때 마지막이 앱 커밋이면 사이트 변경을 놓친다. 판단할 수 없으면(이전 배포 없음·커밋 모름) 빌드한다.
+- 배포된 사이트에 검증용 요청을 몰아 보내지 말 것 (방화벽 자동 차단) — 확인은 브라우저로.
+
 ## 의견 저장 (Supabase)
 1. `supabase/migrations/20260927000000_site_feedback.sql` 적용 — RLS 켜고 정책 없음 (service role 만 쓴다)
 2. 환경 변수: `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `FEEDBACK_IP_SALT` (서버 전용)
