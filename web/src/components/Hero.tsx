@@ -230,7 +230,7 @@ export function Hero() {
           <NeonTube text="코인 노래방" color="#ff8fb0" drawn={at("sign")} fast={fast} />
           {/* "No!": 같은 네온관, 빨간 빛 — 간판 오른쪽 위에 따로 걸린 작은 간판처럼 */}
           <span
-            className={`absolute right-[4%] top-[-12%] font-display text-[clamp(32px,6.6vw,82px)] leading-none ${at("stamp") ? "flicker-once" : ""}`}
+            className={`absolute right-[7%] top-[-21%] font-display text-[clamp(32px,6.6vw,82px)] leading-none ${at("stamp") ? "flicker-once" : ""}`}
             style={{
               opacity: at("stamp") ? 1 : 0,
               color: "#fff0f0",
