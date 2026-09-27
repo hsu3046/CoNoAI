@@ -40,7 +40,7 @@ npm run dev -- --port 3100
 3. 봇 방지: 숨은 칸 · 폼 연 뒤 2.5초 · IP 해시별 10분 5건/하루 20건. IP 원문은 저장하지 않는다.
 
 ## 주의
-- **한 화면 = 한 섹션**: `Screen`(min-h-dvh) + `SectionPager`. 넓은 화면(≥1024×700)은 **아래로만** 휠·키 한 번에 한 섹션씩 넘긴다 (위로는 자유 스크롤 — 다시 찾아보는 동작이라 걸면 답답하다). CSS `scroll-snap-type: mandatory` 는 마우스 휠 한 칸(≈100px)을 원래 섹션으로 되돌려 **갇힌다** — 쓰지 말 것. 작은 화면은 CSS proximity 만.
+- **한 화면 = 한 섹션**: `Screen`(min-h-dvh) + `SectionPager`. 마우스·트랙패드(`pointer: fine`)면 창 크기와 관계없이 **아래로만** 휠·키 한 번에 한 섹션씩 넘긴다 (위로는 자유 스크롤 — 다시 찾아보는 동작이라 걸면 답답하다). CSS `scroll-snap` 은 mandatory **든 proximity 든** 화면 높이 섹션에서 마우스 휠 한 칸(≈100px)을 원래 섹션으로 되돌려 **갇힌다** — 마우스에는 쓰지 말 것. 터치(`pointer: coarse`)만 CSS proximity.
 - 화면보다 긴 섹션(스크롤 스토리)은 안쪽 자유 스크롤, 끝에서 다음 섹션으로. 새 섹션이 한 화면을 넘으면 같은 규칙이 적용된다.
 - 첫 화면: 연출이 끝나기 전 스크롤하면 한 번만 붙잡고 빨리 감은 뒤 스토리로 (Hero 가 휠을 먼저 막으면 SectionPager 는 건드리지 않는다).
 - `body` 는 `overflow-x: clip` — `hidden` 이면 스크롤 스토리의 sticky 가 붙지 않는다.

@@ -6,7 +6,8 @@
 //   - 스크롤 스토리(화면보다 긴 섹션) 안에서는 자유 스크롤. 끝에 닿은 뒤 더 내리면 다음 섹션으로
 //   - 넘기는 동안과 직후 잠깐은 트랙패드 관성 휠을 무시 (두 칸씩 튀지 않게)
 //   - 다른 곳이 이미 막은 휠(첫 화면 빨리 감기)은 건드리지 않는다
-//   - 작은 화면·터치·동작 줄이기에서는 쓰지 않는다 (CSS proximity 스냅만)
+//   - 마우스·트랙패드면 창 크기와 관계없이 쓴다 (작은 창에서 CSS 스냅으로 넘기면 휠 한 칸이 되돌아와 갇힌다).
+//     터치·동작 줄이기에서는 쓰지 않는다 (터치는 CSS proximity 스냅만)
 
 "use client";
 
@@ -18,7 +19,7 @@ const COOLDOWN = 450;
 
 export function SectionPager() {
   useEffect(() => {
-    const wide = window.matchMedia("(min-width: 1024px) and (min-height: 700px)");
+    const mouse = window.matchMedia("(pointer: fine)");
     const reduced = window.matchMedia("(prefers-reduced-motion: reduce)");
     let animating = false;
     let lockedUntil = 0;
@@ -81,7 +82,7 @@ export function SectionPager() {
     };
 
     const onWheel = (event: WheelEvent) => {
-      if (!wide.matches || reduced.matches || event.defaultPrevented || event.ctrlKey) return;
+      if (!mouse.matches || reduced.matches || event.defaultPrevented || event.ctrlKey) return;
       if (Math.abs(event.deltaY) < Math.abs(event.deltaX)) return;
       if (event.deltaY < 0) {
         // 위로는 자유: 넘기는 중이면 그 자리에서 멈추고 브라우저에 맡긴다
@@ -98,7 +99,7 @@ export function SectionPager() {
     };
 
     const onKey = (event: KeyboardEvent) => {
-      if (!wide.matches || reduced.matches || event.defaultPrevented || event.altKey || event.metaKey || event.ctrlKey) return;
+      if (!mouse.matches || reduced.matches || event.defaultPrevented || event.altKey || event.metaKey || event.ctrlKey) return;
       const target = event.target as HTMLElement | null;
       if (target?.closest("input, textarea, select, [contenteditable], [role=dialog]")) return;
       const down = event.key === "ArrowDown" || event.key === "PageDown" || (event.key === " " && !event.shiftKey);
