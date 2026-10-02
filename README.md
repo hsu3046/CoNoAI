@@ -41,7 +41,7 @@ You finally find the song you want to sing — but the karaoke version doesn't e
 - **Lets you mix a guide vocal** — blend a little of the original voice back in, or switch between karaoke, vocals only and the original at any moment.
 - **Sets the stage** — album art colors light the background and breathe with the music; full screen hides the controls for TV or projector.
 - **Keeps everything on your Mac** — audio is never uploaded; only lyrics are looked up online.
-- **Uses precise lyrics you already have** — keeps word and syllable timing from TTML/enhanced LRC, and imports your own lyric files per song in Settings › Lyrics.
+- **Uses precise lyrics you already have** — keeps word and syllable timing, imports or drops LRC/TTML/SRT/KRC files, and lets you tap Space to time plain lyrics. Save locally, export LRC, or review and publish to LRCLIB ([guide](docs/LYRICS_EDITING.md)).
 - **Saves and shares each result** — local score history, PNG/text sharing and JSON backups work on Mac and the web without connecting a database.
 
 ---
@@ -130,7 +130,7 @@ CoNoAI is an early preview.
 - [x] Signed and notarized release build
 - [x] Live pitch feedback and microphone scoring
 - [x] Local score history, PNG/text sharing, JSON exchange, and web challenges ([local test guide](docs/LOCAL_FEATURES.md))
-- [x] Precise TTML/enhanced LRC timing and local lyric file import
+- [x] Precise lyric timing, file import/drop and Space-based line timing with local save/LRC export/LRCLIB publishing
 - [x] Web usage videos with Korean captions and text instructions
 - [ ] Find and fix the intermittent click
 - [ ] Optional lyric alignment model (additional download approval and singing-quality validation pending; [plan](docs/FORCED_ALIGNMENT_PLAN.md))

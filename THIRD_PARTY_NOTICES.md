@@ -58,6 +58,12 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 - **NetEase Cloud Music** — public web endpoints (not an official API); can be turned off in Settings › Lyrics
 - **Apple Music** — optional, off by default; uses Apple's web player endpoints with the user's own subscription sign-in (not an official public API). The approach follows findings from [lyrimuse](https://github.com/Yudaotor/lyrimuse) (GPL-3.0).
 
+## KRC file format references
+
+- Sources: [LyricsKit KRC decoder](https://github.com/ddddxxx/LyricsKit/blob/master/Sources/LyricsService/Parser/KugouKrcDecrypter.swift) and [parser](https://github.com/ddddxxx/LyricsKit/blob/master/Sources/LyricsService/Parser/KugouKrcParser.swift) (MPL-2.0), [lyrimuse Kugou implementation](https://github.com/Yudaotor/lyrimuse/blob/main/lyrimuse-collector/kugou.go) (GPL-3.0).
+- Used in: `CoNo/Lyrics/Core/KRCLyrics.swift` — KRC header, fixed XOR mask, compression, and relative word timestamp format were referenced for a new Swift implementation. No upstream source files or packages are bundled. Decompression uses macOS system zlib.
+- Tests contain synthetic text only; Kugou lyrics and access keys are not bundled. This supports user-selected local KRC files, not an online Kugou service connection.
+
 
 ## Drum roll with cymbal crash (sound effect)
 - Source: "Long Snare Drum Roll with Cymbal Crash.mp3" by MissloonerVoiceOver255 — https://freesound.org/people/MissloonerVoiceOver255/sounds/569113/

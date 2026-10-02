@@ -27,8 +27,8 @@ actor ExtraLyricsSources {
         configuration.httpAdditionalHeaders = ["User-Agent": "Mozilla/5.0 (Macintosh) CoNo/0.1"]
         session = URLSession(configuration: configuration)
         cacheDirectory = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first?
-            // v1은 TTML 단어 시각을 버린 사본이라 다시 받아야 정밀 타이밍을 복원할 수 있다.
-            .appendingPathComponent("space.knowai.cono/lyrics-extra-v2", isDirectory: true)
+            // v1은 단어 시각, v2는 마지막 단어보다 늦은 문장 종료를 잃은 사본일 수 있다.
+            .appendingPathComponent("space.knowai.cono/lyrics-extra-v3", isDirectory: true)
         if let cacheDirectory {
             try? FileManager.default.createDirectory(at: cacheDirectory, withIntermediateDirectories: true)
         }

@@ -221,7 +221,9 @@ enum TTMLLyrics {
                 content += "<\(TTMLLyrics.format(start))>\(piece.text)"
                 if let end = piece.timing.end { content += "<\(TTMLLyrics.format(end))>" }
             }
-            if sung.last?.timing.end == nil, let end = lineEnd, end >= previousEnd {
+            // 마지막 단어가 먼저 끝나도 문장 끝까지 표시한다. 두 종료 태그 사이에는
+            // 글자가 없으므로 단어의 길이는 유지되고 LRCParser가 마지막 태그를 줄 끝으로 쓴다.
+            if let end = lineEnd, end >= previousEnd {
                 content += "<\(TTMLLyrics.format(end))>"
             }
             return prefix + content

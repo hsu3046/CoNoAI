@@ -176,12 +176,12 @@ struct KaraokeScreen: View {
                 .padding(.horizontal, 32)
                 .padding(.vertical, 18)
 
-            // 안내 한 줄 자리는 늘 비워 둔다 (떴다 사라질 때 위의 음정 바 높이가 바뀌지 않게)
+            // 안내 두 줄 자리는 늘 비워 둔다 (떴다 사라질 때 위의 음정 바 높이가 바뀌지 않게)
             Text(engine.playbackMessage ?? engine.singingNotice ?? " ")
                 .font(.callout)
                 .foregroundStyle(.orange)
-                .lineLimit(1)
-                .frame(height: 20)
+                .lineLimit(2)
+                .frame(height: 40)
                 .padding(.bottom, 6)
 
             SongProgressBar(engine: engine)

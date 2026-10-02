@@ -101,10 +101,16 @@
 
 ## 2026-10-02 — 정밀 가사·출력 복구·기록 복구
 
-- `LyricsSources`가 TTML의 단어 시각·줄 종료를 enhanced LRC로 보존하고 `LRCParser`가 `LyricSegment`로 복원한다. `LyricsController`는 정확한 구간이 있는 줄에서 추정 정렬을 건너뛴다. 온라인 TTML 후보 캐시는 v2다.
+- `LyricsSources`가 TTML의 단어 시각·줄 종료를 enhanced LRC로 보존하고 `LRCParser`가 `LyricSegment`로 복원한다. `LyricsController`는 정확한 구간이 있는 줄에서 추정 정렬을 건너뛴다. 마지막 단어보다 늦은 문장 종료까지 보존한 온라인 후보 캐시는 v3다.
 - `LocalLyricsStore` actor는 곡 ID·제목·가수의 SHA-256 키로 가사 JSON을 원자 저장한다. 사용자 파일이 온라인 후보보다 우선하며, 비동기 요청 세대와 곡 키로 늦은 응답을 거부한다.
-- `PlaybackConfigurationGate`는 출력 객체의 start/stop 세대를 검증한다. 교체 구간은 `DelayPipeline`의 별도 suspension으로 시계·채점을 멈추고 사용자 pause를 유지한다. 실제 그래프를 공유하는 오프라인 테스트가 레이트 변환 뒤 출력 길이/주파수를 검증한다.
+- `AudioConfigurationGate`는 입력/출력 객체와 start/stop 세대를 검증한다. 교체 구간은 `DelayPipeline`의 별도 suspension으로 시계·채점을 멈추고 사용자 pause를 유지한다. 실제 그래프를 공유하는 오프라인 테스트가 레이트 변환 뒤 출력 길이/주파수를 검증한다.
 - `SingingScoreSession`은 곡 시작 난이도와 누적 점수를 함께 소유한다. 설정 변경은 다음 세션부터 반영한다.
 - `DiagnosticRecorder`는 사용자 요청 시 WAV와 최근 30초 통계 JSON을 새 폴더에 내보낸다. IO 콜백의 할당·락 없이 기존 버퍼를 사용한다.
 - `ScoreHistory`는 읽기 오류·저장 실패·대기 결과를 구분한다. 손상된 원본과 독립적으로 대기 결과를 유효한 JSON 파일들로 내보내며 원본을 덮어쓰지 않는다.
 - 웹 `FeatureVideo`는 정적 MP4/포스터/WebVTT와 텍스트 안내를 제공한다. 기존 재생 소유권과 연결하고 화면 이탈/백그라운드에서 일시정지한다.
+
+## 2026-10-03 — 가사 작성과 저장 잠금 복구
+
+`SRTParser`와 `KRCLyrics`가 로컬 파일을 공통 `TimedLyrics`로 연결한다. `LyricsTapSync`는 텍스트/기록 시각/재생 상태를 검증하는 순수 로직이며 `LyricsTapSyncView`가 실제 들리는 곡의 시각을 전달한다. `LyricsPublishView`는 검토한 문서만 `LRCLIBPublisher` actor에 넘긴다. 네트워크 전송과 PoW는 UI/오디오 IO에서 분리하며 테스트에는 transport를 주입한다.
+
+`JsonRepository`의 `.write-lock-v2`는 호스트·PID·고유 토큰을 가진 완성된 폴더를 원자 설치한다. 프로세스 종료를 확인한 경우만 해당 토큰 파일을 제거하고 빈 폴더를 정리한다. 다른 작성자의 새 폴더는 비어 있지 않아 이전 작성자가 지울 수 없다. 구버전 규약과는 혼용하지 않으며 갱신 시 기존 서버를 종료한다.

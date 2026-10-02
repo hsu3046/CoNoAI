@@ -366,7 +366,7 @@ private struct LyricsSettings: View {
 
             AppleMusicLyricsSection(settings: settings)
 
-            LocalLyricsSection(controller: engine.lyrics)
+            LocalLyricsSection(engine: engine)
 
             Section("가사 출처") {
                 Caption("곡 정보는 음악 앱은 직접, 그 밖의 앱(브라우저의 YouTube 등)은 macOS '지금 재생 중' 으로 받아요. 영상 제목은 '가수 - 곡' 형태로 다듬어 찾습니다.")
@@ -388,8 +388,11 @@ private struct LyricsSettings: View {
 }
 
 private struct LocalLyricsSection: View {
-    let controller: LyricsController
+    let engine: KaraokeEngine
+    private var controller: LyricsController { engine.lyrics }
     @State private var removalTrack: TrackInfo?
+    @State private var editorRequest: LyricsEditorRequest?
+    @State private var dropTargeted = false
 
     var body: some View {
         Section("내 가사 파일") {
@@ -401,7 +404,7 @@ private struct LocalLyricsSection: View {
                     Text(info.fileName).font(.callout)
                     Caption("\(info.lineCount)줄 · 단어 시각이 있는 줄 \(info.preciseLineCount)개")
                 } else {
-                    Caption("LRC 또는 TTML 파일을 이 곡의 가사로 사용할 수 있어요.")
+                    Caption("LRC·TTML·SRT·KRC 파일을 이곳이나 노래방 가사 영역에 놓아 주세요.")
                 }
                 HStack {
                     Button(controller.localLyricsInfo == nil ? "가사 파일 가져오기…" : "가사 파일 바꾸기…") {
@@ -413,6 +416,8 @@ private struct LocalLyricsSection: View {
                     if controller.isChangingLocalLyrics { ProgressView().controlSize(.small) }
                 }
                 .disabled(controller.isChangingLocalLyrics)
+                Button("가사 직접 맞추기…") { editorRequest = LyricsEditorRequest(track: track) }
+                    .disabled(controller.isChangingLocalLyrics)
             } else {
                 Caption("곡을 연결하면 내 가사 파일을 가져올 수 있어요.")
             }
@@ -425,6 +430,14 @@ private struct LocalLyricsSection: View {
                 Button("보관한 가사 폴더 열기") { NSWorkspace.shared.open(controller.localLyricsDirectory) }
             }
         }
+        .overlay {
+            if dropTargeted {
+                RoundedRectangle(cornerRadius: 8).strokeBorder(Color.accentColor, style: StrokeStyle(lineWidth: 2, dash: [6]))
+                    .allowsHitTesting(false).accessibilityHidden(true)
+            }
+        }
+        .dropDestination(for: URL.self) { urls, _ in controller.importDroppedLyrics(urls) } isTargeted: { dropTargeted = $0 }
+        .sheet(item: $editorRequest) { request in LyricsTapSyncView(engine: engine, track: request.track) }
         .alert("내 가사를 해제할까요?", isPresented: Binding(get: { removalTrack != nil }, set: { if !$0 { removalTrack = nil } })) {
             Button("취소", role: .cancel) { removalTrack = nil }
             Button("해제", role: .destructive) {
@@ -440,7 +453,10 @@ private struct LocalLyricsSection: View {
     private func importFile(for track: TrackInfo) {
         let panel = NSOpenPanel()
         panel.title = "‘\(track.title)’에 사용할 가사"
-        panel.allowedContentTypes = [UTType(filenameExtension: "lrc") ?? .plainText, UTType(filenameExtension: "ttml") ?? .xml]
+        panel.allowedContentTypes = [UTType(filenameExtension: "lrc") ?? .plainText,
+                                     UTType(filenameExtension: "ttml") ?? .xml,
+                                     UTType(filenameExtension: "srt") ?? .plainText,
+                                     UTType(filenameExtension: "krc") ?? .data]
         panel.allowsMultipleSelection = false
         panel.canChooseDirectories = false
         guard panel.runModal() == .OK, let url = panel.url else { return }

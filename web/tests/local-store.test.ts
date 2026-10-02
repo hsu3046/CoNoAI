@@ -1,8 +1,10 @@
 // CoNo — Copyright (C) 2026 AIB Inc. (https://www.aib.vote) — GPL-3.0-or-later
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
+import { spawn } from "node:child_process";
+import { once } from "node:events";
 import path from "node:path";
 import { JsonRepository } from "../src/lib/local-repository.ts";
 import { MAX_ARCHIVE_BYTES, parseDocument, parseRecord, serializeDocument, weekKey } from "../src/lib/score-record.ts";
@@ -58,5 +60,57 @@ test("corrupt and unsupported store is preserved, never reset on write", async (
       await assert.rejects(new JsonRepository(dir).update((data) => { data.profiles.test = { nickname: "test" }; }));
       assert.equal(await readFile(path.join(dir, "store.json"), "utf8"), content);
     }
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
+test("active writers stay locked; a killed writer is recovered by concurrent processes", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "cono-lock-recovery-"));
+  const repository = new JsonRepository(dir);
+  await repository.update((data) => { data.profiles.original = { nickname: "보존" }; });
+  const source = new URL("../src/lib/local-repository.ts", import.meta.url).href;
+  const child = spawn(process.execPath, ["--experimental-strip-types", "--input-type=module", "-e", `
+    import { JsonRepository } from ${JSON.stringify(source)};
+    import { writeSync } from 'node:fs';
+    await new JsonRepository(process.argv[1]).update((data) => {
+      data.profiles.uncommitted = { nickname: 'must not persist' };
+      writeSync(1, 'locked\\n');
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0);
+    });
+  `, dir], { stdio: ["ignore", "pipe", "pipe"] });
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error("Child writer did not acquire its lock")), 8000);
+      child.stdout.once("data", () => { clearTimeout(timer); resolve(); });
+      child.once("error", (error) => { clearTimeout(timer); reject(error); });
+      child.once("exit", () => { clearTimeout(timer); reject(new Error("Child writer exited before locking")); });
+    });
+    await assert.rejects(repository.update((data) => { data.profiles.stolen = { nickname: "must not persist" }; }), /다른 저장 작업/);
+    assert.deepEqual(Object.keys((await repository.read()).profiles), ["original"]);
+    const terminated = once(child, "exit");
+    child.kill("SIGKILL");
+    await terminated;
+    await Promise.all(Array.from({ length: 8 }, (_, i) => new JsonRepository(dir).update((data) => { data.profiles[`recovered-${i}`] = { nickname: `복구${i}` }; })));
+    const saved = (await repository.read()).profiles;
+    assert.equal(Object.keys(saved).length, 9);
+    assert.equal(saved.original.nickname, "보존");
+    assert.equal(saved.uncommitted, undefined);
+    assert.equal(saved.stolen, undefined);
+  } finally {
+    if (child.exitCode === null && child.signalCode === null) {
+      const terminated = once(child, "exit"); child.kill("SIGKILL"); await terminated;
+    }
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("an interrupted v2 release recovers, while an unowned legacy lock is preserved", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "cono-lock-format-"));
+  try {
+    await mkdir(path.join(dir, ".write-lock-v2"));
+    await new JsonRepository(dir).update((data) => { data.profiles.test = { nickname: "saved" }; });
+    const before = await readFile(path.join(dir, "store.json"), "utf8");
+    await mkdir(path.join(dir, ".write-lock"));
+    await assert.rejects(new JsonRepository(dir).update((data) => { data.profiles.invalid = { nickname: "do not write" }; }), /이전 버전/);
+    assert.equal(await readFile(path.join(dir, "store.json"), "utf8"), before);
   } finally { await rm(dir, { recursive: true, force: true }); }
 });

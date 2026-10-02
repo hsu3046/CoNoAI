@@ -115,6 +115,8 @@ targets:
       - path: CoNo/Audio/DiagnosticRecorder.swift
       - path: CoNo/Audio/DelayPipeline.swift
       - path: CoNo/Audio/PlaybackOutput.swift
+      - path: CoNo/Audio/AudioConfigurationGate.swift
+      - path: CoNo/Audio/SingingNotice.swift
       - path: CoNo/Audio/SingingScoreSession.swift
     settings:
       base:

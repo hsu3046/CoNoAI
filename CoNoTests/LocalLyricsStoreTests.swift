@@ -78,4 +78,22 @@ struct LocalLyricsStoreTests {
         }
         #expect(try await store.load(for: track)?.document.contents == ttml)
     }
+
+    @Test func srtAndBinaryKRCRoundTripThroughJSONWithoutLosingOriginalTiming() async throws {
+        let directory = temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = LocalLyricsStore(directoryURL: directory)
+        let srt = "1\n00:00:01,250 --> 00:00:20,000\n한글 자막"
+        let saved = try await store.save(data: #require(srt.data(using: .utf16)), fileName: "가사.srt", for: track)
+        #expect(saved.lyrics.end(of: 0) == 20)
+        #expect(try await store.load(for: track)?.document.contents == srt)
+        // 합성한 한글 두 단어 KRC. 실제 곡/외부 다운로드를 사용하지 않는다.
+        let binary = try #require(Data(base64Encoded: "a3JjMTjb6kFqAkSXYDAjnPjUVAnOxrzcUz8b3YfuKbfUEut9ngn8hDR1d0drFj5U"))
+        let imported = try await store.save(data: binary, fileName: "가사.krc", for: track)
+        let reloaded = try #require(try await store.load(for: track))
+        #expect(Data(base64Encoded: reloaded.document.contents) == binary)
+        #expect(reloaded.lyrics == imported.lyrics)
+        #expect(reloaded.preciseLineCount == 1)
+        #expect(reloaded.lyrics.end(of: 0) == 4)
+    }
 }

@@ -126,12 +126,12 @@ private final class TestToneBurst: @unchecked Sendable {
 
 struct PlaybackGraphTests {
     @Test func queuedNotificationFromReplacedOutputCannotStopNewOutput() {
-        let previousOutput = PlaybackConfigurationGate()
+        let previousOutput = AudioConfigurationGate()
         let previousRegistration = previousOutput.activate()
         let queuedNotification = { previousOutput.isCurrent(previousRegistration) }
         #expect(queuedNotification())
         previousOutput.invalidate() // observer 제거 전에 stop 이 무효화
-        let newOutput = PlaybackConfigurationGate()
+        let newOutput = AudioConfigurationGate()
         let newRegistration = newOutput.activate()
         #expect(!queuedNotification(), "새 출력 설치 뒤 도착한 옛 알림은 reconnect를 호출하면 안 된다")
         #expect(newOutput.isCurrent(newRegistration))

@@ -131,6 +131,7 @@ final class LyricsController {
     }
     /// nil 값 = 싱크 가사 없음 (일반 가사만 있거나 못 찾음)
     private var lyricsByTrack: [String: TrackLyrics?] = [:]
+    private var plainLyricsByTrack: [String: String] = [:]
     @ObservationIgnored private var lastHeardCaptureTime: Double?
     /// 화면에 실제로 쓰는 지연 (곡별). 자동 싱크가 값을 바꿔도 부르는 중인 줄에는 반영하지 않고
     /// 줄이 바뀌거나 간주일 때만 따라간다 → 줄 중간에 색칠이 앞뒤로 튀지 않는다.
@@ -278,6 +279,14 @@ final class LyricsController {
         return (min(max(position.seconds, 0), track.duration), track.duration)
     }
 
+    /// 탭 싱크는 화면의 오프셋/자동 싱크가 아닌 실제 들리는 곡 시각을 기록한다.
+    func timingSnapshot(atCaptureTime c: Double) -> LyricsTimingSnapshot? {
+        guard c.isFinite, let lastAnchor = clock.anchors.last, c - lastAnchor.captureTime <= 2,
+              let position = clock.position(atCaptureTime: c), advertisement(atCaptureTime: c) == nil else { return nil }
+        return LyricsTimingSnapshot(trackID: position.trackID, position: position.seconds, captureTime: c,
+                                    isPlaying: position.isPlaying, discontinuities: anchorDiagnostics.discontinuities)
+    }
+
     /// 간주 점프: 지금 간주(또는 전주)이고 다음 가사까지 8초 넘게 남았으면, 다음 줄 3초 전의 곡 위치.
     /// 가사 시각 = 곡 위치 + 미세조정 − 지연 이므로 곡 위치 = 가사 시각 − 미세조정 + 지연.
     func interludeSkipTarget(atCaptureTime c: Double) -> Double? {
@@ -298,6 +307,58 @@ final class LyricsController {
     }
 
     var localLyricsDirectory: URL { localLyricsStore.directoryURL }
+
+    func availablePlainLyrics(for track: TrackInfo) -> String {
+        if let entry = lyricsByTrack[track.id], let lyrics = entry?.lyrics {
+            return lyrics.lines.filter { !$0.isInterlude }.map(\.text).joined(separator: "\n")
+        }
+        return plainLyricsByTrack[track.id] ?? ""
+    }
+
+    /// 드롭 순간의 곡을 고정한다. 비동기 파일 읽기 도중 곡이 바뀌어도 다음 곡에 적용하지 않는다.
+    @discardableResult
+    func importDroppedLyrics(_ urls: [URL], for visibleTrack: TrackInfo? = nil) -> Bool {
+        guard !isChangingLocalLyrics else { return false }
+        guard let track = visibleTrack ?? currentTrack else {
+            localLyricsError = "곡을 연결한 뒤 가사 파일을 놓아 주세요."
+            return false
+        }
+        guard urls.count == 1, let url = urls.first, url.isFileURL,
+              ["lrc", "ttml", "srt", "krc"].contains(url.pathExtension.lowercased()) else {
+            localLyricsError = LocalLyricsError.unsupportedFile.localizedDescription
+            return false
+        }
+        let accessing = url.startAccessingSecurityScopedResource()
+        Task {
+            defer { if accessing { url.stopAccessingSecurityScopedResource() } }
+            await importLocalLyrics(from: url, for: track)
+        }
+        return true
+    }
+
+    /// 완성한 초안을 로컬 가사로 저장한다. 실패하면 현재 가사와 편집 초안은 그대로 둔다.
+    func saveTappedLyrics(_ contents: String, for track: TrackInfo) async -> Bool {
+        guard !isChangingLocalLyrics else { return false }
+        isChangingLocalLyrics = true
+        defer { isChangingLocalLyrics = false }
+        localLyricsError = nil
+        localLyricsMessage = nil
+        do {
+            let loaded = try await localLyricsStore.save(data: Data(contents.utf8), fileName: "tap-sync.lrc", for: track)
+            loadGenerations[track.id] = UUID()
+            loadingTrackIDs.remove(track.id)
+            applyLocalLyrics(loaded, to: track)
+            // 저장을 기다리는 동안 다른 곡으로 넘어가면 그 곡의 전역 미세조정을 바꾸지 않는다.
+            let isCurrentTrack = currentTrackID == track.id
+            if isCurrentTrack { offsetSeconds = 0 }
+            localLyricsMessage = "‘\(track.title)’의 직접 맞춘 가사를 저장했어요."
+                + (isCurrentTrack ? " 미세조정은 0초로 맞췄습니다." : " 다음에도 이 파일을 사용합니다.")
+            return true
+        } catch {
+            localLyricsError = error.localizedDescription
+            return false
+        }
+    }
 
     /// 파일 대화상자를 열 때 선택했던 곡에 저장한다. 도중 다음 곡으로 넘어가도 대상이 바뀌지 않는다.
     func importLocalLyrics(from url: URL, for track: TrackInfo) async {
@@ -567,6 +628,11 @@ final class LyricsController {
             var pool = await extra
             guard loadGenerations[track.id] == generation else { return }
             if case let .success(.synced(list)) = base { pool += list }
+            if case let .success(.plainOnly(candidate)) = base {
+                plainLyricsByTrack[track.id] = candidate.plainLyrics
+            } else if let plain = pool.first(where: { !($0.plainLyrics ?? "").isEmpty })?.plainLyrics {
+                plainLyricsByTrack[track.id] = plain
+            }
             let ranked = LyricsSelector.syncedCandidates(pool, for: track)
             let usable = ranked
                 .compactMap { candidate in candidate.syncedLyrics.map { (candidate, LRCParser.parse($0)) } }

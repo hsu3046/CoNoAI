@@ -41,22 +41,6 @@ struct ModelBenchmark: Sendable, Equatable {
     var pitchSelfTestError: String?
 }
 
-/// 곡이 끝났을 때 보여줄 채점 결과
-struct SingingResult: Identifiable, Equatable, Sendable {
-    let id = UUID()
-    let trackID: String?
-    let title: String?
-    let artist: String?
-    let score: SongScore
-    var keyShift: Int = 0
-    var difficulty: String = "normal"
-    var createdAt: String = ScoreRecord.timestamp()
-
-    var record: ScoreRecord {
-        ScoreRecord(id: id.uuidString.lowercased(), songId: ScoreRecord.songIdentifier(title: title, artist: artist, fallback: id), title: title ?? "제목 없는 곡", artist: artist ?? "", source: "macos", difficulty: difficulty, keyShift: keyShift, score: score.score, notesHit: score.notesHit, notesTotal: score.notesTotal, bestStreak: score.bestStreak, createdAt: createdAt)
-    }
-}
-
 @MainActor
 @Observable
 final class KaraokeEngine {
@@ -239,9 +223,13 @@ final class KaraokeEngine {
             clock.setExtraLatency(extraLatencySeconds)
             let tracker = try SingingTracker(mic: mic, detector: detector, reference: timeline, clock: clock, difficulty: singingDifficulty)
             tracker.keyShift = keyShift
-            try mic.start { [weak self] in
+            try mic.start { [weak self, weak mic] in
                 // 입력 장치가 바뀌면 새 장치로 다시 연다
-                MainActor.assumeIsolated { self?.restartSinging() }
+                MainActor.assumeIsolated {
+                    guard let self, let mic, generation == self.singingGeneration,
+                          self.singing?.mic === mic else { return }
+                    self.restartSinging()
+                }
             }
             tracker.start()
             singing = tracker
@@ -1087,11 +1075,13 @@ final class KaraokeEngine {
 }
 
 extension KaraokeEngine {
-    /// 무대 아래 안내 한 줄: 채점 실패 사유나 블루투스 마이크 주의
+    /// 무대 아래 안내: 실패를 우선 표시하고 블루투스·가이드 보컬 주의는 함께 알린다.
     var singingNotice: String? {
         switch singingState {
-        case let .failed(message): message
-        case .listening(_, isBluetooth: true): "블루투스 마이크를 쓰는 중이에요. 이어폰 소리가 통화 음질로 떨어지면 Mac 내장 마이크로 바꿔 주세요."
+        case let .failed(message):
+            SingingNotice.message(failure: message, isListening: false, isBluetooth: false, guideVocalLevel: guideVocalLevel)
+        case let .listening(_, isBluetooth):
+            SingingNotice.message(isListening: true, isBluetooth: isBluetooth, guideVocalLevel: guideVocalLevel)
         default: nil
         }
     }

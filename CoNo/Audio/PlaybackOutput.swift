@@ -7,20 +7,9 @@
 
 import AVFoundation
 import AudioToolbox
-import Synchronization
 
 /// 렌더 스레드에서 호출: (프레임 수, 출력 버퍼 목록, 타임스탬프)
 typealias PlaybackRenderBlock = @Sendable (Int, UnsafeMutablePointer<AudioBufferList>, UnsafePointer<AudioTimeStamp>) -> Void
-
-/// 출력 인스턴스의 observer 수명. removeObserver 전에 이미 대기 중이던 알림도 stop 뒤에는 무효다.
-/// 같은 인스턴스를 다시 시작해도 이전 등록의 알림이 새 등록으로 인정되지 않는다.
-final class PlaybackConfigurationGate: Sendable {
-    private let generation = Atomic<UInt64>(0)
-
-    func activate() -> UInt64 { generation.add(1, ordering: .acquiringAndReleasing).newValue }
-    func invalidate() { generation.add(1, ordering: .acquiringAndReleasing) }
-    func isCurrent(_ registration: UInt64) -> Bool { generation.load(ordering: .acquiring) == registration }
-}
 
 final class PlaybackOutput: @unchecked Sendable {
     private let engine = AVAudioEngine()
@@ -28,7 +17,7 @@ final class PlaybackOutput: @unchecked Sendable {
     /// 키 조절 (속도는 1.0 고정). 원키면 bypass 해서 음질 손실·지연이 없다.
     private let timePitch = AVAudioUnitTimePitch()
     private var configurationObserver: NSObjectProtocol?
-    private let configurationGate = PlaybackConfigurationGate()
+    private let configurationGate = AudioConfigurationGate()
 
     /// 키 조절 범위 (반음)
     static let keyShiftRange = -6...6
@@ -59,15 +48,12 @@ final class PlaybackOutput: @unchecked Sendable {
         let rate = sourceSampleRate ?? sampleRate
         sourceNode = try Self.connectGraph(engine: engine, timePitch: timePitch, sourceSampleRate: rate, render: render)
 
-        let registration = configurationGate.activate()
+        let configurationChanged = configurationGate.callback(onConfigurationChange)
         configurationObserver = NotificationCenter.default.addObserver(
             forName: .AVAudioEngineConfigurationChange,
             object: engine,
             queue: .main
-        ) { [configurationGate] _ in
-            guard configurationGate.isCurrent(registration) else { return }
-            onConfigurationChange()
-        }
+        ) { _ in configurationChanged() }
 
         engine.prepare()
         do {

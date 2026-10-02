@@ -62,12 +62,16 @@ struct PreciseLyricsTests {
         </div></body></tt>
         """
         let lrc = try #require(TTMLLyrics.lrc(from: ttml))
-        let line = try #require(LRCParser.parse(lrc).lines.first)
+        let lyrics = LRCParser.parse(lrc)
+        let line = try #require(lyrics.lines.first)
         #expect(line.text == "안녕 세상")
         #expect(line.start == 12.345)
         #expect(line.segments.map(\.start) == [12.345, 14.2])
         #expect(line.segments.map(\.end) == [13.001, 16.789])
         #expect(line.highlightedCharacters(at: 14, lineEnd: 16.789) == 2)
+        #expect(line.explicitEnd == 18)
+        #expect(lyrics.lineIndex(at: 17) == 0)
+        #expect(lyrics.lineIndex(at: 18) == nil)
     }
 
     @Test func nestedTTMLSpansDoNotInventSpacesBetweenSyllables() throws {
@@ -78,7 +82,23 @@ struct PreciseLyricsTests {
         let line = try #require(LRCParser.parse(lrc).lines.first)
         #expect(line.text == "노래")
         #expect(line.segments.count == 2)
-        #expect(line.explicitEnd == 3)
+        #expect(line.explicitEnd == 4)
+        #expect(line.segments.map(\.end) == [2, 3])
+    }
+
+    @Test func paragraphEndAfterFinalWordPreservesPauseWithoutStretchingWord() throws {
+        for trailingSpace in ["", " ", "\n"] {
+            let ttml = "<tt><body><p begin=\"1s\" end=\"18s\"><span begin=\"1s\" end=\"2s\">노래</span>\(trailingSpace)</p></body></tt>"
+            let lyrics = LRCParser.parse(try #require(TTMLLyrics.lrc(from: ttml)))
+            let line = try #require(lyrics.lines.first)
+            #expect(line.text == "노래")
+            #expect(line.segments == [LyricSegment(characterStart: 0, characterCount: 2, start: 1, end: 2)])
+            #expect(line.explicitEnd == 18)
+            #expect(line.highlightedCharacters(at: 1.5, lineEnd: lyrics.end(of: 0)) == 1)
+            #expect(line.highlightedCharacters(at: 17, lineEnd: lyrics.end(of: 0)) == 2)
+            #expect(lyrics.lineIndex(at: 17) == 0)
+            #expect(lyrics.lineIndex(at: 18) == nil)
+        }
     }
 
     @Test func lineOnlyAndInvalidTTMLTimingFallBackWithoutLosingWords() throws {
