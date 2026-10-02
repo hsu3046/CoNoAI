@@ -26,22 +26,24 @@ export function ListenSection() {
   const [status, setStatus] = useState<Status>("idle");
   const [position, setPosition] = useState(0);
   const playerRef = useRef<StemPlayer | null>(null);
-  /** 불러오는 사이 멈추면 도착해도 틀지 않는다 */
-  const wantedRef = useRef(false);
   const sectionRef = useRef<HTMLElement>(null);
   const song = songs[index];
   const accent = MODES.find((item) => item.mode === mode)?.color ?? "#ffcc5c";
 
   const pause = useCallback(() => {
-    wantedRef.current = false;
     playerRef.current?.pause();
-    setStatus((current) => (current === "playing" ? "paused" : current));
+    setStatus((current) => (current === "playing" || current === "loading" ? "paused" : current));
   }, []);
 
   // 다른 곳(첫 화면·체험)이 소리를 내면 멈춘다. 화면 밖으로 나가도 멈춘다
   useEffect(() => onAudioClaim((owner) => owner !== "listen" && pause()), [pause]);
   useOnLeave(sectionRef, pause, "-20% 0px -20% 0px");
   useEffect(() => () => playerRef.current?.dispose(), []);
+  useEffect(() => {
+    const hidden = () => { if (document.hidden) pause(); };
+    document.addEventListener("visibilitychange", hidden);
+    return () => document.removeEventListener("visibilitychange", hidden);
+  }, [pause]);
 
   // 재생 위치 (파형 진행 표시)
   useEffect(() => {
@@ -59,22 +61,19 @@ export function ListenSection() {
     // withMode: 방금 누른 스위치 값 (setMode 가 아직 반영되기 전이라 인자로 받는다)
     async (next: number, from = 0, withMode: StemMode = mode) => {
       claimAudio("listen");
-      wantedRef.current = true;
-      const ctx = audioContext();
-      void ctx.resume();
-      if (!playerRef.current || next !== index) {
-        playerRef.current?.dispose();
-        playerRef.current = new StemPlayer(ctx, songUrls(songs[next].slug), withMode);
-        setIndex(next);
-        setPosition(0);
-      }
-      const player = playerRef.current;
       setStatus("loading");
       try {
-        await player.load();
-        if (playerRef.current !== player || !wantedRef.current) return; // 기다리는 사이 다른 곡을 골랐거나 멈췄다
+        const ctx = audioContext();
+        if (!playerRef.current || next !== index) {
+          playerRef.current?.dispose();
+          playerRef.current = new StemPlayer(ctx, songUrls(songs[next].slug), withMode);
+          setIndex(next);
+          setPosition(0);
+        }
+        const player = playerRef.current;
+        // 모드는 기다리기 전에 설정한다. 로딩 도중 누른 스위치를 옛 값으로 덮지 않는다.
         player.setMode(withMode, 0);
-        player.play(from);
+        if (!await player.start(from)) return;
         setStatus("playing");
       } catch {
         setStatus("error");
@@ -84,7 +83,7 @@ export function ListenSection() {
   );
 
   const toggle = () => {
-    if (status === "playing") pause();
+    if (status === "playing" || status === "loading") pause();
     else void start(index, playerRef.current ? playerRef.current.position : (songs[index].lead ?? 0));
   };
 
@@ -168,7 +167,7 @@ export function ListenSection() {
               <button
                 type="button"
                 onClick={toggle}
-                aria-label={playing ? "일시정지" : "재생"}
+                aria-label={status === "loading" ? "불러오기 취소" : playing ? "일시정지" : "재생"}
                 className="grid size-16 shrink-0 place-items-center rounded-full bg-ink text-2xl text-night shadow-[0_0_30px_rgba(237,240,255,0.25)] transition hover:scale-105"
               >
                 {status === "loading" ? <span className="size-6 animate-spin rounded-full border-[3px] border-night/30 border-t-night" /> : <PlayPauseIcon playing={playing} size={26} />}
@@ -192,7 +191,7 @@ export function ListenSection() {
                 })}
               </div>
             </div>
-            {status === "error" && <p className="mt-4 text-sm text-stop">소리를 불러오지 못했어요. 잠시 뒤 다시 눌러 주세요.</p>}
+            {status === "error" && <p role="alert" className="mt-4 text-sm text-stop">소리를 불러오지 못했어요. 잠시 뒤 다시 눌러 주세요.</p>}
             {status === "idle" && <p className="mt-4 text-sm text-faint">▶ 를 누르고, 노래가 나오는 중에 반주를 눌러 보세요.</p>}
           </div>
         </Reveal>
@@ -253,8 +252,12 @@ function Waveform({ peaks, progress, color, onSeek }: { peaks: number[]; progres
       aria-valuenow={Math.round(progress * 100)}
       tabIndex={0}
       onKeyDown={(event) => {
-        if (event.key === "ArrowRight") onSeek(Math.min(1, progress + 0.05));
-        if (event.key === "ArrowLeft") onSeek(Math.max(0, progress - 0.05));
+        const next = event.key === "ArrowRight" || event.key === "ArrowUp" ? Math.min(1, progress + 0.05)
+          : event.key === "ArrowLeft" || event.key === "ArrowDown" ? Math.max(0, progress - 0.05)
+            : event.key === "Home" ? 0 : event.key === "End" ? 1 : null;
+        if (next === null) return;
+        event.preventDefault();
+        onSeek(next);
       }}
     >
       {peaks.map((peak, index) => {

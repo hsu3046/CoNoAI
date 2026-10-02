@@ -36,7 +36,7 @@ const buffers = new Map<string, Promise<AudioBuffer>>();
 function loadBuffer(ctx: AudioContext, url: string): Promise<AudioBuffer> {
   let pending = buffers.get(url);
   if (!pending) {
-    pending = fetch(url)
+    pending = fetch(url, { signal: AbortSignal.timeout(20_000) })
       .then((response) => {
         if (!response.ok) throw new Error(`${url}: ${response.status}`);
         return response.arrayBuffer();
@@ -106,6 +106,7 @@ export class StemPlayer {
   private startedAt = 0;
   private offset = 0;
   private mode: StemMode;
+  private request = 0;
   playing = false;
   /** 한 번이라도 틀었는지 (첫 재생 위치를 따로 정할 때) */
   playedOnce = false;
@@ -122,6 +123,20 @@ export class StemPlayer {
       (Object.keys(this.urls) as StemMode[]).map(async (key) => [key, await loadBuffer(this.ctx, this.urls[key] as string)] as const),
     );
     this.stems = Object.fromEntries(entries);
+  }
+
+  /** 로딩 중 멈추기·곡 변경·다시 재생을 누르면 이전 요청은 소리와 오류를 남기지 않는다. */
+  async start(from = this.offset): Promise<boolean> {
+    const request = ++this.request;
+    try {
+      await Promise.all([this.ctx.resume(), this.load()]);
+      if (request !== this.request) return false;
+      this.play(from);
+      return true;
+    } catch (error) {
+      if (request !== this.request) return false;
+      throw error;
+    }
   }
 
   get duration(): number {
@@ -176,6 +191,7 @@ export class StemPlayer {
   }
 
   pause(fadeOut = FADE_OUT) {
+    this.request++;
     if (!this.playing) return;
     this.offset = this.position;
     this.playing = false;
@@ -199,6 +215,7 @@ export class StemPlayer {
 
   /** 버리기 — 나던 소리도 서서히 사라진 뒤 정리 */
   dispose(fadeOut = FADE_OUT) {
+    this.request++;
     this.playing = false;
     this.release(fadeOut);
   }

@@ -5,10 +5,11 @@
 
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { drawConfetti, drawFireworks, flashAmount, makeShow, shake } from "@/fx/fireworks";
-import { fitCanvas } from "@/fx/hooks";
+import { fitCanvas, useReducedMotion } from "@/fx/hooks";
 import { playCelebration } from "@/fx/sfx";
 import { scoreComment, type SongScore } from "@/lib/pitch";
 import { type ScoreRecord } from "@/lib/score-record";
@@ -32,7 +33,9 @@ export function ScoreShow({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const cardRef = useRef<HTMLDivElement>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
-  const [elapsed, setElapsed] = useState(0);
+  const [animatedElapsed, setElapsed] = useState(0);
+  const reduced = useReducedMotion();
+  const elapsed = reduced ? 14 : animatedElapsed;
   // 같은 결과면 같은 불꽃 (렌더 중 난수 금지)
   const show = useMemo(() => makeShow(result.score, result.score * 7919 + result.notesHit * 31 + result.bestStreak, CRASH), [result]);
 
@@ -41,7 +44,7 @@ export function ScoreShow({
     let cancelled = false;
     const startWall = performance.now() / 1000 + 0.1;
     const startAudio = audio ? audio.currentTime + 0.1 : 0;
-    if (audio) {
+    if (audio && !reduced) {
       void playCelebration(audio, show, startAudio).then((stop) => {
         if (cancelled) stop();
         else stopSound = stop;
@@ -64,7 +67,12 @@ export function ScoreShow({
       const offset = shake(show, t);
       if (cardRef.current) cardRef.current.style.transform = `translate(${offset.x}px, ${offset.y}px)`;
     };
-    frame = requestAnimationFrame(draw);
+    if (!reduced) frame = requestAnimationFrame(draw);
+    else {
+      const canvas = canvasRef.current;
+      canvas?.getContext("2d")?.clearRect(0, 0, canvas.width, canvas.height);
+      if (cardRef.current) cardRef.current.style.transform = "none";
+    }
     const onKey = (event: KeyboardEvent) => {
       if (event.key === "Escape") onClose();
     };
@@ -75,7 +83,7 @@ export function ScoreShow({
       stopSound?.();
       window.removeEventListener("keydown", onKey);
     };
-  }, [audio, show, onClose]);
+  }, [audio, show, onClose, reduced]);
 
   useEffect(() => {
     const previous = document.activeElement;
@@ -102,7 +110,7 @@ export function ScoreShow({
   const reveal = (delay: number) => Math.min(1, Math.max(0, (since - delay) / 0.35));
   const stars = Math.round(result.score / 10) / 2;
   const fill = (result.score / 100) * eased;
-  const flash = flashAmount(show, elapsed);
+  const flash = reduced ? 0 : flashAmount(show, elapsed);
 
   // body 로 띄운다: 섹션이 쌓임 맥락(isolate)을 만들면 고정 헤더가 연출 위로 올라온다
   return createPortal(
@@ -225,11 +233,11 @@ export function ScoreShow({
           <button type="button" onClick={onRetry} className="rounded-full border border-white/20 bg-white/5 px-5 py-3 font-cute text-lg transition hover:border-pink hover:text-pink">
             ↺ 다시 부르기
           </button>
-          <a href="#download" onClick={onClose} className="rounded-full bg-gold px-5 py-3 font-cute text-lg text-night shadow-[0_0_24px_rgba(255,204,92,0.6)] transition hover:scale-105">
+          <Link href="/#download" onClick={onClose} className="rounded-full bg-gold px-5 py-3 font-cute text-lg text-night shadow-[0_0_24px_rgba(255,204,92,0.6)] transition hover:scale-105">
             진짜 노래로 하기 →
-          </a>
+          </Link>
         </div>
-        {record && <div className="mt-4" style={{ visibility: landed ? "visible" : "hidden" }}><ResultRecordActions record={record} /></div>}
+        {record && <div className="mt-4" style={{ visibility: landed ? "visible" : "hidden" }}><ResultRecordActions record={record} onViewRecords={onClose} /></div>}
         <button type="button" onClick={onClose} className="mt-3 text-sm text-ink2">닫기</button>
         <p className="mt-4 text-xs text-faint" style={{ opacity: reveal(1.8) * 0.8 }}>
           바깥을 누르거나 Esc로 닫기
