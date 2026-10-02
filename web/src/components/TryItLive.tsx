@@ -15,6 +15,7 @@ import { BEAT_SECONDS, COUNT_IN_BEATS, SONG_SECONDS, hzToMidi, lyricLines, melod
 import { detectPitch, foldedOffset, scoreSong, type NoteTally, type SongScore } from "@/lib/pitch";
 import { ScoreShow } from "./ScoreShow";
 import { Screen, SectionTitle } from "./Screen";
+import { PRACTICE_SONG, type ScoreRecord } from "@/lib/score-record";
 
 type Phase = "idle" | "starting" | "running" | "done" | "error";
 
@@ -32,6 +33,7 @@ export function TryItLive() {
   const [error, setError] = useState<string | null>(null);
   const [guide, setGuide] = useState(true);
   const [result, setResult] = useState<SongScore | null>(null);
+  const [record, setRecord] = useState<ScoreRecord | null>(null);
   const [sectionRef, visible] = useInView<HTMLElement>({ margin: "200px" });
   const [audio, setAudio] = useState<AudioContext | null>(null);
   const visibleRef = useRef(true);
@@ -44,8 +46,12 @@ export function TryItLive() {
   const streamRef = useRef<MediaStream | null>(null);
   const backingRef = useRef<Backing | null>(null);
   const frameRef = useRef(0);
+  const attemptRef = useRef(0);
+  const activeRef = useRef(false);
 
   const cleanup = useCallback(() => {
+    attemptRef.current++;
+    activeRef.current = false;
     cancelAnimationFrame(frameRef.current);
     backingRef.current?.stop();
     backingRef.current = null;
@@ -58,7 +64,7 @@ export function TryItLive() {
   useEffect(
     () =>
       onAudioClaim((owner) => {
-        if (owner === "try" || !backingRef.current) return;
+        if (owner === "try" || !activeRef.current) return;
         cleanup();
         setPhase("idle");
       }),
@@ -133,7 +139,10 @@ export function TryItLive() {
         streamRef.current?.getTracks().forEach((track) => track.stop());
         streamRef.current = null;
         backingRef.current = null;
-        setResult(scoreSong(tallies));
+        activeRef.current = false;
+        const score = scoreSong(tallies);
+        setResult(score);
+        setRecord({ ...score, id: crypto.randomUUID(), songId: PRACTICE_SONG, title: "우리 집 무대", artist: "CoNo", source: "browser", difficulty: "normal", keyShift: 0, createdAt: new Date().toISOString() });
         setPhase("done");
       }
     };
@@ -141,8 +150,12 @@ export function TryItLive() {
   }, [draw, cleanup]);
 
   const start = useCallback(async () => {
+    cleanup();
+    const attempt = attemptRef.current;
+    activeRef.current = true;
     setError(null);
     setResult(null);
+    setRecord(null);
     setPhase("starting");
     claimAudio("try");
     try {
@@ -150,11 +163,13 @@ export function TryItLive() {
       audioRef.current = ctx;
       setAudio(ctx);
       await ctx.resume();
+      if (attempt !== attemptRef.current) return;
       void loadSfx(ctx); // 점수 연출 소리를 미리 받아 둔다
       // 반향 제거는 켠다: 스피커로 나간 반주를 브라우저가 마이크에서 빼 준다. 자동 게인·잡음 억제는 노래를 뭉개서 끈다
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: { echoCancellation: true, noiseSuppression: false, autoGainControl: false },
       });
+      if (attempt !== attemptRef.current) { stream.getTracks().forEach((track) => track.stop()); return; }
       streamRef.current = stream;
       const analyser = ctx.createAnalyser();
       analyser.fftSize = 2048;
@@ -169,6 +184,7 @@ export function TryItLive() {
       setPhase("running");
       run(ctx, analyser, backing);
     } catch (caught) {
+      if (attempt !== attemptRef.current) return;
       cleanup();
       const name = caught instanceof DOMException ? caught.name : "";
       setError(
@@ -237,6 +253,7 @@ export function TryItLive() {
       {phase === "done" && result && (
         <ScoreShow
           result={result}
+          record={record ?? undefined}
           audio={audio}
           onClose={() => setPhase("idle")}
           onRetry={() => {

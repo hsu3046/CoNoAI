@@ -591,7 +591,8 @@ export function SiteHeader() {
             ["#", "홈"],
             ["#listen", "들어보기"],
             ["#try", "불러보기"],
-            ["#how", "사용법"],
+            ["#records", "나의 기록"],
+            ["#challenge", "챌린지"],
             ["#faq", "FAQ"],
           ].map(([href, label]) => (
             <a key={href} href={href} className="hidden rounded-full px-3 py-2 text-ink2 transition hover:text-ink sm:block">

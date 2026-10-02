@@ -107,6 +107,17 @@ targets:
       - path: CoNoTests
       - path: CoNo/DSP
       - path: CoNo/Lyrics/Core
+      - path: CoNo/Records
+      - path: CoNo/Audio/CoreAudioUtils.swift
+      - path: CoNo/Audio/AudioResampler.swift
+      - path: CoNo/Audio/StreamProcessor.swift
+      - path: CoNo/Audio/SPSCRingBuffer.swift
+      - path: CoNo/Audio/DiagnosticRecorder.swift
+      - path: CoNo/Audio/DelayPipeline.swift
+      - path: CoNo/Audio/PlaybackOutput.swift
+      - path: CoNo/Audio/AudioConfigurationGate.swift
+      - path: CoNo/Audio/SingingNotice.swift
+      - path: CoNo/Audio/SingingScoreSession.swift
     settings:
       base:
         CODE_SIGN_STYLE: Manual

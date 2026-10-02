@@ -1,0 +1,150 @@
+// CoNo — Copyright (C) 2026 AIB Inc. (https://www.aib.vote) — GPL-3.0-or-later
+
+import Foundation
+import Testing
+
+struct LocalLyricsStoreTests {
+    private let track = TrackInfo(id: "test-song", title: "로컬 테스트", artist: "CoNo", album: "", duration: 180)
+
+    private func temporaryDirectory() -> URL {
+        FileManager.default.temporaryDirectory.appendingPathComponent("cono-lyrics-\(UUID().uuidString)", isDirectory: true)
+    }
+
+    @Test func savedLyricsReloadWithOriginalTimingAndDeleteOnlyTheirOwnCopy() async throws {
+        let directory = temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = LocalLyricsStore(directoryURL: directory)
+        let data = Data("[00:10]<00:10>로컬<00:11> <00:12>노래<00:14>".utf8)
+        let saved = try await store.save(data: data, fileName: "원본.lrc", for: track)
+        #expect(saved.lineCount == 1)
+        #expect(saved.preciseLineCount == 1)
+        let reloaded = try #require(try await LocalLyricsStore(directoryURL: directory).load(for: track))
+        #expect(reloaded.document.contents == String(data: data, encoding: .utf8))
+        #expect(reloaded.lyrics == saved.lyrics)
+        let another = TrackInfo(id: "another-song", title: track.title, artist: track.artist, album: "", duration: 180)
+        #expect(try await store.load(for: another) == nil, "같은 제목이어도 다른 플레이어 곡을 덮어쓰지 않는다")
+        _ = try await store.save(data: data, fileName: "다른 곡.lrc", for: another)
+        try await store.remove(for: track)
+        #expect(try await store.load(for: track) == nil)
+        #expect(try await store.load(for: another) != nil)
+    }
+
+    @Test func invalidImportPreservesExistingValidLyrics() async throws {
+        let directory = temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = LocalLyricsStore(directoryURL: directory)
+        let original = "[00:01]기존 가사"
+        _ = try await store.save(data: Data(original.utf8), fileName: "valid.lrc", for: track)
+        await #expect(throws: LocalLyricsError.self) {
+            _ = try await store.save(data: Data("시간 없는 가사".utf8), fileName: "invalid.lrc", for: track)
+        }
+        await #expect(throws: LocalLyricsError.self) {
+            _ = try await store.save(data: Data(repeating: 0x61, count: 1_048_577), fileName: "large.lrc", for: track)
+        }
+        await #expect(throws: LocalLyricsError.self) {
+            _ = try await store.save(data: Data(original.utf8), fileName: "lyrics.txt", for: track)
+        }
+        #expect(try await store.load(for: track)?.document.contents == original)
+    }
+
+    @Test func corruptOrFutureStoreIsPreservedAndCannotBeSilentlyReplaced() async throws {
+        let directory = temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = LocalLyricsStore(directoryURL: directory)
+        let input = Data("[00:01]처음 가사".utf8)
+        _ = try await store.save(data: input, fileName: "first.lrc", for: track)
+        let file = try #require(FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil).first)
+        for broken in [Data("broken JSON".utf8), Data("{\"schemaVersion\":999}".utf8)] {
+            try broken.write(to: file, options: .atomic)
+            await #expect(throws: LocalLyricsError.self) { _ = try await store.load(for: track) }
+            await #expect(throws: LocalLyricsError.self) {
+                _ = try await store.save(data: input, fileName: "replace.lrc", for: track)
+            }
+            #expect(try Data(contentsOf: file) == broken)
+        }
+    }
+
+    @Test func importsUTF16TTMLWithoutNetworkAndRejectsDTD() async throws {
+        let directory = temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = LocalLyricsStore(directoryURL: directory)
+        let ttml = "<tt><body><p begin=\"1s\" end=\"3s\"><span begin=\"1s\" end=\"2s\">한글</span></p></body></tt>"
+        let data = try #require(ttml.data(using: .utf16))
+        let saved = try await store.save(data: data, fileName: "Korean.TTML", for: track)
+        #expect(saved.lyrics.lines.first?.text == "한글")
+        #expect(saved.preciseLineCount == 1)
+        await #expect(throws: LocalLyricsError.self) {
+            _ = try await store.save(data: Data("<!DOCTYPE tt SYSTEM \"https://example.invalid/test.dtd\">\(ttml)".utf8), fileName: "entity.ttml", for: track)
+        }
+        #expect(try await store.load(for: track)?.document.contents == ttml)
+    }
+
+    @Test func srtAndBinaryKRCRoundTripThroughJSONWithoutLosingOriginalTiming() async throws {
+        let directory = temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = LocalLyricsStore(directoryURL: directory)
+        let srt = "1\n00:00:01,250 --> 00:00:20,000\n한글 자막"
+        let saved = try await store.save(data: #require(srt.data(using: .utf16)), fileName: "가사.srt", for: track)
+        #expect(saved.lyrics.end(of: 0) == 20)
+        #expect(try await store.load(for: track)?.document.contents == srt)
+        // 합성한 한글 두 단어 KRC. 실제 곡/외부 다운로드를 사용하지 않는다.
+        let binary = try #require(Data(base64Encoded: "a3JjMTjb6kFqAkSXYDAjnPjUVAnOxrzcUz8b3YfuKbfUEut9ngn8hDR1d0drFj5U"))
+        let imported = try await store.save(data: binary, fileName: "가사.krc", for: track)
+        let reloaded = try #require(try await store.load(for: track))
+        #expect(Data(base64Encoded: reloaded.document.contents) == binary)
+        #expect(reloaded.lyrics == imported.lyrics)
+        #expect(reloaded.preciseLineCount == 1)
+        #expect(reloaded.lyrics.end(of: 0) == 4)
+    }
+
+    @Test func binaryQRCImportPreservesOriginalBytesAndWordTimingAfterReload() async throws {
+        let directory = temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let storage = directory.appendingPathComponent("saved", isDirectory: true)
+        let store = LocalLyricsStore(directoryURL: storage)
+        // QRCLyricsTests의 독립 oracle로 만든 고정 합성 바이너리를 그대로 사용한다.
+        let hex = Array(QRCVectors.localHex.filter { !$0.isWhitespace })
+        let bytes = try stride(from: 0, to: hex.count, by: 2).map { index in
+            try #require(UInt8(String(hex[index...index + 1]), radix: 16))
+        }
+        let binary = Data(bytes)
+        let source = directory.appendingPathComponent("합성.QRC")
+        try binary.write(to: source)
+        let imported = try await store.importFile(at: source, for: track)
+        let reloaded = try #require(try await LocalLyricsStore(directoryURL: storage).load(for: track))
+        #expect(reloaded.document.format == "qrc")
+        #expect(reloaded.document.fileName == "합성.QRC")
+        #expect(Data(base64Encoded: reloaded.document.contents) == binary)
+        #expect(reloaded.lyrics == imported.lyrics)
+        #expect(reloaded.lyrics.lines.first?.text == "하늘 👩🏽‍🚀 が & café (둘) <3")
+        #expect(reloaded.lyrics.lines.first?.start == 0.75)
+        #expect(reloaded.lyrics.end(of: 0) == 3.25)
+        #expect(reloaded.lyrics.lines.first?.segments.count == 3)
+        try await store.remove(for: track)
+        #expect(try Data(contentsOf: source) == binary, "해제는 보관 사본만 지우고 원본 파일을 보존한다")
+    }
+
+    @Test func invalidOrOversizedQRCCannotReplaceExistingLyrics() async throws {
+        let directory = temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = LocalLyricsStore(directoryURL: directory)
+        let original = Data("[1000,3000]한글(1000,1000) 가사(2500,1000)".utf8)
+        _ = try await store.save(data: original, fileName: "original.qrc", for: track)
+        let file = try #require(FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil).first)
+        let savedJSON = try Data(contentsOf: file)
+        await #expect(throws: QRCLyrics.DecodeError.self) {
+            _ = try await store.save(data: Data("00zz".utf8), fileName: "broken.qrc", for: track)
+        }
+        let tooManyLines = (0...4_000).map { "[\($0 * 1_000),500]가(\($0 * 1_000),500)" }.joined(separator: "\n")
+        for data in [Data(repeating: 0, count: 1_048_577),
+                     Data(("[0,1000]" + String(repeating: "가", count: 501) + "(0,1000)").utf8),
+                     Data(tooManyLines.utf8)] {
+            await #expect(throws: LocalLyricsError.self) {
+                _ = try await store.save(data: data, fileName: "oversized.qrc", for: track)
+            }
+        }
+        #expect(try Data(contentsOf: file) == savedJSON)
+        #expect(try await store.load(for: track)?.document.contents == original.base64EncodedString())
+    }
+}

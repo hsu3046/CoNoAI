@@ -2,6 +2,8 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  // 테스트 기록·의견은 빌드 산출물에도 포함하지 않는다.
+  outputFileTracingExcludes: { "/*": ["./.local-data/**/*"] },
   experimental: {
     // 개발 서버 파일시스템 캐시는 계속 커지며 RSC 실패를 일으킨 적이 있어 끈다 (전역 TOOL_GOTCHAS)
     turbopackFileSystemCacheForDev: false,

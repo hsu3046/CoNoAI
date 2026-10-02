@@ -9,6 +9,7 @@ import { useState, type ReactNode } from "react";
 import { useInView } from "@/fx/hooks";
 import { release, videos } from "@/lib/release";
 import { CONTAINER, Screen, SectionTitle } from "./Screen";
+import { FeatureVideo } from "./FeatureVideo";
 
 function Reveal({ children, delay = 0, className = "" }: { children: ReactNode; delay?: number; className?: string }) {
   // 화면 아래 끝에 닿기 조금 전부터 나타나기 시작 (스크롤보다 늦게 튀어나오지 않게)
@@ -232,88 +233,16 @@ function AutoStartDemo() {
 
 export function Videos() {
   return (
-    <Screen glow={{ color: "rgba(92,199,255,0.08)", x: "20%", y: "60%" }}>
-      <SectionTitle kicker="WATCH" title="영상으로 보기" />
+    <Screen id="watch" glow={{ color: "rgba(92,199,255,0.08)", x: "20%", y: "60%" }}>
+      <SectionTitle kicker="WATCH" title="짧게 보고, 직접 해보기">실제 화면으로 익히는 사용법. 소리 없이도 따라갈 수 있어요.</SectionTitle>
       <div className="mt-10 grid gap-6 md:grid-cols-2">
         {videos.map((video, index) => (
           <Reveal key={video.id} delay={index * 120}>
             <figure className="overflow-hidden rounded-3xl border border-white/10 bg-black/40">
-              <div className="relative aspect-video max-h-[52dvh] w-full">
-                {video.src ? (
-                  video.src.includes("youtube") ? (
-                    <iframe src={video.src} title={video.title} className="absolute inset-0 size-full" allow="autoplay; encrypted-media; picture-in-picture" allowFullScreen />
-                  ) : (
-                    <video src={video.src} poster={video.poster} controls playsInline className="absolute inset-0 size-full object-cover" />
-                  )
-                ) : (
-                  <ComingSoon />
-                )}
-              </div>
-              <figcaption className="p-5">
-                <p className="font-cute text-xl">{video.title}</p>
-                <p className="mt-1 text-sm text-ink2">{video.caption}</p>
-              </figcaption>
+              <FeatureVideo video={video} />
             </figure>
           </Reveal>
         ))}
-      </div>
-    </Screen>
-  );
-}
-
-function ComingSoon() {
-  return (
-    <div className="absolute inset-0 grid place-items-center overflow-hidden bg-[radial-gradient(ellipse_at_center,#2a1147,#0b0d1a)]">
-      <div className="absolute inset-0 opacity-[0.07] [background-image:repeating-linear-gradient(0deg,#fff_0_1px,transparent_1px_3px)]" />
-      <div className="text-center">
-        <p className="text-5xl" style={{ animation: "floaty 3s ease-in-out infinite" }}>
-          🎬
-        </p>
-        <p className="neon neon-gold mt-3 font-display text-3xl flicker">촬영 중</p>
-        <p className="mt-2 text-sm text-ink2">곧 올라와요</p>
-      </div>
-    </div>
-  );
-}
-
-// MARK: - 챌린지 예고
-
-export function ChallengeTeaser() {
-  const rows = [
-    ["🥇", "노래하는고양이", 98],
-    ["🥈", "거실가왕", 96],
-    ["🥉", "샤워실디바", 95],
-    ["4", "퇴근후한곡", 93],
-    ["5", "고음불가", 91],
-  ] as const;
-  return (
-    <Screen glow={{ color: "rgba(255,204,92,0.09)", x: "75%", y: "50%" }}>
-      <div className="grid items-center gap-10 lg:grid-cols-2">
-        <SectionTitle kicker="COMING SOON" title="이번 주 챌린지 곡, 1등은 누구?" align="left">
-          <p>같은 곡을 불러 점수를 겨루는 챌린지를 준비하고 있어요. 앱에서 받은 점수를 한 번에 올리고, 친구에게 도전장을 보내세요.</p>
-          <a href="#feedback" className="mt-6 inline-block rounded-full bg-gold px-6 py-3 font-cute text-lg text-night shadow-[0_0_30px_rgba(255,204,92,0.6)] transition hover:scale-105">
-            소식 먼저 받기 →
-          </a>
-        </SectionTitle>
-        <Reveal className="relative">
-          <div className="rounded-3xl border border-gold/30 bg-gradient-to-b from-gold/10 to-transparent p-6 shadow-[0_0_60px_rgba(255,204,92,0.15)]">
-            <p className="text-center font-cute text-lg text-gold">🎤 이번 주: 〈우리 집 무대〉</p>
-            <ol className="mt-5 space-y-2 blur-[3px]" aria-hidden>
-              {rows.map(([rank, name, score]) => (
-                <li key={name} className="flex items-center justify-between rounded-xl bg-black/30 px-4 py-3">
-                  <span className="flex items-center gap-3">
-                    <span className="w-6 text-center font-display">{rank}</span>
-                    {name}
-                  </span>
-                  <span className="font-display text-xl text-gold">{score}</span>
-                </li>
-              ))}
-            </ol>
-          </div>
-          <div className="absolute inset-0 grid place-items-center">
-            <span className="neon neon-gold rotate-[-6deg] font-display text-4xl">곧 열려요</span>
-          </div>
-        </Reveal>
       </div>
     </Screen>
   );
@@ -419,8 +348,8 @@ function SendToMac() {
             }
             await navigator.clipboard.writeText(url);
             setNote("링크를 복사했어요. Mac으로 보내 주세요");
-          } catch {
-            // 공유 창을 닫은 경우
+          } catch (error) {
+            if (!(error instanceof DOMException && error.name === "AbortError")) setNote("링크를 복사하지 못했어요. 주소창의 주소를 복사해 주세요.");
           }
         }}
         className="rounded-full border border-white/20 bg-white/5 px-6 py-3 font-cute text-lg"

@@ -11,6 +11,8 @@ import { drawConfetti, drawFireworks, flashAmount, makeShow, shake } from "@/fx/
 import { fitCanvas } from "@/fx/hooks";
 import { playCelebration } from "@/fx/sfx";
 import { scoreComment, type SongScore } from "@/lib/pitch";
+import { type ScoreRecord } from "@/lib/score-record";
+import { ResultRecordActions } from "./ResultRecordActions";
 
 const CRASH = 2.8;
 
@@ -19,16 +21,18 @@ export function ScoreShow({
   audio,
   onClose,
   onRetry,
+  record,
 }: {
   result: SongScore;
   audio: AudioContext | null;
   onClose: () => void;
   onRetry: () => void;
+  record?: ScoreRecord;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const cardRef = useRef<HTMLDivElement>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
   const [elapsed, setElapsed] = useState(0);
-  const [shared, setShared] = useState<string | null>(null);
   // 같은 결과면 같은 불꽃 (렌더 중 난수 금지)
   const show = useMemo(() => makeShow(result.score, result.score * 7919 + result.notesHit * 31 + result.bestStreak, CRASH), [result]);
 
@@ -48,6 +52,7 @@ export function ScoreShow({
       frame = requestAnimationFrame(draw);
       // 소리와 같은 시계로 (소리가 없으면 벽시계)
       const t = audio ? audio.currentTime - startAudio : performance.now() / 1000 - startWall;
+      if (t >= 14) cancelAnimationFrame(frame);
       setElapsed(t);
       const canvas = canvasRef.current;
       if (!canvas) return;
@@ -72,6 +77,22 @@ export function ScoreShow({
     };
   }, [audio, show, onClose]);
 
+  useEffect(() => {
+    const previous = document.activeElement;
+    const overflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    dialogRef.current?.focus();
+    const trapFocus = (event: KeyboardEvent) => {
+      if (event.key !== "Tab") return;
+      const controls = [...(dialogRef.current?.querySelectorAll<HTMLElement>("button:not(:disabled), a[href], input:not(:disabled)") ?? [])].filter((element) => getComputedStyle(element).visibility !== "hidden");
+      const first = controls[0], last = controls[controls.length - 1];
+      if (event.shiftKey && (document.activeElement === first || document.activeElement === dialogRef.current)) { event.preventDefault(); last?.focus(); }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
+    };
+    document.addEventListener("keydown", trapFocus);
+    return () => { document.body.style.overflow = overflow; document.removeEventListener("keydown", trapFocus); if (previous instanceof HTMLElement) previous.focus(); };
+  }, []);
+
   const landed = elapsed >= CRASH;
   const since = elapsed - CRASH;
   const progress = Math.min(1, Math.max(0, elapsed / CRASH));
@@ -83,28 +104,15 @@ export function ScoreShow({
   const fill = (result.score / 100) * eased;
   const flash = flashAmount(show, elapsed);
 
-  const share = async () => {
-    const text = `🎤 CoNo 브라우저 노래방에서 ${result.score}점! (${scoreComment(result.score)}) 너도 불러 봐 →`;
-    const url = `${window.location.origin}/#try`;
-    try {
-      if (navigator.share) {
-        await navigator.share({ title: "CoNo 점수 자랑", text, url });
-        return;
-      }
-      await navigator.clipboard.writeText(`${text} ${url}`);
-      setShared("복사했어요! 붙여넣어 자랑하세요");
-    } catch {
-      // 공유 창을 닫은 경우 — 조용히
-    }
-  };
-
   // body 로 띄운다: 섹션이 쌓임 맥락(isolate)을 만들면 고정 헤더가 연출 위로 올라온다
   return createPortal(
     <div
-      className="fixed inset-0 z-[100] flex items-center justify-center overflow-hidden px-4"
+      className="fixed inset-0 z-[100] flex items-center justify-center overflow-y-auto px-4 py-6"
       role="dialog"
       aria-modal="true"
       aria-label={`채점 결과 ${result.score}점`}
+      ref={dialogRef}
+      tabIndex={-1}
     >
       <div
         className="absolute inset-0 backdrop-blur-md"
@@ -112,7 +120,7 @@ export function ScoreShow({
         onClick={onClose}
       />
       <canvas ref={canvasRef} className="pointer-events-none absolute inset-0 size-full" />
-      <div ref={cardRef} className="relative flex flex-col items-center text-center" style={{ opacity: Math.min(1, elapsed / 0.4) }}>
+      <div ref={cardRef} className="relative my-auto flex max-w-2xl flex-col items-center text-center" style={{ opacity: Math.min(1, elapsed / 0.4) }}>
         {/* 빛줄기 */}
         <div
           className="pointer-events-none absolute left-1/2 top-[150px] size-[620px] -translate-x-1/2 -translate-y-1/2 rounded-full"
@@ -217,14 +225,12 @@ export function ScoreShow({
           <button type="button" onClick={onRetry} className="rounded-full border border-white/20 bg-white/5 px-5 py-3 font-cute text-lg transition hover:border-pink hover:text-pink">
             ↺ 다시 부르기
           </button>
-          <button type="button" onClick={share} className="rounded-full bg-pink px-5 py-3 font-cute text-lg text-night shadow-[0_0_24px_rgba(255,143,176,0.6)] transition hover:scale-105">
-            📣 점수 자랑하기
-          </button>
           <a href="#download" onClick={onClose} className="rounded-full bg-gold px-5 py-3 font-cute text-lg text-night shadow-[0_0_24px_rgba(255,204,92,0.6)] transition hover:scale-105">
             진짜 노래로 하기 →
           </a>
         </div>
-        {shared && <p className="mt-3 text-sm text-mint">{shared}</p>}
+        {record && <div className="mt-4" style={{ visibility: landed ? "visible" : "hidden" }}><ResultRecordActions record={record} /></div>}
+        <button type="button" onClick={onClose} className="mt-3 text-sm text-ink2">닫기</button>
         <p className="mt-4 text-xs text-faint" style={{ opacity: reveal(1.8) * 0.8 }}>
           바깥을 누르거나 Esc로 닫기
         </p>

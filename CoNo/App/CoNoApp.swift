@@ -28,9 +28,25 @@ struct CoNoApp: App {
         .windowStyle(.hiddenTitleBar)
         .windowResizability(.contentMinSize)
         .defaultSize(width: 1100, height: 760)
+        .commands {
+            CommandGroup(after: .newItem) { ScoreHistoryCommand() }
+        }
+
+        Window("나의 노래 기록", id: "score-history") {
+            ScoreHistoryView(history: engine.scoreHistory).preferredColorScheme(.dark)
+        }
+        .defaultSize(width: 860, height: 650)
 
         Settings {
             SettingsView(engine: engine, catalog: catalog, settings: settings)
         }
+    }
+}
+
+private struct ScoreHistoryCommand: View {
+    @Environment(\.openWindow) private var openWindow
+    var body: some View {
+        Button("나의 노래 기록") { openWindow(id: "score-history") }
+            .keyboardShortcut("h", modifiers: [.command, .shift])
     }
 }

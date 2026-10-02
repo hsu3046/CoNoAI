@@ -12,6 +12,7 @@ struct KaraokeScreen: View {
     let engine: KaraokeEngine
     let catalog: AudioSourceCatalog
     let settings: AppSettings
+    @Environment(\.openWindow) private var openWindow
 
     @State private var toast: Toast?
     @State private var artworks = ArtworkStore()
@@ -39,7 +40,7 @@ struct KaraokeScreen: View {
             .opacity(engine.singingResult == nil ? 1 : 0.55)
             .animation(.easeOut(duration: 0.4), value: engine.singingResult == nil)
             if let result = engine.singingResult {
-                SingingResultCard(result: result, artwork: artworks.artwork(for: result.trackID)?.image) {
+                SingingResultCard(result: result, history: engine.scoreHistory, artwork: artworks.artwork(for: result.trackID)?.image) {
                     withAnimation(.easeOut) { engine.singingResult = nil }
                 }
                 .transition(.opacity)
@@ -52,6 +53,15 @@ struct KaraokeScreen: View {
             }
         }
         .foregroundStyle(StageTheme.ink)
+        .overlay(alignment: .topLeading) {
+            if !isFullScreen && engine.singingResult == nil {
+                Button { openWindow(id: "score-history") } label: {
+                    Label("노래 기록", systemImage: "clock.arrow.circlepath")
+                        .font(.system(size: 12)).padding(8).glassCapsule()
+                }
+                .buttonStyle(.plain).padding(.leading, 16).padding(.top, 40)
+            }
+        }
         .focusable()
         .focusEffectDisabled()
         .focused($focused)
@@ -166,12 +176,12 @@ struct KaraokeScreen: View {
                 .padding(.horizontal, 32)
                 .padding(.vertical, 18)
 
-            // 안내 한 줄 자리는 늘 비워 둔다 (떴다 사라질 때 위의 음정 바 높이가 바뀌지 않게)
+            // 안내 두 줄 자리는 늘 비워 둔다 (떴다 사라질 때 위의 음정 바 높이가 바뀌지 않게)
             Text(engine.playbackMessage ?? engine.singingNotice ?? " ")
                 .font(.callout)
                 .foregroundStyle(.orange)
-                .lineLimit(1)
-                .frame(height: 20)
+                .lineLimit(2)
+                .frame(height: 40)
                 .padding(.bottom, 6)
 
             SongProgressBar(engine: engine)

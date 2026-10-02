@@ -41,15 +41,6 @@ struct ModelBenchmark: Sendable, Equatable {
     var pitchSelfTestError: String?
 }
 
-/// 곡이 끝났을 때 보여줄 채점 결과
-struct SingingResult: Identifiable, Equatable, Sendable {
-    let id = UUID()
-    let trackID: String?
-    let title: String?
-    let artist: String?
-    let score: SongScore
-}
-
 @MainActor
 @Observable
 final class KaraokeEngine {
@@ -187,9 +178,9 @@ final class KaraokeEngine {
     private(set) var singing: SingingTracker?
     /// 곡이 끝나면 화면이 보여주고 지운다
     var singingResult: SingingResult?
-    var singingDifficulty: SingingJudge.Difficulty = .normal {
-        didSet { singing?.difficulty = singingDifficulty }
-    }
+    let scoreHistory = ScoreHistory()
+    /// 설정 변경은 다음 채점 세션/곡부터. 이미 얻은 점수의 판정 기준을 바꾸지 않는다.
+    var singingDifficulty: SingingJudge.Difficulty = .normal
     @ObservationIgnored private var heardClock: HeardClock?
     @ObservationIgnored private var singingGeneration = 0
     @ObservationIgnored private var scoringTrackID: String?
@@ -230,12 +221,15 @@ final class KaraokeEngine {
             guard generation == singingGeneration, wantsSinging, self.pipeline === pipeline else { return }
             let clock = HeardClock(pipeline: pipeline)
             clock.setExtraLatency(extraLatencySeconds)
-            let tracker = try SingingTracker(mic: mic, detector: detector, reference: timeline, clock: clock)
+            let tracker = try SingingTracker(mic: mic, detector: detector, reference: timeline, clock: clock, difficulty: singingDifficulty)
             tracker.keyShift = keyShift
-            tracker.difficulty = singingDifficulty
-            try mic.start { [weak self] in
+            try mic.start { [weak self, weak mic] in
                 // 입력 장치가 바뀌면 새 장치로 다시 연다
-                MainActor.assumeIsolated { self?.restartSinging() }
+                MainActor.assumeIsolated {
+                    guard let self, let mic, generation == self.singingGeneration,
+                          self.singing?.mic === mic else { return }
+                    self.restartSinging()
+                }
             }
             tracker.start()
             singing = tracker
@@ -275,7 +269,7 @@ final class KaraokeEngine {
             let concluded = concludeSong()
             scoringTrack = track
             scoringTrackID = track?.id
-            singing.resetScore()
+            singing.resetScore(difficulty: singingDifficulty)
             // 채점한 곡이 끝나 다음 곡이 들리기 시작하면 멈춘다 (노래방처럼 한 곡씩, 결과를 보라고).
             // 다음 곡 앞부분은 버퍼에 남아 있어 재생을 누르면 처음부터 이어진다. 광고로 바뀐 건 멈추지 않는다.
             let onAd = heardCaptureTime().flatMap { lyrics.advertisement(atCaptureTime: $0) } != nil
@@ -287,9 +281,12 @@ final class KaraokeEngine {
     @discardableResult
     private func concludeSong(minimumNotes: Int = minimumScoredNotes) -> Bool {
         guard let singing else { return false }
-        let score = singing.snapshot().score
+        let snapshot = singing.snapshot()
+        let score = snapshot.score
         guard score.notesTotal >= minimumNotes else { return false }
-        singingResult = SingingResult(trackID: scoringTrack?.id, title: scoringTrack?.title, artist: scoringTrack?.artist, score: score)
+        let result = SingingResult(trackID: scoringTrack?.id, title: scoringTrack?.title, artist: scoringTrack?.artist, score: score, keyShift: keyShift, difficulty: snapshot.difficulty == .hard ? "hard" : "normal")
+        scoreHistory.record(result.record)
+        singingResult = result
         return true
     }
 
@@ -846,7 +843,7 @@ final class KaraokeEngine {
             // 먼저 띄우면 권한 대기 중 정지·재시작했을 때 옛 워커와 새 워커가 같은 분리 모델을 동시에 쓴다.
             createdPipeline = pipeline
 
-            // 3) 재생 (출력 장치가 바뀌면 엔진이 멈추므로 안전하게 정지하고 안내)
+            // 3) 재생 (실행 중 출력 장치 변경은 재생 그래프만 다시 연결)
             playback.setKeyShift(keyShift)
             try playback.start(
                 render: { [pipeline] frames, buffers, timestamp in
@@ -857,8 +854,7 @@ final class KaraokeEngine {
                         // 시작 중(권한 대기)에 바뀌어도 정지해야 한다 — isRunning 만 보면 알림이 버려지고
                         // 멈춘 엔진으로 .running 이 된다. 정지하면 번호가 바뀌어 대기 중인 시작도 스스로 정리한다.
                         guard let self, generation == self.startGeneration, self.isBusy else { return }
-                        self.stop()
-                        self.status = .failed("출력 장치가 바뀌어 정지했습니다. 다시 시작해 주세요.")
+                        self.reconnectPlayback(generation: generation)
                     }
                 }
             )
@@ -921,6 +917,44 @@ final class KaraokeEngine {
         generation == startGeneration && status == .starting
     }
 
+    /// 출력 그래프만 교체해 탭·분리 모델·음정 타임라인·채점·재생 위치를 유지한다.
+    /// 파이프라인의 고정 샘플레이트를 새 출력 믹서 입력에 명시하므로 장치 레이트가 바뀌어도 음높이·속도가 유지된다.
+    private func reconnectPlayback(generation: Int) {
+        guard generation == startGeneration, isBusy else { return }
+        guard isRunning, let pipeline else {
+            stop()
+            status = .failed("시작 중 출력 장치가 바뀌었습니다. 장치 연결을 마친 뒤 다시 시작해 주세요.")
+            return
+        }
+        output?.stop()
+        pipeline.suspendPlayback()
+        output = nil
+        let playback = PlaybackOutput()
+        do {
+            guard playback.sampleRate > 0 else { throw CoreAudioError("사용할 수 있는 출력 장치가 없습니다") }
+            playback.setKeyShift(keyShift)
+            pipeline.resumePlaybackOnNextRender()
+            try playback.start(
+                render: { [pipeline] frames, buffers, timestamp in
+                    pipeline.renderPlayback(frameCount: frames, output: buffers, timestamp: timestamp)
+                },
+                sourceSampleRate: pipeline.outputSampleRate,
+                onConfigurationChange: { [weak self] in
+                    MainActor.assumeIsolated { self?.reconnectPlayback(generation: generation) }
+                }
+            )
+            output = playback
+            outputSampleRate = playback.sampleRate
+            outputDeviceName = playback.deviceName
+            playbackMessage = nil
+        } catch {
+            playback.stop()
+            concludeSong()
+            stop()
+            status = .failed("출력 장치를 다시 연결하지 못했습니다: \(error.localizedDescription)")
+        }
+    }
+
     /// 파이프라인 워커를 멈춘다. 시간 안에 안 멈추면 워커가 분리 모델·음정 검출기를 아직 쓰고 있을 수 있으므로
     /// 다시 쓰지 않고 버린다 (다음 시작 때 새로 로드). 모델 객체는 한 스레드만 써야 한다.
     private func stopPipeline(_ pipeline: DelayPipeline?) {
@@ -966,7 +1000,15 @@ final class KaraokeEngine {
     func saveDiagnosticRecording() {
         guard let pipeline else { return }
         do {
-            let folder = try pipeline.recorder.save()
+            let context = DiagnosticContext(
+                mode: runningMode.map { String(describing: $0) } ?? "unknown",
+                inputSampleRate: pipeline.inputSampleRate, streamSampleRate: pipeline.outputSampleRate,
+                outputHardwareSampleRate: outputSampleRate, outputDeviceName: outputDeviceName,
+                delaySeconds: pipeline.delaySeconds, keyShift: keyShift,
+                displayLatencyMilliseconds: displayLatencyMilliseconds,
+                separationStreamOffsetSeconds: separationTiming?.streamOffset ?? 0
+            )
+            let folder = try pipeline.recorder.save(context: context)
             diagnosticSaveMessage = "저장됨: \(folder.path)"
         } catch {
             diagnosticSaveMessage = "저장 실패: \(error.localizedDescription)"
@@ -1001,6 +1043,8 @@ final class KaraokeEngine {
             while !Task.isCancelled {
                 guard let self, let pipeline = self.pipeline else { return }
                 self.stats = pipeline.takeStats()
+                pipeline.recorder.recordStats(self.stats, playbackPosition: pipeline.playbackPosition(),
+                                              outputHardwareSampleRate: self.outputSampleRate)
                 if let separationProcessor = self.separationProcessor {
                     self.inferenceStats = separationProcessor.inferenceStats
                 }
@@ -1031,11 +1075,13 @@ final class KaraokeEngine {
 }
 
 extension KaraokeEngine {
-    /// 무대 아래 안내 한 줄: 채점 실패 사유나 블루투스 마이크 주의
+    /// 무대 아래 안내: 실패를 우선 표시하고 블루투스·가이드 보컬 주의는 함께 알린다.
     var singingNotice: String? {
         switch singingState {
-        case let .failed(message): message
-        case .listening(_, isBluetooth: true): "블루투스 마이크를 쓰는 중이에요. 이어폰 소리가 통화 음질로 떨어지면 Mac 내장 마이크로 바꿔 주세요."
+        case let .failed(message):
+            SingingNotice.message(failure: message, isListening: false, isBluetooth: false, guideVocalLevel: guideVocalLevel)
+        case let .listening(_, isBluetooth):
+            SingingNotice.message(isListening: true, isBluetooth: isBluetooth, guideVocalLevel: guideVocalLevel)
         default: nil
         }
     }

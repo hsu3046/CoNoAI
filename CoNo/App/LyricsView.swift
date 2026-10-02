@@ -16,6 +16,7 @@ struct LyricsView: View {
     /// 간주 점프 (곡 위치로 이동). nil 이면 버튼을 숨긴다.
     var onSkipInterlude: ((Double) -> Void)?
     @State private var hovering = false
+    @State private var dropTargeted = false
 
     var body: some View {
         TimelineView(.animation) { timeline in
@@ -25,6 +26,25 @@ struct LyricsView: View {
         .onHover { inside in
             withAnimation(.easeOut(duration: 0.2)) { hovering = inside }
         }
+        .overlay {
+            if dropTargeted {
+                RoundedRectangle(cornerRadius: 16).strokeBorder(StageTheme.mint, style: StrokeStyle(lineWidth: 2, dash: [8]))
+                    .overlay {
+                        Text("현재 곡에 LRC·TTML·SRT·KRC·QRC 가사 가져오기")
+                            .font(.callout.bold()).padding(12).background(.ultraThinMaterial, in: Capsule())
+                    }
+                    .allowsHitTesting(false)
+            }
+        }
+        .overlay(alignment: .bottom) {
+            if let error = controller.localLyricsError {
+                Text(error).font(.caption).foregroundStyle(StageTheme.gold).lineLimit(2).padding(.horizontal)
+            }
+        }
+        .dropDestination(for: URL.self) { urls, _ in
+            let visibleTrack = heardCaptureTime().flatMap { controller.track(atCaptureTime: $0) }
+            return controller.importDroppedLyrics(urls, for: visibleTrack)
+        } isTargeted: { dropTargeted = $0 }
     }
 
     @ViewBuilder

@@ -41,9 +41,10 @@ struct LiveScoreChip: View {
     }
 }
 
-/// 곡이 끝나면 뜨는 채점 연출 (CelebrationView.swift). 누르면 닫힘, 가만두면 14초 뒤 닫힘.
+/// 결과를 공유하는 동안 자동으로 닫지 않는다.
 struct SingingResultCard: View {
     let result: SingingResult
+    let history: ScoreHistory
     let artwork: NSImage?
     let dismiss: () -> Void
 
@@ -52,34 +53,57 @@ struct SingingResultCard: View {
     private static let audioLead = 0.08
     @State private var startedAt: Date?
     @State private var audio = CelebrationAudio()
+    @State private var animationFinished = false
+    @Environment(\.openWindow) private var openWindow
 
-    init(result: SingingResult, artwork: NSImage?, dismiss: @escaping () -> Void) {
+    init(result: SingingResult, history: ScoreHistory, artwork: NSImage?, dismiss: @escaping () -> Void) {
         self.result = result
+        self.history = history
         self.artwork = artwork
         self.dismiss = dismiss
         show = CelebrationShow(score: result.score.score, seed: UInt64(truncatingIfNeeded: result.id.hashValue))
     }
 
     var body: some View {
-        TimelineView(.animation) { context in
+        TimelineView(.animation(paused: animationFinished)) { context in
             let elapsed = startedAt.map { context.date.timeIntervalSince($0) - Self.audioLead } ?? 0
             CelebrationFrame(result: result, artwork: artwork, show: show, elapsed: max(0, elapsed))
         }
         .contentShape(Rectangle())
-        .onTapGesture(perform: close)
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            VStack(spacing: 10) {
+                let recordID = result.id.uuidString.lowercased()
+                if history.pending.contains(where: { $0.id == recordID }) {
+                    Text(history.errorMessage ?? "아직 기록을 저장하지 못했어요. 앱을 종료하기 전에 JSON으로 내보내 주세요.")
+                        .font(.caption).foregroundStyle(StageTheme.pink)
+                    Button("저장 다시 시도") { history.retryPending() }
+                } else if history.records.contains(where: { $0.id == recordID }) {
+                    Text("나의 기록에 저장했어요").font(.caption).foregroundStyle(StageTheme.mint)
+                } else {
+                    Text("나의 기록에 없는 결과예요. 필요한 경우 JSON으로 내보내 주세요.")
+                        .font(.caption).foregroundStyle(StageTheme.secondaryInk)
+                }
+                ScoreRecordActions(record: result.record)
+                HStack {
+                    Button("나의 기록") { openWindow(id: "score-history") }
+                    Button("닫기", action: close).keyboardShortcut(.escape, modifiers: [])
+                }
+                .buttonStyle(.bordered)
+            }
+            .padding(16).background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 20)).padding(.bottom, 20)
+        }
         .onAppear {
             startedAt = Date()
             audio.play(show: show, lead: Self.audioLead)
         }
         .onDisappear { audio.stop() }
         .task {
-            try? await Task.sleep(for: .seconds(14))
-            close()
+            do { try await Task.sleep(for: .seconds(14)) } catch { return }
+            animationFinished = true
+            audio.stop()
         }
-        .accessibilityElement(children: .ignore)
+        .accessibilityElement(children: .contain)
         .accessibilityLabel("채점 결과 \(result.score.score)점, \(Self.comment(for: result.score.score))")
-        .accessibilityAddTraits(.isButton)
-        .accessibilityAction { close() }
     }
 
     private func close() {

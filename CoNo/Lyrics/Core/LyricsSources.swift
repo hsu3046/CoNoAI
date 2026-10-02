@@ -10,6 +10,7 @@ enum LyricsSource: String, Codable, CaseIterable, Sendable {
     case netease
     case amll
     case appleMusic
+    case localFile
 
     var label: String {
         switch self {
@@ -17,6 +18,7 @@ enum LyricsSource: String, Codable, CaseIterable, Sendable {
         case .netease: "NetEase 云音乐"
         case .amll: "AMLL"
         case .appleMusic: "Apple Music"
+        case .localFile: "내 가사 파일"
         }
     }
 
@@ -26,7 +28,7 @@ enum LyricsSource: String, Codable, CaseIterable, Sendable {
         switch self {
         case .appleMusic: 12
         case .amll: 8
-        case .lrclib, .netease: 0
+        case .lrclib, .netease, .localFile: 0
         }
     }
 }
@@ -66,41 +68,60 @@ enum NetEaseLyrics {
 // MARK: - TTML (AMLL · Apple Music 형식)
 
 enum TTMLLyrics {
-    /// TTML 의 줄(<p begin=…>)을 LRC 로. 배경 보컬·번역·발음 표기(ttm:role) 는 뺀다. 단어 시각은 지금은 쓰지 않는다 (#7).
+    /// 단어/음절 span의 begin·end를 enhanced LRC로 보존한다. 배경 보컬·번역·발음 표기는 뺀다.
+    /// 단어 시각이 없거나 순서가 잘못된 줄만 일반 LRC로 내려 기존 보컬 기반 추정을 쓴다.
     static func lrc(from ttml: String) -> String? {
         guard let data = ttml.data(using: .utf8) else { return nil }
         let collector = LineCollector()
         let parser = XMLParser(data: data)
         parser.delegate = collector
+        parser.shouldResolveExternalEntities = false
         guard parser.parse(), !collector.lines.isEmpty else { return nil }
         return collector.lines
-            .map { "[\(format($0.begin))]\($0.text.trimmingCharacters(in: .whitespaces))" }
             .joined(separator: "\n")
     }
 
     /// "1:02.345" · "00:01:02.345" · "62.345s" · "62.345"
     static func seconds(_ value: String) -> Double? {
         var text = value.trimmingCharacters(in: .whitespaces)
+        if text.hasSuffix("ms") {
+            text.removeLast(2)
+            guard let milliseconds = Double(text), milliseconds.isFinite, milliseconds >= 0,
+                  milliseconds <= 86_400_000 else { return nil }
+            return milliseconds / 1000
+        }
         if text.hasSuffix("s") { text.removeLast() }
-        let parts = text.split(separator: ":").map(String.init)
+        let parts = text.split(separator: ":", omittingEmptySubsequences: false).map(String.init)
         guard !parts.isEmpty, parts.count <= 3 else { return nil }
         var total = 0.0
-        for part in parts {
-            guard let number = Double(part) else { return nil }
+        for (index, part) in parts.enumerated() {
+            guard let number = Double(part), number.isFinite, number >= 0,
+                  index == 0 || number < 60 else { return nil }
             total = total * 60 + number
         }
-        return total
+        return total <= 86_400 ? total : nil
     }
 
     private static func format(_ seconds: Double) -> String {
-        let centiseconds = Int((seconds * 100).rounded())
-        return String(format: "%02d:%02d.%02d", centiseconds / 6000, (centiseconds / 100) % 60, centiseconds % 100)
+        let milliseconds = Int((seconds * 1000).rounded())
+        return String(format: "%02d:%02d.%03d", milliseconds / 60000, (milliseconds / 1000) % 60, milliseconds % 1000)
     }
 
     private final class LineCollector: NSObject, XMLParserDelegate {
-        var lines: [(begin: Double, text: String)] = []
+        struct Timing: Equatable {
+            var begin: Double?
+            var end: Double?
+        }
+        struct Piece {
+            var text: String
+            let timing: Timing
+        }
+        var lines: [String] = []
         private var lineBegin: Double?
-        private var text = ""
+        private var lineEnd: Double?
+        private var pieces: [Piece] = []
+        private var spanTimings: [Timing] = []
+        private var invalidTiming = false
         /// 지금 건너뛰는 중인 요소 깊이 (배경 보컬·번역 span)
         private var skipDepth = 0
 
@@ -112,9 +133,26 @@ enum TTMLLyrics {
             }
             if local == "p" {
                 lineBegin = attributes["begin"].flatMap(TTMLLyrics.seconds)
-                text = ""
-            } else if local == "span", attributes.contains(where: { $0.key.hasSuffix("role") }) {
-                skipDepth = 1
+                lineEnd = attributes["end"].flatMap(TTMLLyrics.seconds)
+                pieces = []
+                spanTimings = []
+                invalidTiming = false
+            } else if local == "span", lineBegin != nil {
+                let ignoredRoles: Set<String> = ["x-bg", "x-translation", "x-roman", "x-romanization", "translation"]
+                if attributes.contains(where: { $0.key.split(separator: ":").last == "role" && ignoredRoles.contains($0.value) }) {
+                    skipDepth = 1
+                    return
+                }
+                var timing = spanTimings.last ?? Timing()
+                if let begin = attributes["begin"] {
+                    timing.begin = TTMLLyrics.seconds(begin)
+                    if timing.begin == nil { invalidTiming = true }
+                }
+                if let end = attributes["end"] {
+                    timing.end = TTMLLyrics.seconds(end)
+                    if timing.end == nil { invalidTiming = true }
+                }
+                spanTimings.append(timing)
             }
         }
 
@@ -124,16 +162,71 @@ enum TTMLLyrics {
                 skipDepth -= 1
                 return
             }
-            if local == "p", let begin = lineBegin {
-                let line = text.replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
-                if !line.trimmingCharacters(in: .whitespaces).isEmpty { lines.append((begin, line)) }
+            if local == "span", !spanTimings.isEmpty {
+                spanTimings.removeLast()
+            } else if local == "p", let begin = lineBegin {
+                if let line = enhancedLine(begin: begin) { lines.append(line) }
                 lineBegin = nil
             }
         }
 
         func parser(_ parser: XMLParser, foundCharacters string: String) {
             guard skipDepth == 0, lineBegin != nil else { return }
-            text += string
+            let timing = spanTimings.last ?? Timing()
+            if pieces.last?.timing == timing {
+                pieces[pieces.count - 1].text += string
+            } else {
+                pieces.append(Piece(text: string, timing: timing))
+            }
+        }
+
+        private func enhancedLine(begin: Double) -> String? {
+            // XMLParser가 글자를 임의로 나누므로 요소 사이까지 이어서 공백을 정규화한다.
+            var previousWasSpace = false
+            let normalized = pieces.map { piece -> Piece in
+                var text = ""
+                for character in piece.text {
+                    if character.isWhitespace {
+                        if !previousWasSpace { text.append(" ") }
+                        previousWasSpace = true
+                    } else {
+                        text.append(character)
+                        previousWasSpace = false
+                    }
+                }
+                return Piece(text: text, timing: piece.timing)
+            }
+            let plain = normalized.map(\.text).joined().trimmingCharacters(in: .whitespaces)
+            guard !plain.isEmpty else { return nil }
+            let prefix = "[\(TTMLLyrics.format(begin))]"
+            let sung = normalized.filter { !$0.text.trimmingCharacters(in: .whitespaces).isEmpty }
+            var previousEnd = begin
+            let valid = !invalidTiming && sung.allSatisfy { piece in
+                guard let start = piece.timing.begin, start >= previousEnd,
+                      piece.timing.end.map({ $0 >= start }) ?? true,
+                      lineEnd.map({ (piece.timing.end ?? start) <= $0 }) ?? true else { return false }
+                previousEnd = piece.timing.end ?? start
+                return true
+            }
+            guard valid else {
+                // 단어 시각을 추정해야 하는 줄도 원본의 명시적인 줄 종료는 유지한다.
+                let endTag = lineEnd.flatMap { $0 >= begin ? "<\(TTMLLyrics.format($0))>" : nil } ?? ""
+                return prefix + plain + endTag
+            }
+
+            var content = ""
+            for piece in normalized {
+                guard !piece.text.trimmingCharacters(in: .whitespaces).isEmpty,
+                      let start = piece.timing.begin else { content += piece.text; continue }
+                content += "<\(TTMLLyrics.format(start))>\(piece.text)"
+                if let end = piece.timing.end { content += "<\(TTMLLyrics.format(end))>" }
+            }
+            // 마지막 단어가 먼저 끝나도 문장 끝까지 표시한다. 두 종료 태그 사이에는
+            // 글자가 없으므로 단어의 길이는 유지되고 LRCParser가 마지막 태그를 줄 끝으로 쓴다.
+            if let end = lineEnd, end >= previousEnd {
+                content += "<\(TTMLLyrics.format(end))>"
+            }
+            return prefix + content
         }
     }
 }

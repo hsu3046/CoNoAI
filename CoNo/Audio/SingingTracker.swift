@@ -46,6 +46,7 @@ final class SingingTracker: @unchecked Sendable {
         /// 최근 몇 초의 프레임 (시각 순)
         var frames: [Frame] = []
         var score = SongScore()
+        var difficulty: SingingJudge.Difficulty = .normal
         /// 마이크 레벨 (최대 진폭, 0…1)
         var micPeak: Float = 0
         /// 배운 스피커 누설 (dB, 마이크 ÷ 출력). 아직 모르면 nil
@@ -66,7 +67,7 @@ final class SingingTracker: @unchecked Sendable {
     private let resampler: AudioResampler?
     private var highPass: HighPassFilter
     private var gate = LeakageGate()
-    private var scorer = NoteScorer(start: 0)
+    private var scoreSession: SingingScoreSession
     private let segmenter = NoteSegmenter()
     private var micScratch: [Float]
     private var readSamples = 0
@@ -80,15 +81,11 @@ final class SingingTracker: @unchecked Sendable {
     private var outputHistory: [(time: Double, level: Double)] = []
     private var levelPair = [Float](repeating: 0, count: 2)
     private var frames: [Frame] = []
-    private var hitTimes: [Double] = []
     private var lastReferenceMidi: Double?
-    private var scoreStartPending = true
     private var lastScoredAt: Double = -1
     private var acceptedHistory: [Bool] = []
 
     private let keyShiftValue = Atomic<Int>(0)
-    private let difficultyValue = Atomic<Int>(SingingJudge.Difficulty.normal.rawValue)
-    private let resetRequested = Atomic<Bool>(false)
     private let published = Mutex(Snapshot())
 
     private static let rate16 = SwiftF0Detector.sampleRate
@@ -99,10 +96,11 @@ final class SingingTracker: @unchecked Sendable {
     private static let silentWindow = 0.3
     private static let keepFrameSeconds = 6.0
 
-    init(mic: MicrophoneInput, detector: SwiftF0Detector, reference: PitchTimeline, clock: HeardClock) throws {
+    init(mic: MicrophoneInput, detector: SwiftF0Detector, reference: PitchTimeline, clock: HeardClock, difficulty: SingingJudge.Difficulty = .normal) throws {
         self.mic = mic
         self.reference = reference
         self.clock = clock
+        scoreSession = SingingScoreSession(difficulty: difficulty)
         // 실시간 표시용: 미리 보기 3 프레임(48 ms). 10 프레임 대비 유성 판정 99.5%·음정 100% 일치 (2026-09-26 측정)
         stream = PitchFrameStream(estimator: detector, lookaheadFrames: 3)
         resampler = abs(mic.sampleRate - Self.rate16) > 0.5
@@ -110,16 +108,12 @@ final class SingingTracker: @unchecked Sendable {
             : nil
         highPass = HighPassFilter(cutoff: 90, sampleRate: mic.sampleRate)
         micScratch = [Float](repeating: 0, count: 16_384)
+        published.withLock { $0.difficulty = difficulty }
     }
 
     var keyShift: Int {
         get { keyShiftValue.load(ordering: .relaxed) }
         set { keyShiftValue.store(newValue, ordering: .relaxed) }
-    }
-
-    var difficulty: SingingJudge.Difficulty {
-        get { SingingJudge.Difficulty(rawValue: difficultyValue.load(ordering: .relaxed)) ?? .normal }
-        set { difficultyValue.store(newValue.rawValue, ordering: .relaxed) }
     }
 
     func start() {
@@ -138,8 +132,19 @@ final class SingingTracker: @unchecked Sendable {
     }
 
     /// 새 곡: 점수를 0 부터 (지금 들리는 위치 뒤의 음표만 센다)
-    func resetScore() {
-        resetRequested.store(true, ordering: .relaxed)
+    func resetScore(difficulty: SingingJudge.Difficulty? = nil) {
+        // 진행 중인 tick 뒤에서 난이도·누적 점수·공개 결과를 함께 바꾼다.
+        // 플래그만 걸면 다음 마이크 프레임 전까지 옛 점수를 새 곡 결과로 다시 읽을 수 있다.
+        queue.sync {
+            scoreSession = SingingScoreSession(difficulty: difficulty ?? scoreSession.difficulty)
+            lastScoredAt = -1
+            frames.removeAll(keepingCapacity: true)
+            published.withLock { snapshot in
+                snapshot.score = SongScore()
+                snapshot.difficulty = scoreSession.difficulty
+                snapshot.frames = []
+            }
+        }
     }
 
     func snapshot() -> Snapshot {
@@ -149,10 +154,6 @@ final class SingingTracker: @unchecked Sendable {
     // MARK: - 채점 큐
 
     private func tick() {
-        if resetRequested.exchange(false, ordering: .relaxed) {
-            scoreStartPending = true
-            hitTimes.removeAll()
-        }
         drainOutputLevels()
 
         let available = min(mic.ring.availableToRead, micScratch.count)
@@ -246,12 +247,7 @@ final class SingingTracker: @unchecked Sendable {
         let last = time(of: emitted[emitted.count - 1])
         let snapshot = reference.snapshot(from: first - 0.5, to: last + 0.5)
         let referencePitch = ReferencePitch(frames: snapshot.frames, framePeriod: reference.framePeriod, keyShift: keyShift)
-        let tolerance = difficulty.tolerance
-
-        if scoreStartPending {
-            scorer = NoteScorer(start: first)
-            scoreStartPending = false
-        }
+        scoreSession.beginIfNeeded(at: first)
 
         for frame in emitted {
             let t = time(of: frame)
@@ -273,9 +269,9 @@ final class SingingTracker: @unchecked Sendable {
             let sung = NoteSegmenter.midi(fromHz: frame.pitchHz)
             if let match = referencePitch.nearest(to: sung, at: t, window: Self.matchWindow) {
                 lastReferenceMidi = match.reference
-                let hit = abs(match.offset) <= tolerance
+                let hit = scoreSession.accepts(offset: match.offset)
                 frames.append(Frame(time: t, midi: match.reference + match.offset, hit: hit))
-                if hit { hitTimes.append(t) }
+                if hit { scoreSession.hitTimes.append(t) }
             } else {
                 // 원곡이 쉬는 곳: 최근 원곡 음 옥타브로 접어 그린다 (판정 없음)
                 let shown = lastReferenceMidi.map { $0 + SingingJudge.foldedOffset(sung: sung, reference: $0) } ?? sung
@@ -285,8 +281,8 @@ final class SingingTracker: @unchecked Sendable {
         if let cutoff = frames.last?.time, frames.count > 1_000 {
             frames.removeAll { $0.time < cutoff - Self.keepFrameSeconds }
         }
-        if let cutoff = hitTimes.last, hitTimes.count > 2_000 {
-            hitTimes.removeAll { $0 < cutoff - 30 }
+        if let cutoff = scoreSession.hitTimes.last, scoreSession.hitTimes.count > 2_000 {
+            scoreSession.hitTimes.removeAll { $0 < cutoff - 30 }
         }
 
         // 음표 채점은 0.25초마다: 최근 12초 음표 중 0.3초 전에 끝난 것 (창 가장자리 1초는 경계가 흔들려 뺀다)
@@ -294,7 +290,7 @@ final class SingingTracker: @unchecked Sendable {
             lastScoredAt = last
             let window = reference.snapshot(from: last - 12, to: last)
             let notes = segmenter.segment(window.frames).filter { Double($0.startFrame) * reference.framePeriod >= last - 11 }
-            scorer.score(notes: notes, framePeriod: reference.framePeriod, hitTimes: hitTimes, stableUntil: last - 0.3)
+            scoreSession.score(notes: notes, framePeriod: reference.framePeriod, stableUntil: last - 0.3)
         }
     }
 
@@ -304,10 +300,11 @@ final class SingingTracker: @unchecked Sendable {
         let accepted = acceptedHistory.isEmpty ? 0 : Double(acceptedHistory.filter { $0 }.count) / Double(acceptedHistory.count)
         let leakage = gate.leakage.map { 20 * log10(max($0, 1e-6)) }
         let peak = mic.takePeak()
-        let score = scorer.score
+        let score = scoreSession.score
         published.withLock { snapshot in
             snapshot.frames = Array(recent)
             snapshot.score = score
+            snapshot.difficulty = scoreSession.difficulty
             snapshot.micPeak = max(peak, snapshot.micPeak * 0.85)
             snapshot.leakageDB = leakage
             snapshot.acceptedRatio = accepted

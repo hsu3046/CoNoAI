@@ -6,6 +6,7 @@
 
 import AppKit
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct SettingsView: View {
     let engine: KaraokeEngine
@@ -226,7 +227,7 @@ private struct SoundSettings: View {
                 }
                 .pickerStyle(.segmented)
                 LabeledContent("마이크", value: microphoneDescription)
-                Caption("내가 부르는 음정을 음정 바에 금색 선으로 겹쳐 보여 주고, 맞춘 음표로 점수를 매깁니다. 옥타브는 따지지 않아요(남녀가 바꿔 불러도 됨). AI 반주 모드에서만 동작하고, 목소리는 저장하지 않습니다.")
+                Caption("내가 부르는 음정을 음정 바에 금색 선으로 겹쳐 보여 주고, 맞춘 음표로 점수를 매깁니다. 판정 변경은 다음 곡이나 채점을 다시 켤 때 적용됩니다. 옥타브는 따지지 않아요(남녀가 바꿔 불러도 됨). AI 반주 모드에서만 동작하고, 목소리는 저장하지 않습니다.")
                 Caption("스피커로 틀어 놓고 불러도 됩니다. 전주·간주에서 스피커 소리가 마이크로 새는 양을 재서 걸러내요. 마이크를 입 가까이 둘수록 정확합니다. 마이크는 시스템 설정 › 사운드 › 입력에서 고릅니다.")
             }
         }
@@ -365,6 +366,8 @@ private struct LyricsSettings: View {
 
             AppleMusicLyricsSection(settings: settings)
 
+            LocalLyricsSection(engine: engine)
+
             Section("가사 출처") {
                 Caption("곡 정보는 음악 앱은 직접, 그 밖의 앱(브라우저의 YouTube 등)은 macOS '지금 재생 중' 으로 받아요. 영상 제목은 '가수 - 곡' 형태로 다듬어 찾습니다.")
                 HStack {
@@ -381,6 +384,88 @@ private struct LyricsSettings: View {
             }
         }
         .formStyle(.grouped)
+    }
+}
+
+private struct LocalLyricsSection: View {
+    let engine: KaraokeEngine
+    private var controller: LyricsController { engine.lyrics }
+    @State private var removalTrack: TrackInfo?
+    @State private var editorRequest: LyricsEditorRequest?
+    @State private var dropTargeted = false
+
+    var body: some View {
+        Section("내 가사 파일") {
+            if let track = controller.currentTrack {
+                LabeledContent("적용할 곡") {
+                    Text("\(track.title) · \(track.artist)").lineLimit(2)
+                }
+                if let info = controller.localLyricsInfo {
+                    Text(info.fileName).font(.callout)
+                    Caption("\(info.lineCount)줄 · 단어 시각이 있는 줄 \(info.preciseLineCount)개")
+                } else {
+                    Caption("LRC·TTML·SRT·KRC·QRC 파일을 이곳이나 노래방 가사 영역에 놓아 주세요.")
+                }
+                HStack {
+                    Button(controller.localLyricsInfo == nil ? "가사 파일 가져오기…" : "가사 파일 바꾸기…") {
+                        importFile(for: track)
+                    }
+                    if controller.localLyricsInfo != nil {
+                        Button("내 가사 해제", role: .destructive) { removalTrack = track }
+                    }
+                    if controller.isChangingLocalLyrics { ProgressView().controlSize(.small) }
+                }
+                .disabled(controller.isChangingLocalLyrics)
+                Button("가사 직접 맞추기…") { editorRequest = LyricsEditorRequest(track: track) }
+                    .disabled(controller.isChangingLocalLyrics)
+            } else {
+                Caption("곡을 연결하면 내 가사 파일을 가져올 수 있어요.")
+            }
+            Caption("선택한 곡에 파일 사본을 보관합니다. 단어 시각이 있으면 그대로 따라가고, 줄 시각만 있으면 기존 음절 색칠을 사용해요. 내 가사의 싱크는 위의 미세조정으로 맞출 수 있습니다.")
+            if let message = controller.localLyricsMessage { Caption(message) }
+            if let error = controller.localLyricsError {
+                Text(error).font(.caption).foregroundStyle(.red).textSelection(.enabled)
+            }
+            if controller.localLyricsInfo != nil || controller.localLyricsError != nil {
+                Button("보관한 가사 폴더 열기") { NSWorkspace.shared.open(controller.localLyricsDirectory) }
+            }
+        }
+        .overlay {
+            if dropTargeted {
+                RoundedRectangle(cornerRadius: 8).strokeBorder(Color.accentColor, style: StrokeStyle(lineWidth: 2, dash: [6]))
+                    .allowsHitTesting(false).accessibilityHidden(true)
+            }
+        }
+        .dropDestination(for: URL.self) { urls, _ in controller.importDroppedLyrics(urls) } isTargeted: { dropTargeted = $0 }
+        .sheet(item: $editorRequest) { request in LyricsTapSyncView(engine: engine, track: request.track) }
+        .alert("내 가사를 해제할까요?", isPresented: Binding(get: { removalTrack != nil }, set: { if !$0 { removalTrack = nil } })) {
+            Button("취소", role: .cancel) { removalTrack = nil }
+            Button("해제", role: .destructive) {
+                guard let track = removalTrack else { return }
+                removalTrack = nil
+                Task { await controller.removeLocalLyrics(for: track) }
+            }
+        } message: {
+            Text("‘\(removalTrack?.title ?? "")’에 보관한 사본을 지우고 온라인 가사를 다시 찾습니다. 선택했던 원본 파일은 그대로 남아요.")
+        }
+    }
+
+    private func importFile(for track: TrackInfo) {
+        let panel = NSOpenPanel()
+        panel.title = "‘\(track.title)’에 사용할 가사"
+        panel.allowedContentTypes = [UTType(filenameExtension: "lrc") ?? .plainText,
+                                     UTType(filenameExtension: "ttml") ?? .xml,
+                                     UTType(filenameExtension: "srt") ?? .plainText,
+                                     UTType(filenameExtension: "krc") ?? .data,
+                                     UTType(filenameExtension: "qrc") ?? .data]
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = false
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        let accessing = url.startAccessingSecurityScopedResource()
+        Task {
+            defer { if accessing { url.stopAccessingSecurityScopedResource() } }
+            await controller.importLocalLyrics(from: url, for: track)
+        }
     }
 }
 
@@ -448,7 +533,9 @@ private struct AutoSyncInfoView: View {
         let auto = controller.autoSync
         let diagnostics = controller.anchorDiagnostics
         VStack(alignment: .leading, spacing: 4) {
-            if auto.candidateCount > 0 {
+            if auto.source == .localFile {
+                Text("내 가사 파일의 시각을 사용합니다 · 자동 싱크는 적용하지 않아요")
+            } else if auto.candidateCount > 0 {
                 let confidence = auto.lastEstimate.map { String(format: "신뢰도 %.0f%% · %d줄", $0.confidence * 100, $0.lineCount) } ?? "측정 중"
                 Text(String(format: "자동 싱크 %+.2f초 (%@) · 가사 후보 %d/%d", -auto.appliedDelay, confidence, auto.candidateIndex + 1, auto.candidateCount))
             } else {
@@ -486,7 +573,7 @@ private struct DiagnosticsSettings: View {
                         Text(message).font(.caption).foregroundStyle(.secondary).textSelection(.enabled).lineLimit(1)
                     }
                 }
-                Caption("'틱' 하는 잡음이 들린 직후 누르세요. CoNo 가 받은 소리와 내보낸 소리를 다운로드 폴더에 각각 저장합니다. 문제를 알려 주실 때 함께 보내 주시면 원인을 찾는 데 도움이 돼요.")
+                Caption("'틱' 하는 잡음이 들린 직후 누르세요. 최근 입력·처리 결과 WAV와 장치·버퍼·끊김 추세 JSON을 다운로드 폴더에 저장합니다. WAV는 키 조절과 실제 장치 재생 전 단계이며, 마이크 목소리는 포함하지 않습니다.")
             }
 
             if engine.isRunning {

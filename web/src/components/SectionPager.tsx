@@ -83,6 +83,9 @@ export function SectionPager() {
 
     const onWheel = (event: WheelEvent) => {
       if (!mouse.matches || reduced.matches || event.defaultPrevented || event.ctrlKey) return;
+      // 기록 목록과 결과 모달 안에서는 바깥 섹션으로 넘기지 않는다.
+      const target = event.target instanceof Element ? event.target : null;
+      if (target?.closest("[role=dialog], .overscroll-contain, textarea, video, audio")) return;
       if (Math.abs(event.deltaY) < Math.abs(event.deltaX)) return;
       if (event.deltaY < 0) {
         // 위로는 자유: 넘기는 중이면 그 자리에서 멈추고 브라우저에 맡긴다
@@ -101,7 +104,7 @@ export function SectionPager() {
     const onKey = (event: KeyboardEvent) => {
       if (!mouse.matches || reduced.matches || event.defaultPrevented || event.altKey || event.metaKey || event.ctrlKey) return;
       const target = event.target as HTMLElement | null;
-      if (target?.closest("input, textarea, select, [contenteditable], [role=dialog]")) return;
+      if (target?.closest("input, textarea, select, video, audio, summary, [role=slider], [contenteditable], [role=dialog]")) return;
       const down = event.key === "ArrowDown" || event.key === "PageDown" || (event.key === " " && !event.shiftKey);
       const up = event.key === "ArrowUp" || event.key === "PageUp" || (event.key === " " && event.shiftKey);
       if (up) {

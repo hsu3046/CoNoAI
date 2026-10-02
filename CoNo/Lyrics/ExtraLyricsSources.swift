@@ -27,7 +27,8 @@ actor ExtraLyricsSources {
         configuration.httpAdditionalHeaders = ["User-Agent": "Mozilla/5.0 (Macintosh) CoNo/0.1"]
         session = URLSession(configuration: configuration)
         cacheDirectory = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first?
-            .appendingPathComponent("space.knowai.cono/lyrics-extra-v1", isDirectory: true)
+            // v1은 단어 시각, v2는 마지막 단어보다 늦은 문장 종료를 잃은 사본일 수 있다.
+            .appendingPathComponent("space.knowai.cono/lyrics-extra-v3", isDirectory: true)
         if let cacheDirectory {
             try? FileManager.default.createDirectory(at: cacheDirectory, withIntermediateDirectories: true)
         }
@@ -35,7 +36,7 @@ actor ExtraLyricsSources {
 
     /// 켜 둔 소스들의 싱크 가사 후보
     func candidates(for track: TrackInfo, sources: Set<LyricsSource>) async -> [LyricsCandidate] {
-        let wanted = sources.subtracting([.lrclib])
+        let wanted = sources.subtracting([.lrclib, .localFile])
         guard !wanted.isEmpty, !track.title.isEmpty else { return [] }
         // Apple Music 은 연결 여부에 따라 결과가 달라진다 (연결 전 "못 찾음" 을 연결 뒤에 쓰지 않게)
         let appleMusicState = wanted.contains(.appleMusic) ? (AppleMusicCredentials.userToken == nil ? "am-off" : "am-on") : ""

@@ -22,6 +22,7 @@ final class MicrophoneInput: @unchecked Sendable {
     private let format: AVAudioFormat
     private var sink: AVAudioSinkNode?
     private var configurationObserver: NSObjectProtocol?
+    private let configurationGate = AudioConfigurationGate()
 
     private static let maxFrames = 8_192
     private let scratch: UnsafeMutablePointer<Float>
@@ -64,11 +65,12 @@ final class MicrophoneInput: @unchecked Sendable {
         engine.attach(node)
         engine.connect(engine.inputNode, to: node, format: format)
         sink = node
+        let configurationChanged = configurationGate.callback(onConfigurationChange)
         configurationObserver = NotificationCenter.default.addObserver(
             forName: .AVAudioEngineConfigurationChange,
             object: engine,
             queue: .main
-        ) { _ in onConfigurationChange() }
+        ) { _ in configurationChanged() }
         engine.prepare()
         do {
             try engine.start()
@@ -79,6 +81,8 @@ final class MicrophoneInput: @unchecked Sendable {
     }
 
     func stop() {
+        // observer 제거 전에 큐에 들어간 알림도 새 마이크를 다시 시작하지 않게 한다.
+        configurationGate.invalidate()
         if let configurationObserver {
             NotificationCenter.default.removeObserver(configurationObserver)
             self.configurationObserver = nil

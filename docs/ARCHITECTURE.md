@@ -26,7 +26,7 @@
 | `CoNo/Audio/PlaybackOutput.swift` | 재생: AVAudioEngine + AVAudioSourceNode (출력 장치 하드웨어 레이트), 장치 변경 감지 |
 | `CoNo/Audio/SPSCRingBuffer.swift` | lock-free SPSC 링 버퍼 (`Synchronization.Atomic`) |
 | `CoNo/Audio/DelayPipeline.swift` | 캡처 콜백 / 재생 콜백 / 워커 처리 + 프리롤 지연 + 재생 시계 + IO 진단 |
-| `CoNo/Audio/StreamProcessors.swift` | 워커 처리 단계: 패스스루 / L−R / `SeparationProcessor`(AI) |
+| `CoNo/Audio/StreamProcessor.swift` / `StreamProcessors.swift` | 처리 프로토콜·기본 패스스루/L−R와 AI 분리 구현 |
 | `CoNo/Audio/AudioResampler.swift` | 샘플레이트 변환 1~2채널 (장치 ↔ 44.1k, 보컬 → 16k 모노). AVAudioConverter, 워커 전용 |
 | `CoNo/DSP/STFT.swift` | torch.stft/istft 호환 STFT (reflect 패딩, periodic Hann, vDSP DFT) |
 | `CoNo/DSP/StreamingSeparator.swift` | 고정 길이 창 모델을 연속 스트림에 쓰는 슬라이딩 윈도우 + 크로스페이드 |
@@ -92,3 +92,25 @@
 - 재생 제어: 음악 앱은 `AppleMusicScript.command`, 그 밖의 앱은 `MediaRemoteBridge`(번들의 mediaremote-adapter 를 `/usr/bin/perl` 로 실행 — "지금 재생 중" 이 캡처 중인 앱일 때만 명확한 멈춤/재생). 그것도 안 되면 `MediaKey`(⏯ 합성, 토글이라 캡처 소리로 재생 여부 확인 후).
 - 끝내기 `KaraokeEngine.finish()`: 출력 얼림 → 원곡 멈춤 → 캡처가 조용해질 때까지(최대 1초) → 정리.
 
+
+## 2026-10-02 — 점수 기록·공유·로컬 챌린지
+
+`CoNo/Records`의 버전 있는 JSON을 앱과 웹이 교환한다. 곡 종료 시 `KaraokeEngine`이 `ScoreHistory`에 기록하고, `ScoreHistoryView`에서 공유·이미지·파일 내보내기를 제공한다. 웹은 `ScoreRepository`의 `JsonRepository` 구현을 사용하며 DB 호출은 하지 않는다. 개인 기록과 공개 기록을 구분한다. 상세 계약과 테스트는 [LOCAL_FEATURES.md](LOCAL_FEATURES.md).
+
+출력 장치 변경 시 `PlaybackOutput`만 재생성하고 기존 `DelayPipeline.outputSampleRate`를 새 소스 노드 포맷으로 사용한다. 하드웨어 레이트가 달라지면 새 출력 믹서가 변환한다. 분석·채점 시계를 초기화하지 않는다. 시작 중 변경 및 재연결 실패 시에는 안전하게 정지하고 안내한다.
+
+## 2026-10-02 — 정밀 가사·출력 복구·기록 복구
+
+- `LyricsSources`가 TTML의 단어 시각·줄 종료를 enhanced LRC로 보존하고 `LRCParser`가 `LyricSegment`로 복원한다. `LyricsController`는 정확한 구간이 있는 줄에서 추정 정렬을 건너뛴다. 마지막 단어보다 늦은 문장 종료까지 보존한 온라인 후보 캐시는 v3다.
+- `LocalLyricsStore` actor는 곡 ID·제목·가수의 SHA-256 키로 가사 JSON을 원자 저장한다. 사용자 파일이 온라인 후보보다 우선하며, 비동기 요청 세대와 곡 키로 늦은 응답을 거부한다.
+- `AudioConfigurationGate`는 입력/출력 객체와 start/stop 세대를 검증한다. 교체 구간은 `DelayPipeline`의 별도 suspension으로 시계·채점을 멈추고 사용자 pause를 유지한다. 실제 그래프를 공유하는 오프라인 테스트가 레이트 변환 뒤 출력 길이/주파수를 검증한다.
+- `SingingScoreSession`은 곡 시작 난이도와 누적 점수를 함께 소유한다. 설정 변경은 다음 세션부터 반영한다.
+- `DiagnosticRecorder`는 사용자 요청 시 WAV와 최근 30초 통계 JSON을 새 폴더에 내보낸다. IO 콜백의 할당·락 없이 기존 버퍼를 사용한다.
+- `ScoreHistory`는 읽기 오류·저장 실패·대기 결과를 구분한다. 손상된 원본과 독립적으로 대기 결과를 유효한 JSON 파일들로 내보내며 원본을 덮어쓰지 않는다.
+- 웹 `FeatureVideo`는 정적 MP4/포스터/WebVTT와 텍스트 안내를 제공한다. 기존 재생 소유권과 연결하고 화면 이탈/백그라운드에서 일시정지한다.
+
+## 2026-10-03 — 가사 작성과 저장 잠금 복구
+
+`SRTParser`, `KRCLyrics`, `QRCLyrics`가 로컬 파일을 공통 `TimedLyrics`로 연결한다. KRC·QRC 원본은 JSON의 base64 문자열로 보존하고, 입력·압축 해제·최종 가사에 각각 상한을 적용한다. `LyricsTapSync`는 텍스트/기록 시각/재생 상태를 검증하는 순수 로직이며 `LyricsTapSyncView`가 실제 들리는 곡의 시각을 전달한다. `LyricsPublishView`는 검토한 문서만 `LRCLIBPublisher` actor에 넘긴다. 네트워크 전송과 PoW는 UI/오디오 IO에서 분리하며 테스트에는 transport를 주입한다.
+
+`JsonRepository`의 `.write-lock-v2`는 호스트·PID·고유 토큰을 가진 완성된 폴더를 원자 설치한다. 프로세스 종료를 확인한 경우만 해당 토큰 파일을 제거하고 빈 폴더를 정리한다. 다른 작성자의 새 폴더는 비어 있지 않아 이전 작성자가 지울 수 없다. 구버전 규약과는 혼용하지 않으며 갱신 시 기존 서버를 종료한다.
