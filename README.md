@@ -133,7 +133,7 @@ CoNoAI is an early preview.
 - [x] Precise lyric timing, file import/drop and Space-based line timing with local save/LRC export/LRCLIB publishing
 - [x] Web usage videos with Korean captions and text instructions
 - [ ] Find and fix the intermittent click
-- [ ] Optional lyric alignment model (additional download approval and singing-quality validation pending; [plan](docs/FORCED_ALIGNMENT_PLAN.md))
+- [x] Optional on-device lyric timing learning and recent-audio transcription drafts (off by default; additional 365MB model, review required; [setup and validation](docs/FORCED_ALIGNMENT_PLAN.md))
 - [x] Reconnect playback after output device changes while keeping the scoring pipeline (physical device-switch validation pending)
 
 ---

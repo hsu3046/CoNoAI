@@ -9,7 +9,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { playBacking, type Backing } from "@/fx/backing";
 import { claimAudio, onAudioClaim } from "@/fx/stems";
-import { canvasFonts, fitCanvas, useInView } from "@/fx/hooks";
+import { canvasFonts, fitCanvas, useInView, useOnLeave } from "@/fx/hooks";
 import { loadSfx } from "@/fx/sfx";
 import { BEAT_SECONDS, COUNT_IN_BEATS, SONG_SECONDS, hzToMidi, lyricLines, melody, type MelodyNote } from "@/lib/melody";
 import { detectPitch, foldedOffset, scoreSong, type NoteTally, type SongScore } from "@/lib/pitch";
@@ -44,6 +44,7 @@ export function TryItLive() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const audioRef = useRef<AudioContext | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const disconnectRef = useRef<(() => void) | null>(null);
   const backingRef = useRef<Backing | null>(null);
   const frameRef = useRef(0);
   const attemptRef = useRef(0);
@@ -55,11 +56,28 @@ export function TryItLive() {
     cancelAnimationFrame(frameRef.current);
     backingRef.current?.stop();
     backingRef.current = null;
+    disconnectRef.current?.();
+    disconnectRef.current = null;
     streamRef.current?.getTracks().forEach((track) => track.stop());
     streamRef.current = null;
   }, []);
 
-  useEffect(() => () => cleanup(), [cleanup]);
+  const stop = useCallback(() => {
+    cleanup();
+    setPhase("idle");
+  }, [cleanup]);
+  // 권한 창이 열린 동안에도 화면 이탈과 취소가 해당 시도를 무효화한다.
+  useOnLeave(sectionRef, stop, "200px");
+  useEffect(() => {
+    const hidden = () => { if (document.hidden && activeRef.current) stop(); };
+    document.addEventListener("visibilitychange", hidden);
+    return () => {
+      document.removeEventListener("visibilitychange", hidden);
+      cleanup();
+      void audioRef.current?.close();
+      audioRef.current = null;
+    };
+  }, [cleanup, stop]);
   // 다른 곳(첫 화면·들어 보기)이 소리를 내면 체험을 멈춘다
   useEffect(
     () =>
@@ -135,11 +153,7 @@ export function TryItLive() {
       draw(heard, trail, tallies);
 
       if (heard > SONG_SECONDS + 0.6) {
-        cancelAnimationFrame(frameRef.current);
-        streamRef.current?.getTracks().forEach((track) => track.stop());
-        streamRef.current = null;
-        backingRef.current = null;
-        activeRef.current = false;
+        cleanup();
         const score = scoreSong(tallies);
         setResult(score);
         setRecord({ ...score, id: crypto.randomUUID(), songId: PRACTICE_SONG, title: "우리 집 무대", artist: "CoNo", source: "browser", difficulty: "normal", keyShift: 0, createdAt: new Date().toISOString() });
@@ -175,6 +189,20 @@ export function TryItLive() {
       analyser.fftSize = 2048;
       const source = ctx.createMediaStreamSource(stream);
       const highpass = ctx.createBiquadFilter();
+      const ended = () => {
+        if (attempt !== attemptRef.current) return;
+        cleanup();
+        setError("마이크 연결이 끊겼어요. 연결을 확인한 뒤 다시 시작해 주세요.");
+        setPhase("error");
+      };
+      const tracks = stream.getTracks();
+      tracks.forEach((track) => track.addEventListener("ended", ended));
+      disconnectRef.current = () => {
+        tracks.forEach((track) => track.removeEventListener("ended", ended));
+        source.disconnect();
+        highpass.disconnect();
+        analyser.disconnect();
+      };
       highpass.type = "highpass";
       highpass.frequency.value = 80;
       source.connect(highpass).connect(analyser);
@@ -244,11 +272,16 @@ export function TryItLive() {
                 <input type="checkbox" checked={guide} onChange={(event) => setGuide(event.target.checked)} className="size-4 accent-pink" />
                 가이드 멜로디 같이 듣기
               </label>
-              {error && <p className="max-w-md whitespace-pre-line rounded-xl bg-stop/15 px-4 py-2 text-sm text-stop">{error}</p>}
+              {error && <p role="alert" className="max-w-md whitespace-pre-line rounded-xl bg-stop/15 px-4 py-2 text-sm text-stop">{error}</p>}
             </div>
           )}
+          {(phase === "running" || phase === "starting") && <button type="button" onClick={stop} className="absolute right-4 top-4 z-10 rounded-full border border-white/25 bg-night/90 px-4 py-2 text-sm text-ink">{phase === "starting" ? "시작 취소" : "마이크 끄고 중단"}</button>}
         </div>
       </div>
+      <details className="mx-auto mt-5 max-w-2xl text-center text-sm text-ink2">
+        <summary className="cursor-pointer">체험곡 가사 읽기</summary>
+        <p className="mt-3 whitespace-pre-line">{lyricLines.map((line) => line.text).join("\n")}</p>
+      </details>
 
       {phase === "done" && result && (
         <ScoreShow

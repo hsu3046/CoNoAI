@@ -427,24 +427,21 @@ function useHeroSong(sectionRef: React.RefObject<HTMLElement | null>) {
   const start = useCallback(async (): Promise<boolean> => {
     claimAudio("hero");
     wanted.current = true;
-    const ctx = audioContext();
-    void ctx.resume();
-    const urls = songUrls(heroSong.slug);
-    playerRef.current ??= new StemPlayer(ctx, { mix: urls.mix, inst: urls.inst }, "mix");
-    const player = playerRef.current;
     setState("loading");
     try {
-      await player.load();
+      const ctx = audioContext();
+      const urls = songUrls(heroSong.slug);
+      playerRef.current ??= new StemPlayer(ctx, { mix: urls.mix, inst: urls.inst }, "mix");
+      const player = playerRef.current;
+      // 처음 틀 때만 lead부터. 일시정지·재시작을 거친 옛 로딩은 재생하지 않는다.
+      if (!await player.start(player.playedOnce ? undefined : (heroSong.lead ?? 0))) return false;
+      player.playedOnce = true;
+      setState("playing");
+      return true;
     } catch {
       setState("error");
       return false;
     }
-    if (!wanted.current) return false; // 기다리는 사이 멈췄다
-    // 처음 틀 때만 곡의 lead 지점부터 (노래가 딱 시작하는 자리). 다시 누르면 멈춘 자리부터
-    player.play(player.playedOnce ? undefined : (heroSong.lead ?? 0));
-    player.playedOnce = true;
-    setState("playing");
-    return true;
   }, []);
 
   /** 목소리 빼기 (한 번만). 아직 튼 적이 없으면 아무것도 안 한다 — 나중에 누르면 원곡부터 들려준다 */
@@ -460,6 +457,11 @@ function useHeroSong(sectionRef: React.RefObject<HTMLElement | null>) {
   useEffect(() => onAudioClaim((owner) => owner !== "hero" && pause()), [pause]);
   useOnLeave(sectionRef, pause);
   useEffect(() => () => playerRef.current?.dispose(), []);
+  useEffect(() => {
+    const hidden = () => { if (document.hidden) pause(); };
+    document.addEventListener("visibilitychange", hidden);
+    return () => document.removeEventListener("visibilitychange", hidden);
+  }, [pause]);
 
   const sounding = state === "playing" || state === "loading";
   return useMemo(

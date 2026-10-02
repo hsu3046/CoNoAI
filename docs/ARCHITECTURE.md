@@ -114,3 +114,17 @@
 `SRTParser`, `KRCLyrics`, `QRCLyrics`가 로컬 파일을 공통 `TimedLyrics`로 연결한다. KRC·QRC 원본은 JSON의 base64 문자열로 보존하고, 입력·압축 해제·최종 가사에 각각 상한을 적용한다. `LyricsTapSync`는 텍스트/기록 시각/재생 상태를 검증하는 순수 로직이며 `LyricsTapSyncView`가 실제 들리는 곡의 시각을 전달한다. `LyricsPublishView`는 검토한 문서만 `LRCLIBPublisher` actor에 넘긴다. 네트워크 전송과 PoW는 UI/오디오 IO에서 분리하며 테스트에는 transport를 주입한다.
 
 `JsonRepository`의 `.write-lock-v2`는 호스트·PID·고유 토큰을 가진 완성된 폴더를 원자 설치한다. 프로세스 종료를 확인한 경우만 해당 토큰 파일을 제거하고 빈 폴더를 정리한다. 다른 작성자의 새 폴더는 비어 있지 않아 이전 작성자가 지울 수 없다. 구버전 규약과는 혼용하지 않으며 갱신 시 기존 서버를 종료한다.
+
+## 2026-10-03 — 선택형 가사 학습·웹 대기 기록·오디오 전환
+
+`SeparationProcessor`는 출력 선택 전의 분리 보컬을 `VocalAudioBuffer`에 보낸다. 기본 꺼짐이며 활성화된 동안만 60초 모노 링을 유지한다. `LyricsController`는 캡처 시계·연속 재생 구간·분리 오프셋으로 이미 들은 줄 또는 최근 구간을 선택한다. 원본 단어 시각이 학습·추정보다 우선한다.
+
+`AlignmentCoordinator`가 자동/수동 추론 하나를 직렬 실행하고, `LocalAlignmentModel` actor가 모델을 지연 로드한다. `OmniASRCTC`는 기존 ONNX Runtime CPU 1스레드로 최대 20초 입력을 처리하며 `CTCAlignment`가 정렬·받아쓰기 결과를 `LyricSegment`로 변환한다. IO 콜백에는 추론·저장·새 잠금을 추가하지 않는다. 자동 실행은 최소 5초 또는 직전 추론 시간의 3배만큼 쉰다.
+
+취소는 실행 세대와 원자적 `AlignmentWritePermit`을 함께 철회한다. 동기 native 호출이 끝날 때까지 실행 게이트를 유지해 중복 추론을 막고, OFF/엔진 정지에서 모델을 해제한다. `LearnedWordTimingsStore` actor의 버전 있는 JSON은 곡·가사·모델 식별자와 일치해야 읽으며 삭제 세대로 이전 저장의 부활을 차단한다.
+
+`AlignedLyricsDraft`는 분석 결과를 검증해 enhanced LRC로 왕복 변환한다. `LyricsAIDraftView`는 최근 구간만 검토·다시 듣기·탭 편집·내보내기·명시 확인 저장을 제공한다. 자동 생성 단계는 기존 가사를 바꾸지 않는다. 모델 설치·메모리·정확도 제한은 [로컬 가사 학습](FORCED_ALIGNMENT_PLAN.md)에 있다.
+
+웹 `pending-scores.ts`는 서버 요청 전 점수별 localStorage 기록을 만들고 실패 시 기록 화면에서 복구한다. 손상/ID 충돌은 보존하고 브라우저 저장 실패에는 메모리 대기와 내보내기 안내를 제공한다. `StemPlayer`의 준비·재생·해제와 마이크 체험의 권한 대기·종료에는 각각 세대 검사를 사용해 늦은 비동기 작업이 다시 재생하지 못하게 한다.
+
+`SeparationMix`는 반주/보컬/원곡·가이드 볼륨의 변경을 20ms에 걸쳐 혼합한다. `find_clicks.py`는 좌우 채널과 diagnostics.json의 프레임 원점·분리 오프셋으로 입력/출력 후보를 비교한다. 무조작 간헐적 클릭의 원인으로 확정한 수정은 아니며 [진단 범위](AUDIO_DIAGNOSTICS.md)를 따로 기록한다.

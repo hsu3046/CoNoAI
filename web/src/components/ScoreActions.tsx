@@ -19,7 +19,7 @@ export function ScoreActions({ record, published = false, canPublish = false }: 
     <div className="flex flex-wrap justify-center gap-2">
       <button className={scoreButton} disabled={busy} onClick={() => void perform(() => shareRecord(record, published ? `${location.origin}/scores/${record.id}` : undefined))}>점수 공유</button>
       <button className={scoreButton} disabled={busy} onClick={() => void perform(async () => { await saveScoreImage(record); return "점수 이미지를 저장했어요."; })}>이미지 저장</button>
-      <button className={scoreButton} disabled={busy} onClick={() => exportScores([record])}>JSON 내보내기</button>
+      <button className={scoreButton} disabled={busy} onClick={() => void perform(async () => { exportScores([record]); return "점수 JSON을 내보냈어요."; })}>JSON 내보내기</button>
       {canPublish && record.source !== "demo" && <button className={`${scoreButton} text-gold`} disabled={busy} onClick={() => void perform(async () => {
         await changeScores({ action: "publish", id: record.id, published: !published });
         return published ? "공유를 해제했어요." : "공유 페이지와 이번 주 챌린지에 공개했어요.";

@@ -7,6 +7,7 @@ import UniformTypeIdentifiers
 struct LyricsEditorRequest: Identifiable {
     let id = UUID()
     let track: TrackInfo
+    var initialText: String? = nil
 }
 
 struct LyricsTapSyncView: View {
@@ -28,11 +29,11 @@ struct LyricsTapSyncView: View {
 
     private enum Confirmation: String { case close, reset, edit }
 
-    init(engine: KaraokeEngine, track: TrackInfo) {
+    init(engine: KaraokeEngine, track: TrackInfo, initialText: String? = nil) {
         self.engine = engine
         self.track = track
-        let initial = engine.lyrics.availablePlainLyrics(for: track)
-        initialText = initial
+        let initial = initialText ?? engine.lyrics.availablePlainLyrics(for: track)
+        self.initialText = initial
         _text = State(initialValue: initial)
     }
 

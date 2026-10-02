@@ -4,6 +4,7 @@
 
 import { useState } from "react";
 import { ScoreShow } from "@/components/ScoreShow";
+import { audioContext, claimAudio } from "@/fx/stems";
 
 export function ScoreDemo({ score }: { score: number }) {
   const [run, setRun] = useState(0);
@@ -15,11 +16,13 @@ export function ScoreDemo({ score }: { score: number }) {
     <main className="grid min-h-dvh place-items-center">
       <button
         type="button"
-        onClick={() => {
+        onClick={async () => {
           // 소리는 사용자 동작 뒤에만 켤 수 있다
-          const context = audio ?? new AudioContext();
+          claimAudio("score-demo");
+          let context: AudioContext | null = null;
+          try { context = audioContext(); await context.resume(); }
+          catch { context = null; } // 소리가 지원되지 않아도 점수와 공유 UI는 표시한다.
           setAudio(context);
-          void context.resume();
           setRun((value) => value + 1);
           setOpen(true);
         }}

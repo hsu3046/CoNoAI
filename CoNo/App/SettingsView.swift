@@ -366,6 +366,8 @@ private struct LyricsSettings: View {
 
             AppleMusicLyricsSection(settings: settings)
 
+            LocalAlignmentSection(engine: engine)
+
             LocalLyricsSection(engine: engine)
 
             Section("가사 출처") {
@@ -384,6 +386,43 @@ private struct LyricsSettings: View {
             }
         }
         .formStyle(.grouped)
+    }
+}
+
+private struct LocalAlignmentSection: View {
+    let engine: KaraokeEngine
+    private var coordinator: AlignmentCoordinator { engine.lyrics.localAlignment }
+    @State private var showDeletion = false
+    @State private var draftRequest: LyricsAIDraftRequest?
+
+    var body: some View {
+        Section("로컬 AI 가사 학습 · 실험") {
+            Toggle("이 기기에서 가사 시각 학습", isOn: Binding(get: { coordinator.isEnabled }, set: { coordinator.setEnabled($0) }))
+                .disabled(coordinator.isDeleting)
+            Caption("AI 반주로 이미 들은 줄의 단어 시각을 분석해 되감기·다음 재생에 사용합니다. 원본에 단어 시각이 있으면 우선 사용해요. 기본값은 꺼짐입니다.")
+            HStack {
+                if coordinator.isBusy { ProgressView().controlSize(.small) }
+                Text(coordinator.statusText).font(.callout).textSelection(.enabled)
+            }
+            if coordinator.isEnabled {
+                Caption("음성은 메모리에서만 처리하고 외부로 보내지 않습니다. 가사·시각만 이 Mac에 저장합니다. 추가 메모리 약 1.4 GB와 CPU를 사용하며, 낮은 신뢰도의 결과는 적용하지 않아요.")
+                if !coordinator.modelAvailable { Text(LocalAlignmentError.unavailable.localizedDescription).font(.caption).foregroundStyle(.orange) }
+                if let track = engine.lyrics.currentTrack {
+                    Button("최근 구간 AI 가사 초안…") { draftRequest = LyricsAIDraftRequest(track: track) }
+                        .disabled(!engine.isRunning || coordinator.isDeleting || !coordinator.modelAvailable)
+                    Caption("일반 가사의 줄 시각을 맞추거나 가사 없는 구간을 받아쓸 수 있어요. 최근 최대 20초씩 분석하고 내용을 확인한 뒤 저장합니다.")
+                }
+            }
+            if let error = coordinator.errorMessage { Text(error).font(.caption).foregroundStyle(.orange).textSelection(.enabled) }
+            Button("학습한 단어 시각 모두 지우기…", role: .destructive) { showDeletion = true }
+                .disabled(coordinator.isDeleting)
+            Caption("직접 가져온 가사 파일과 탭으로 맞춘 가사는 유지됩니다.")
+        }
+        .alert("학습한 단어 시각을 모두 지울까요?", isPresented: $showDeletion) {
+            Button("취소", role: .cancel) {}
+            Button("지우기", role: .destructive) { Task { await coordinator.removeLearnedTimings() } }
+        } message: { Text("이 기기에 저장한 학습 시각만 지웁니다. 학습을 켜 두면 이후 재생한 줄을 다시 분석합니다.") }
+        .sheet(item: $draftRequest) { request in LyricsAIDraftView(engine: engine, track: request.track) }
     }
 }
 
@@ -437,7 +476,7 @@ private struct LocalLyricsSection: View {
             }
         }
         .dropDestination(for: URL.self) { urls, _ in controller.importDroppedLyrics(urls) } isTargeted: { dropTargeted = $0 }
-        .sheet(item: $editorRequest) { request in LyricsTapSyncView(engine: engine, track: request.track) }
+        .sheet(item: $editorRequest) { request in LyricsTapSyncView(engine: engine, track: request.track, initialText: request.initialText) }
         .alert("내 가사를 해제할까요?", isPresented: Binding(get: { removalTrack != nil }, set: { if !$0 { removalTrack = nil } })) {
             Button("취소", role: .cancel) { removalTrack = nil }
             Button("해제", role: .destructive) {
