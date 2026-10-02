@@ -1,5 +1,18 @@
 # CoNo 프로젝트 메모리
 
+## 2026-10-03 — 개인 가사 보관함과 외부 접근 강화
+
+- 사용자 선택: macOS·웹 모두 개인 보관함 + 선택 LRCLIB 공개. DB는 계속 마지막. 기존 push/PR/리뷰·전체 머지 승인 유지. 실제 가사 게시·Apple 계정 로그인은 개발 검증에서 실행하지 않는다.
+- Mac ⇧⌘L/설정/가사 화면, 웹 `/lyrics`에서 제목·가수 필수 TXT/LRC 등록·검색·편집·삭제 확인·내보내기. Mac은 곡 재생 없이 등록하고 선택 곡에 사본 적용. TXT는 임의 시각 없이 읽는다. 저장 리비전·손상 원본·입력 중 비동기 저장/가져오기 보호.
+- Mac `personal-lyrics/<UUID>.json`(500개/64MiB), 웹 별도 `lyrics/store.json`(개인200개/8MiB, 전체32MiB). 가사1MiB/4,000줄/500자. 앱 간 TXT/LRC 교환, JSON 동기화 없음. 웹 쿠키 소유권·기존 잠금 v2 재사용·stale update/delete 409.
+- LRCLIB plain-only 공개 지원. 검토 내용과 동의를 고정하며 metadata를 바꾸면 native 동의 해제. 공개 이후 개인 보관함 삭제는 외부 공개본 삭제가 아님. 웹 TXT 빈 행과 LRC 빈 간주 cue를 보존한다. PoW 제한·취소·실제 전송 전 재검사, 전송 후 응답 누락은 미확정·자동 재시도 없음.
+- 공용 LyricsHTTPClient는 고정 HTTPS 호스트·같은 host redirect·1MiB/색인JS8MiB cap·취소·10/25초 제한. 401/403/429/5xx/TLS/본문오류 구분, shared Retry-After의 긴 deadline 유지. TaskLocal logical operation ID로 옛 곡 파싱 오류가 새 조회 상태를 덮지 않음. 웹 게시도 서버 공통429 대기/UI 안내.
+- malformed200 및 잘못된 LRC 내용은 빈 결과로 저장하지 않는다. LRCLIB/추가소스 v4 cache, 소스별 부분실패 분리·유효기존 AMLL색인 보존. 수동 재검색은 캐시만 우회하고 서비스 대기는 유지한다.
+- Apple 사용자 토큰의 잘못된180일 만료표시 제거. Keychain update/add/clear 성공 뒤 UUID·metadata 변경, stale 응답/지역/로그인 콜백 차단. 새 비영구 WebKit 로그인, Apple HTTPS/Secure cookie 경계. 성공 save/clear 전용 알림으로 Controller의 Apple 후보·진행 lookup 소거, 사용자 가사 유지.
+- Apple 구독 가사는 자동학습 읽기/쓰기 제외. 시작 시 LyricsPrivacyMigration이 구형 extra-v1/v2/v3와 유효 schema1 identity.candidateKey appleMusic: 학습 JSON만 정리. 개인/수동 가사·다른 출처·손상·symlink 보존. 실제 사용자 데이터는 개발 도구에서 삭제하지 않았다.
+- 최종 macOS Debug·Release 각각 251tests/52suites 통과. 독립 로컬 리뷰의 HTTP 상태경합·긴 cooldown·late import·동의 무효화·TXT/간주 cue 보존 지적을 수정하고 회귀로 확인했다. 새 런타임 의존성·DB 연결 없음.
+- 웹26tests·lint/build·가사/점수 API 통과. IAB 직접 등록·비공개 표시·공개 검토(미동의 비활성)·dirty 보호·수정 저장·좁은 폭 넘침 없음/console error0 확인. 파일 다운로드 이벤트는 도구 timeout으로 UI 완료를 확인하지 못했으며 parser/파일교환 자동 테스트로 검증. Mac 잠금으로 native 창 조작은 미검증. 자세한 사용법/API는 docs/LYRICS_EDITING.md, docs/LYRICS_SOURCES.md, docs/API.md.
+
 ## 2026-10-03 — 전체 머지 승인·선택형 가사 모델·웹 재생 복구
 
 - 사용자: 모든 PR 머지와 가능한 후속 수정·추가 모델 승인. DB는 마지막. 기존 PR #10은 main에 머지 완료(0a9ab04). 앞선 메모리의 모델 승인 미응답/미다운로드 상태는 이 요청으로 해소됐다.

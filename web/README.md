@@ -12,6 +12,7 @@ CoNo 를 알리고, 사용법을 보여 주고, 내려받게 하고, 의견을 �
 | 점수 연출 | `ScoreShow.tsx` · `fx/fireworks.ts` · `fx/sfx.ts` | 앱의 CelebrationView 를 옮긴 것 (드럼롤 · 불꽃 · 폭죽 · 별) |
 | 소개·사용법·체험 안내·FAQ·다운로드 | `Sections.tsx` · `FeatureVideo.tsx` | 실제 화면 안내 영상·자막·텍스트 설명 |
 | 기록·공유·주간 챌린지 | `ScoreLibrary.tsx` · `ChallengeBoard.tsx` · `ScoreActions.tsx` | 로컬 기록·JSON 교환·공개/해제·PNG 저장 |
+| 개인 가사 보관함 | `/lyrics` · `LyricsLibrary.tsx` · `LyricsPublish.tsx` | TXT/LRC 등록·검색·편집·내보내기, 선택 LRCLIB 공개 |
 | 의견 | `Feedback.tsx` → `app/api/feedback/route.ts` → 로컬 JSON | 만족도·의견·이메일(선택) |
 
 - **노래**: `public/songs/<slug>/{mix,inst,vocal}.m4a` — 만든 이의 자작곡 (`assets/*.mp3`) 후렴 48초. **GPL 대상이 아니다 (All rights reserved)** — 다른 곳에 쓰지 말 것.
@@ -54,6 +55,19 @@ npm run dev -- --port 3100
 - `.local-data`는 Git/빌드에서 제외한다. 서버 프로세스를 모두 끈 뒤 원본을 백업하면 데이터 이동/복구가 가능하다.
 - 잠금 v2 도입 버전으로 갱신할 때는 기존 서버를 모두 종료하고 재시작한다. 구버전과 신버전을 같은 저장 폴더에서 함께 실행하지 않는다. v2는 종료된 로컬 PID의 잠금만 자동 회수하고, 소유자 없는 구버전 `.write-lock`은 원본 백업 후 수동 확인하도록 안내한다.
 - Vercel에서는 JSON 저장이 503으로 차단된다. 운영 연결은 인증·점수 검증·영구 저장소 구현 후 진행한다.
+
+## 개인 가사 보관함 (로컬 테스트)
+
+- `/lyrics`: 제목·가수 필수, 앨범·곡 길이 선택. 직접 입력·붙여넣기 또는 UTF-8/UTF-16 TXT·LRC 가져오기. 목록 검색, 수정, 삭제 확인, TXT/LRC 내보내기를 제공한다. 일반 가사는 TXT로 Mac 앱에 가져와 시각을 붙일 수 있다.
+- `GET/POST /api/lyrics`: 기존 HttpOnly 개인 쿠키 소유권을 사용한다. `CONO_DATA_DIR/lyrics/store.json`(미설정 시 `.local-data/lyrics/store.json`)에 별도 스키마로 저장하므로 점수 저장 파일은 바꾸지 않는다. 가사 한 개는 UTF-8 1 MiB·4,000줄·줄당 500글자, 한 소유자는 200곡·8 MiB, 저장 파일 전체는 32 MiB 이하다.
+- 새 레코드는 UUID와 revision(`version`) 1로 생성한다. 같은 UUID·같은 내용의 재전송은 중복 생성하지 않는다. 수정·삭제는 읽은 version이 현재와 같아야 하며 오래된 탭은 409로 거부한다. 오류가 나도 편집기는 초안을 유지하며 파일로 내보낼 수 있다.
+- 기존 v2 파일 잠금을 재사용하고 read/validate/write를 잠금 안에서 처리한다. 손상 파일은 보존하고 임시 파일의 atomic rename으로 저장한다. Vercel에서는 보관함과 게시 경로 모두 저장소 연결 전 503이다. DB 연결은 없다.
+- LRC 원문·단어 태그는 그대로 내보낸다. TXT와 LRCLIB 검토에는 해석한 본문을 사용한다. 양수 `[offset:500]`은 Mac 파서와 같이 0.5초 앞당긴다. LRCLIB에는 원문 단어 태그 대신 정규화한 줄 시각을 보내며 전송할 내용을 모달에서 확인할 수 있다.
+- `POST /api/lyrics/publish`: 저장본의 소유권·version·명시적 동의를 확인하고 challenge 또는 publish를 수행한다. 실제 곡 길이는 공개 시 필수, 앨범은 빈 값 허용, 일반 가사는 `syncedLyrics: ""`로 보낸다. 공개본은 개인 보관함 삭제와 별개이며 앱에서 외부 공개본 삭제를 약속하지 않는다.
+- 인증 계산은 Web Worker의 SHA-256으로 실행하며 120초·1억 회 제한과 취소를 제공한다. 공식 규약은 `SHA256(prefix + nonce) <= target`, 헤더는 `X-Publish-Token: prefix:nonce`다. 인증 응답 4 KiB는 앱 자체 안전 한도다. 전송 후 네트워크 실패·취소는 결과 미확정으로 표시하며 자동 재전송하지 않는다.
+- 429 응답의 `Retry-After`(초 또는 HTTP 날짜)는 인증·게시 경로가 서버에서 공유한다. 대기 중에는 외부 요청을 보내지 않고 UI에 남은 시간을 표시한다. 대기가 끝나도 자동으로 게시하지 않는다. TXT 백업은 빈 행을 포함해 원문을 보존하며, 공개 LRC의 빈 시각 줄도 간주·종료 cue로 유지한다.
+- [LRCLIB 공식 게시 모델/라우트](https://github.com/tranxuanthang/lrclib/blob/05ad8590f6fc4d47a2d74e70f4915273df20f63c/server/src/routes/publish_lyrics.rs), [토큰 검증식](https://github.com/tranxuanthang/lrclib/blob/05ad8590f6fc4d47a2d74e70f4915273df20f63c/server/src/utils.rs), [일반 가사 처리](https://github.com/tranxuanthang/lrclib/blob/05ad8590f6fc4d47a2d74e70f4915273df20f63c/server/src/lyricsfile.rs).
+- `npm test`는 parser/소유권/revision/동시쓰기/손상 보존/PoW/전송 경계를 검증한다. LRCLIB는 주입한 가짜 transport만 사용하며 실제 POST를 보내지 않는다. `npm run test:lyrics-api`는 실행 중인 localhost 서버에 임시 개인 가사를 만들고 정리한다. 기존 점수 회귀는 `npm run test:api`로 별도 실행한다.
 
 ## 주의
 - **한 화면 = 한 섹션**: `Screen`(min-h-dvh) + `SectionPager`. 마우스·트랙패드(`pointer: fine`)면 창 크기와 관계없이 **아래로만** 휠·키 한 번에 한 섹션씩 넘긴다 (위로는 자유 스크롤 — 다시 찾아보는 동작이라 걸면 답답하다). CSS `scroll-snap` 은 mandatory **든 proximity 든** 화면 높이 섹션에서 마우스 휠 한 칸(≈100px)을 원래 섹션으로 되돌려 **갇힌다** — 마우스에는 쓰지 말 것. 터치(`pointer: coarse`)만 CSS proximity.

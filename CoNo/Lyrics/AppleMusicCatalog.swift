@@ -1,242 +1,241 @@
 // CoNo — Copyright (C) 2026 AIB Inc. (https://www.aib.vote) — GPL-3.0-or-later
 //
-// Apple Music 음절 가사 (#4, 설정에서 켜는 선택 기능 — 비공개 엔드포인트).
-// 공식 음절 단위 싱크라 품질이 가장 좋다. 앱(음악 앱) 을 가로채는 길은 없다: 가사는 디스크에 남지 않고,
-// AppleScript `lyrics` 는 스트리밍 곡에서 빈 문자열이다 (lyrimuse 실측, GPL-3 — 이 파일의 흐름은 그 조사를 참고했다).
-//
-//   ① 개발자 토큰: music.apple.com 이 공개로 내려주는 JS 번들 안의 JWT 후보 중 카탈로그 검색이 되는 것 (계정 불필요)
-//   ② 카탈로그 검색: /v1/catalog/{storefront}/search — 개발자 토큰만 (hasTimeSyncedLyrics 로 미리 거른다)
-//   ③ 가사: /songs/{id}/syllable-lyrics (음절) → 없으면 /lyrics (줄). 구독자의 media-user-token 필요
-//      (없으면 404 "No related resources" — 401 이 아님). 토큰은 6개월, 연장 불가 → 401/403 이면 다시 연결.
-// storefront 는 사용자의 구독 지역이어야 한다 (가사 요청의 인증 조건).
+// Apple 웹 플레이어의 비공개 가사 경로와 호환하는 선택 기능. 공식 MusicKit 가사 API가 아니다.
+// 기존 music.apple.com JS의 개발자 JWT → amp-api 카탈로그/TTML 흐름만 유지한다.
+// 새 토큰 발급·접근 제한 우회는 하지 않으며 사용자의 Music User Token을 로그/디스크 캐시에 남기지 않는다.
 
 import Foundation
 import Security
 
-/// 사용자 토큰(키체인)과 지역·저장 시각(UserDefaults). 토큰은 로그에 남기지 않는다.
+/// 기존 키체인 식별자는 사용자 연결을 보존하기 위해 그대로 쓴다.
 enum AppleMusicCredentials {
-    private static let service = "space.knowai.cono.applemusic"
-    private static let account = "media-user-token"
-    private static let defaultsPrefix = "space.knowai.cono.applemusic."
-    /// Apple 이 정한 사용자 토큰 수명 (연장 불가)
-    static let lifetime: TimeInterval = 180 * 24 * 60 * 60
+    static let store = AppleMusicCredentialStore(persistence: KeychainPersistence())
 
-    static var userToken: String? {
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: account,
-            kSecReturnData as String: true,
-            kSecMatchLimit as String: kSecMatchLimitOne,
-        ]
-        var item: CFTypeRef?
-        guard SecItemCopyMatching(query as CFDictionary, &item) == errSecSuccess, let data = item as? Data else { return nil }
-        return String(data: data, encoding: .utf8)
-    }
+    private struct KeychainPersistence: AppleMusicCredentialPersistence {
+        private static let service = "space.knowai.cono.applemusic"
+        private static let account = "media-user-token"
+        private static let defaultsPrefix = "space.knowai.cono.applemusic."
 
-    static var storefront: String {
-        get { UserDefaults.standard.string(forKey: defaultsPrefix + "storefront") ?? "" }
-        set { UserDefaults.standard.set(newValue, forKey: defaultsPrefix + "storefront") }
-    }
+        private var query: [String: Any] {
+            [kSecClass as String: kSecClassGenericPassword,
+             kSecAttrService as String: Self.service, kSecAttrAccount as String: Self.account]
+        }
 
-    static var savedAt: Date? {
-        UserDefaults.standard.object(forKey: defaultsPrefix + "savedAt") as? Date
-    }
+        func readToken() throws -> String? {
+            var query = query
+            query[kSecReturnData as String] = true
+            query[kSecMatchLimit as String] = kSecMatchLimitOne
+            var item: CFTypeRef?
+            let status = SecItemCopyMatching(query as CFDictionary, &item)
+            if status == errSecItemNotFound { return nil }
+            guard status == errSecSuccess else { throw AppleMusicCredentialError.keychain(operation: "읽기", status: status) }
+            guard let data = item as? Data, let token = String(data: data, encoding: .utf8) else {
+                throw AppleMusicCredentialError.invalidToken
+            }
+            return token
+        }
 
-    /// 토큰이 거부된 적 있음 (만료·취소) — 설정 창이 "다시 연결" 을 안내한다
-    static var rejected: Bool {
-        get { UserDefaults.standard.bool(forKey: defaultsPrefix + "rejected") }
-        set { UserDefaults.standard.set(newValue, forKey: defaultsPrefix + "rejected") }
-    }
+        func writeToken(_ token: String) throws {
+            let attributes: [String: Any] = [kSecValueData as String: Data(token.utf8),
+                                            kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlock]
+            var status = SecItemUpdate(query as CFDictionary, attributes as CFDictionary)
+            if status == errSecItemNotFound {
+                var item = query
+                attributes.forEach { item[$0.key] = $0.value }
+                status = SecItemAdd(item as CFDictionary, nil)
+                // 다른 프로세스가 같은 항목을 먼저 만든 경우에도 기존 항목을 지우지 않는다.
+                if status == errSecDuplicateItem { status = SecItemUpdate(query as CFDictionary, attributes as CFDictionary) }
+            }
+            guard status == errSecSuccess else { throw AppleMusicCredentialError.keychain(operation: "저장", status: status) }
+        }
 
-    static func save(userToken: String, storefront: String) {
-        let base: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: account,
-        ]
-        SecItemDelete(base as CFDictionary)
-        var item = base
-        item[kSecValueData as String] = Data(userToken.utf8)
-        item[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlock
-        SecItemAdd(item as CFDictionary, nil)
-        self.storefront = storefront
-        UserDefaults.standard.set(Date(), forKey: defaultsPrefix + "savedAt")
-        rejected = false
-    }
+        func deleteToken() throws {
+            let status = SecItemDelete(query as CFDictionary)
+            guard status == errSecSuccess || status == errSecItemNotFound else {
+                throw AppleMusicCredentialError.keychain(operation: "삭제", status: status)
+            }
+        }
 
-    static func clear() {
-        SecItemDelete([
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: account,
-        ] as CFDictionary)
-        for key in ["storefront", "savedAt", "rejected"] {
-            UserDefaults.standard.removeObject(forKey: defaultsPrefix + key)
+        func readMetadata() -> AppleMusicCredentialMetadata {
+            let defaults = UserDefaults.standard
+            return AppleMusicCredentialMetadata(storefront: defaults.string(forKey: Self.defaultsPrefix + "storefront") ?? "",
+                savedAt: defaults.object(forKey: Self.defaultsPrefix + "savedAt") as? Date,
+                rejected: defaults.bool(forKey: Self.defaultsPrefix + "rejected"))
+        }
+
+        func writeMetadata(_ metadata: AppleMusicCredentialMetadata) {
+            let defaults = UserDefaults.standard
+            defaults.set(metadata.storefront, forKey: Self.defaultsPrefix + "storefront")
+            defaults.set(metadata.savedAt, forKey: Self.defaultsPrefix + "savedAt")
+            defaults.set(metadata.rejected, forKey: Self.defaultsPrefix + "rejected")
         }
     }
 }
 
 actor AppleMusicCatalog {
     static let shared = AppleMusicCatalog()
-
-    private let session: URLSession
+    private let http: LyricsHTTPClient
+    private let credentials: AppleMusicCredentialStore
     private var developerToken: String?
     private static let web = "https://music.apple.com"
     private static let api = "https://amp-api.music.apple.com/v1/"
 
-    private init() {
-        let configuration = URLSessionConfiguration.ephemeral
-        configuration.timeoutIntervalForRequest = 10
-        session = URLSession(configuration: configuration)
+    init(http: LyricsHTTPClient = .shared, credentials: AppleMusicCredentialStore = AppleMusicCredentials.store) {
+        self.http = http
+        self.credentials = credentials
     }
 
-    /// 이 곡의 Apple Music 싱크 가사 후보 (연결 안 됐거나 실패하면 빈 목록)
-    func candidates(for track: TrackInfo) async -> [LyricsCandidate] {
-        guard let userToken = AppleMusicCredentials.userToken, !track.title.isEmpty,
-              let devToken = await ensureDeveloperToken(),
-              let storefront = await ensureStorefront(devToken: devToken, userToken: userToken)
-        else { return [] }
-
-        // ② 검색 (가사 시간 정보가 있는 곡만)
+    func candidates(for track: TrackInfo) async throws -> [LyricsCandidate] {
+        var snapshot = try credentials.snapshot()
+        guard snapshot.userToken != nil else { throw LyricsAccessError.needsConnection }
+        try requireCurrent(snapshot)
+        guard !track.title.isEmpty else { return [] }
+        let devToken = try await ensureDeveloperToken(snapshot: snapshot)
+        snapshot = try await ensureStorefront(devToken: devToken, snapshot: snapshot)
+        let storefront = snapshot.storefront
         var components = URLComponents(string: Self.api + "catalog/\(storefront)/search")!
-        components.queryItems = [
-            URLQueryItem(name: "types", value: "songs"),
-            URLQueryItem(name: "limit", value: "10"),
-            URLQueryItem(name: "term", value: "\(track.title) \(track.artist)"),
-        ]
-        guard let (data, status) = await get(components.urlEncodingPlus, devToken: devToken, userToken: nil), status == 200,
-              let songs = try? JSONDecoder().decode(SearchResponse.self, from: data).results.songs?.data
-        else { return [] }
-        let matching = songs.filter { song in
-            let a = song.attributes
-            guard a.hasTimeSyncedLyrics == true,
-                  LyricsSelector.titlesMatch(a.name, track.title),
-                  LyricsSelector.artistsMatch(a.artistName, track.artist)
-            else { return false }
-            guard track.durationIsReliable, track.duration > 0, let ms = a.durationInMillis else { return true }
-            return abs(ms / 1000 - track.duration) <= LyricsSelector.maxDurationDifference
+        components.queryItems = [URLQueryItem(name: "types", value: "songs"), URLQueryItem(name: "limit", value: "10"),
+                                 URLQueryItem(name: "term", value: "\(track.title) \(track.artist)")]
+        let (data, _) = try await get(components.urlEncodingPlus, devToken: devToken, snapshot: snapshot, subscriber: false)
+        let response: SearchResponse = try decode(data)
+        let matching = (response.results.songs?.data ?? []).filter { song in
+            let attributes = song.attributes
+            guard attributes.hasTimeSyncedLyrics == true, LyricsSelector.titlesMatch(attributes.name, track.title),
+                  LyricsSelector.artistsMatch(attributes.artistName, track.artist) else { return false }
+            guard track.durationIsReliable, track.duration > 0, let milliseconds = attributes.durationInMillis else { return true }
+            return abs(milliseconds / 1000 - track.duration) <= LyricsSelector.maxDurationDifference
         }
-
-        // ③ 가사 (음절 → 줄)
-        var result: [LyricsCandidate] = []
+        var candidates: [LyricsCandidate] = []
         for song in matching.prefix(2) {
-            guard let lrc = await lyrics(songID: song.id, storefront: storefront, devToken: devToken, userToken: userToken) else { continue }
-            result.append(LyricsCandidate(
-                id: Int(song.id) ?? 0,
-                trackName: song.attributes.name,
-                artistName: song.attributes.artistName,
-                albumName: song.attributes.albumName,
-                duration: song.attributes.durationInMillis.map { $0 / 1000 },
-                instrumental: false,
-                plainLyrics: nil,
-                syncedLyrics: lrc,
-                source: .appleMusic
-            ))
+            // 응답 ID가 URL 경로를 바꾸지 못하게 숫자 식별자만 받는다.
+            guard !song.id.isEmpty, song.id.utf8.count <= 20, song.id.utf8.allSatisfy({ (48...57).contains($0) }),
+                  let identifier = Int(song.id), identifier > 0 else { throw LyricsAccessError.invalidBody }
+            guard let lrc = try await lyrics(songID: song.id, devToken: devToken, snapshot: snapshot) else { continue }
+            candidates.append(LyricsCandidate(id: identifier, trackName: song.attributes.name,
+                artistName: song.attributes.artistName, albumName: song.attributes.albumName,
+                duration: song.attributes.durationInMillis.map { $0 / 1000 }, instrumental: false,
+                plainLyrics: nil, syncedLyrics: lrc, source: .appleMusic))
         }
-        return result
+        try requireCurrent(snapshot)
+        return candidates
     }
 
-    private func lyrics(songID: String, storefront: String, devToken: String, userToken: String) async -> String? {
+    private func lyrics(songID: String, devToken: String, snapshot: AppleMusicCredentialSnapshot) async throws -> String? {
         for kind in ["syllable-lyrics", "lyrics"] {
-            guard let url = URL(string: Self.api + "catalog/\(storefront)/songs/\(songID)/\(kind)"),
-                  let (data, status) = await get(url, devToken: devToken, userToken: userToken)
-            else { continue }
-            switch status {
-            case 200:
-                if let ttml = try? JSONDecoder().decode(LyricsResponse.self, from: data).data.first?.attributes.ttml,
-                   let lrc = TTMLLyrics.lrc(from: ttml) {
-                    return lrc
-                }
-            case 401, 403:
-                // 사용자 토큰 만료·취소 (6개월, 연장 불가) → 다시 연결 안내
-                AppleMusicCredentials.rejected = true
-                return nil
-            default:
-                continue // 404 = 이 종류의 가사가 없음 (정상)
-            }
+            let url = URL(string: Self.api + "catalog/\(snapshot.storefront)/songs/\(songID)/\(kind)")!
+            let (data, response) = try await get(url, devToken: devToken, snapshot: snapshot, subscriber: true,
+                                                acceptedStatus: [200, 404])
+            if response.statusCode == 404 { continue }
+            let decoded: LyricsResponse = try decode(data)
+            guard let ttml = decoded.data.first?.attributes.ttml, !ttml.isEmpty,
+                  let lrc = TTMLLyrics.lrc(from: ttml) else { throw LyricsAccessError.invalidBody }
+            return lrc
         }
         return nil
     }
 
-    // MARK: - 토큰·지역
-
-    /// ① music.apple.com 의 JS 번들에서 JWT 후보를 뽑아, 카탈로그 검색이 되는 첫 번째를 쓴다
-    /// (번들엔 용도가 다른 JWT 가 여러 개 있어 모양만으론 못 가린다).
-    private func ensureDeveloperToken() async -> String? {
+    /// 기존 호환 경로를 유지하되 후보 검증 요청은 최대 3회다. 401/403을 사용자 토큰 거부로 기록하지 않는다.
+    private func ensureDeveloperToken(snapshot: AppleMusicCredentialSnapshot) async throws -> String {
+        try requireCurrent(snapshot)
         if let developerToken, let expiry = Self.expiry(of: developerToken), expiry > Date().addingTimeInterval(3600) {
             return developerToken
         }
         developerToken = nil
-        guard let (home, _) = await get(URL(string: Self.web + "/us/browse")!, devToken: nil, userToken: nil),
-              let html = String(data: home, encoding: .utf8),
-              let asset = html.range(of: #"/assets/index[~-][A-Za-z0-9_-]+\.js"#, options: .regularExpression).map({ String(html[$0]) }),
-              let (bundle, _) = await get(URL(string: Self.web + asset)!, devToken: nil, userToken: nil),
-              let js = String(data: bundle, encoding: .utf8)
-        else { return nil }
-        for candidate in Self.jwtCandidates(in: js) {
-            let probe = URL(string: Self.api + "catalog/us/search?types=songs&limit=1&term=a")!
-            if let (_, status) = await get(probe, devToken: candidate, userToken: nil), status == 200 {
+        let (home, _) = try await get(URL(string: Self.web + "/us/browse")!, snapshot: snapshot)
+        guard let html = String(data: home, encoding: .utf8),
+              let range = html.range(of: #"/assets/index[~-][A-Za-z0-9_-]+\.js"#, options: .regularExpression) else {
+            throw LyricsAccessError.invalidBody
+        }
+        let (bundle, _) = try await get(URL(string: Self.web + String(html[range]))!, snapshot: snapshot, maximumBytes: 8_388_608)
+        guard let javascript = String(data: bundle, encoding: .utf8) else { throw LyricsAccessError.invalidBody }
+        let candidates = Self.jwtCandidates(in: javascript)
+        guard !candidates.isEmpty else { throw LyricsAccessError.invalidBody }
+        var lastFailure: LyricsAccessError = .invalidBody
+        for candidate in candidates.prefix(3) {
+            do {
+                let url = URL(string: Self.api + "catalog/us/search?types=songs&limit=1&term=a")!
+                let (probe, _) = try await get(url, devToken: candidate, snapshot: snapshot)
+                let _: SearchResponse = try decode(probe)
+                try requireCurrent(snapshot)
                 developerToken = candidate
                 return candidate
+            } catch let error as LyricsAccessError {
+                switch error {
+                case .authorization: lastFailure = error
+                default: throw error
+                }
             }
         }
-        return nil
+        throw lastFailure
     }
 
-    /// 구독 지역. 로그인 때 쿠키(itua)로 못 얻었으면 계정에 묻는다.
-    private func ensureStorefront(devToken: String, userToken: String) async -> String? {
-        let saved = AppleMusicCredentials.storefront
-        if !saved.isEmpty { return saved }
-        guard let (data, status) = await get(URL(string: Self.api + "me/storefront")!, devToken: devToken, userToken: userToken),
-              status == 200,
-              let id = try? JSONDecoder().decode(StorefrontResponse.self, from: data).data.first?.id
-        else { return nil }
-        AppleMusicCredentials.storefront = id
-        return id
+    private func ensureStorefront(devToken: String, snapshot: AppleMusicCredentialSnapshot) async throws -> AppleMusicCredentialSnapshot {
+        try requireCurrent(snapshot)
+        if AppleMusicCredentialPolicy.validStorefront(snapshot.storefront) { return snapshot }
+        let (data, _) = try await get(URL(string: Self.api + "me/storefront")!, devToken: devToken, snapshot: snapshot, subscriber: true)
+        let response: StorefrontResponse = try decode(data)
+        guard let id = response.data.first?.id, AppleMusicCredentialPolicy.validStorefront(id) else { throw LyricsAccessError.invalidBody }
+        guard let updated = try credentials.setStorefront(id, matching: snapshot) else { throw CancellationError() }
+        return updated
     }
 
-    static func jwtCandidates(in js: String) -> [String] {
-        let pattern = #"eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{50,}\.[A-Za-z0-9_-]{20,}"#
+    private func requireCurrent(_ snapshot: AppleMusicCredentialSnapshot) throws {
+        try Task.checkCancellation()
+        guard try credentials.isCurrent(snapshot) else { throw CancellationError() }
+    }
+
+    private func decode<T: Decodable>(_ data: Data) throws -> T {
+        do { return try JSONDecoder().decode(T.self, from: data) }
+        catch { throw LyricsAccessError.invalidBody }
+    }
+
+    /// Origin은 기존 웹 플레이어 호환에 필요하다. 브라우저 UA를 사칭하지 않는다.
+    private func get(_ url: URL, devToken: String? = nil, snapshot: AppleMusicCredentialSnapshot,
+                     subscriber: Bool = false, maximumBytes: Int = 1_048_576,
+                     acceptedStatus: Set<Int> = [200]) async throws -> (Data, HTTPURLResponse) {
+        try requireCurrent(snapshot)
+        var request = URLRequest(url: url)
+        request.setValue("CoNo/0.2 (https://www.aib.vote)", forHTTPHeaderField: "User-Agent")
+        request.setValue(Self.web, forHTTPHeaderField: "Origin")
+        if let devToken { request.setValue("Bearer \(devToken)", forHTTPHeaderField: "Authorization") }
+        if subscriber { request.setValue(snapshot.userToken, forHTTPHeaderField: "Media-User-Token") }
+        do {
+            let result = try await http.data(for: request, service: .appleMusic, maximumBytes: maximumBytes, acceptedStatus: acceptedStatus)
+            try requireCurrent(snapshot)
+            return result
+        } catch {
+            // 재연결/해제 뒤 도착한 응답은 새 연결의 인증 상태나 가사에 영향을 주지 않는다.
+            try requireCurrent(snapshot)
+            if case LyricsAccessError.authorization = error {
+                if subscriber { _ = try credentials.reject(snapshot) }
+                else { developerToken = nil }
+            }
+            throw error
+        }
+    }
+
+    static func jwtCandidates(in javascript: String) -> [String] {
+        guard javascript.utf8.count <= 8_388_608 else { return [] }
+        let pattern = #"eyJ[A-Za-z0-9_-]{10,2048}\.[A-Za-z0-9_-]{50,8192}\.[A-Za-z0-9_-]{20,2048}"#
         guard let regex = try? NSRegularExpression(pattern: pattern) else { return [] }
         var seen = Set<String>()
-        let found = regex.matches(in: js, range: NSRange(js.startIndex..., in: js)).compactMap { match -> String? in
-            guard let range = Range(match.range, in: js) else { return nil }
-            let token = String(js[range])
-            return seen.insert(token).inserted ? token : nil
-        }
-        // 만료가 늦은 것부터, 이미 만료된 것은 뺀다
-        return found
-            .compactMap { token in expiry(of: token).map { (token, $0) } }
-            .filter { $0.1 > Date() }
-            .sorted { $0.1 > $1.1 }
-            .map(\.0)
+        return regex.matches(in: javascript, range: NSRange(javascript.startIndex..., in: javascript)).compactMap { match -> (String, Date)? in
+            guard let range = Range(match.range, in: javascript) else { return nil }
+            let token = String(javascript[range])
+            guard seen.insert(token).inserted, let expiry = expiry(of: token), expiry > Date() else { return nil }
+            return (token, expiry)
+        }.sorted { $0.1 > $1.1 }.map(\.0)
     }
 
-    /// JWT 의 exp
     static func expiry(of token: String) -> Date? {
+        guard token.utf8.count <= 16_384 else { return nil }
         let parts = token.split(separator: ".")
         guard parts.count == 3 else { return nil }
         var payload = parts[1].replacingOccurrences(of: "-", with: "+").replacingOccurrences(of: "_", with: "/")
         while payload.count % 4 != 0 { payload += "=" }
-        guard let data = Data(base64Encoded: payload),
-              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let exp = json["exp"] as? Double
-        else { return nil }
-        return Date(timeIntervalSince1970: exp)
-    }
-
-    // MARK: - HTTP
-
-    /// amp-api 는 Origin 이 Apple 사이트여야 한다 (없으면 403)
-    private func get(_ url: URL, devToken: String?, userToken: String?) async -> (Data, Int)? {
-        var request = URLRequest(url: url)
-        request.setValue("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)", forHTTPHeaderField: "User-Agent")
-        request.setValue(Self.web, forHTTPHeaderField: "Origin")
-        if let devToken { request.setValue("Bearer \(devToken)", forHTTPHeaderField: "Authorization") }
-        if let userToken { request.setValue(userToken, forHTTPHeaderField: "Media-User-Token") }
-        guard let (data, response) = try? await session.data(for: request) else { return nil }
-        return (data, (response as? HTTPURLResponse)?.statusCode ?? 0)
+        guard let data = Data(base64Encoded: payload), let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let expiry = json["exp"] as? Double, expiry.isFinite, expiry > 0 else { return nil }
+        return Date(timeIntervalSince1970: expiry)
     }
 
     private struct SearchResponse: Decodable {
@@ -255,7 +254,6 @@ actor AppleMusicCatalog {
         }
         let results: Results
     }
-
     private struct LyricsResponse: Decodable {
         struct Item: Decodable {
             struct Attributes: Decodable { let ttml: String }
@@ -263,7 +261,6 @@ actor AppleMusicCatalog {
         }
         let data: [Item]
     }
-
     private struct StorefrontResponse: Decodable {
         struct Item: Decodable { let id: String }
         let data: [Item]

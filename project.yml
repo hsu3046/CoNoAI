@@ -107,6 +107,9 @@ targets:
       - path: CoNoTests
       - path: CoNo/DSP
       - path: CoNo/Lyrics/Core
+      - path: CoNo/Lyrics/LRCLIBClient.swift
+      - path: CoNo/Lyrics/ExtraLyricsSources.swift
+      - path: CoNo/Lyrics/AppleMusicCatalog.swift
       - path: CoNo/Records
       - path: CoNo/Audio/CoreAudioUtils.swift
       - path: CoNo/Audio/AudioResampler.swift

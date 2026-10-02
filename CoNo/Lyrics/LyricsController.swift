@@ -49,6 +49,7 @@ final class LyricsController {
         let fileName: String
         let lineCount: Int
         let preciseLineCount: Int
+        let isSynced: Bool
     }
     private(set) var localLyricsInfo: LocalLyricsInfo?
     private(set) var localLyricsError: String?
@@ -112,7 +113,10 @@ final class LyricsController {
     @ObservationIgnored private var localInfoByTrack: [String: LocalLyricsInfo] = [:]
     /// 가져오기/해제 도중 끝난 예전 네트워크 요청이 사용자 가사를 덮어쓰지 않게 한다.
     @ObservationIgnored private var loadGenerations: [String: UUID] = [:]
-    /// LRCLIB 말고 함께 찾을 소스 (설정 › 가사). 다음 곡부터 반영.
+    @ObservationIgnored private var loadTasks: [String: Task<Void, Never>] = [:]
+    @ObservationIgnored private var loadSourcesByTrack: [String: Set<LyricsSource>] = [:]
+    @ObservationIgnored private var appleAccountObserver: LyricsAccountObserver?
+    /// LRCLIB 말고 함께 찾을 소스 (설정 › 가사). 다시 검색하거나 다음 곡부터 반영.
     @ObservationIgnored var enabledExtraSources: Set<LyricsSource> = [.netease, .amll]
     private var clock = SongClock()
 
@@ -135,6 +139,10 @@ final class LyricsController {
         var isLocal = false
 
         var lyrics: TimedLyrics? { candidates.indices.contains(chosen) ? candidates[chosen] : nil }
+        /// 구독 가사는 자동 학습 JSON에도 남기지 않는다. 사용자의 명시적인 복사는 별도 경로다.
+        var permitsLearnedWordTimings: Bool {
+            !candidateSources.indices.contains(chosen) || candidateSources[chosen] != .appleMusic
+        }
     }
     /// nil 값 = 싱크 가사 없음 (일반 가사만 있거나 못 찾음)
     private var lyricsByTrack: [String: TrackLyrics?] = [:]
@@ -176,6 +184,31 @@ final class LyricsController {
         localAlignment = AlignmentCoordinator(modelVersion: OmniASRCTC.modelVersion,
                                               modelAvailable: OmniASRCTC.bundledModelDirectory() != nil,
                                               releaseModel: { await model.unload() }, inference: { try await model.infer($0) })
+        appleAccountObserver = LyricsAccountObserver { [weak self] in self?.appleMusicConnectionDidChange() }
+    }
+
+    /// 계정이 바뀌면 이전 구독 가사와 진행 중 조회만 버린다. 명시적으로 적용한 내 가사는 유지한다.
+    private func appleMusicConnectionDidChange() {
+        var affected = Set(lyricsByTrack.compactMap { id, entry in
+            entry?.candidateSources.contains(.appleMusic) == true ? id : nil
+        })
+        affected.formUnion(loadSourcesByTrack.filter { $0.value.contains(.appleMusic) }.keys)
+        // 이전에 인증하지 못해 다른 소스만 표시했던 현재 곡도 새 연결로 다시 확인한다.
+        if enabledExtraSources.contains(.appleMusic), let currentTrackID { affected.insert(currentTrackID) }
+        for id in affected where localInfoByTrack[id] == nil {
+            loadGenerations[id] = UUID()
+            loadTasks.removeValue(forKey: id)?.cancel()
+            loadSourcesByTrack.removeValue(forKey: id)
+            loadingTrackIDs.remove(id)
+            lyricsByTrack.removeValue(forKey: id)
+            plainLyricsByTrack.removeValue(forKey: id)
+            statusByTrack.removeValue(forKey: id)
+            loadFailures.removeValue(forKey: id)
+            clearDisplayCache(for: id)
+        }
+        if let track = currentTrack, affected.contains(track.id), localInfoByTrack[track.id] == nil {
+            load(track)
+        }
     }
 
     /// 음악 앱인지 (AppleScript 로 곡 정보·재생 제어)
@@ -324,6 +357,50 @@ final class LyricsController {
 
     var localLyricsDirectory: URL { localLyricsStore.directoryURL }
 
+    var availableTracksForLyrics: [TrackInfo] {
+        tracks.values.sorted {
+            if ($0.id == currentTrackID) != ($1.id == currentTrackID) { return $0.id == currentTrackID }
+            return $0.title.localizedStandardCompare($1.title) == .orderedAscending
+        }
+    }
+
+    func unsyncedLyrics(atCaptureTime c: Double?) -> String? {
+        let id = c.flatMap { clock.position(atCaptureTime: $0)?.trackID } ?? currentTrackID
+        guard let id, (lyricsByTrack[id] ?? nil)?.lyrics == nil,
+              let plain = plainLyricsByTrack[id], !plain.isEmpty else { return nil }
+        return plain
+    }
+
+    /// 저장한 개인 가사는 선택 당시 곡에 사본으로 적용한다. 보관함 원본은 바꾸지 않는다.
+    func applyPersonalLyrics(_ document: PersonalLyricsDocument, to track: TrackInfo) async -> Bool {
+        guard !isChangingLocalLyrics else { return false }
+        isChangingLocalLyrics = true
+        defer { isChangingLocalLyrics = false }
+        localLyricsError = nil; localLyricsMessage = nil
+        do {
+            let input = try document.lyrics.validated()
+            let loaded = try await localLyricsStore.save(data: Data(input.contents.utf8), fileName: "personal-lyrics.\(input.format.rawValue)", for: track)
+            loadGenerations[track.id] = UUID(); loadTasks[track.id]?.cancel(); loadingTrackIDs.remove(track.id)
+            applyLocalLyrics(loaded, to: track)
+            localLyricsMessage = "‘\(track.title)’에 보관함 가사 사본을 적용했어요."
+            return true
+        } catch { localLyricsError = error.localizedDescription; return false }
+    }
+
+    /// 소스 설정 변경을 즉시 반영하되 사용자가 적용한 가사는 유지한다.
+    func retryOnlineLyrics() {
+        guard let track = currentTrack, !isChangingLocalLyrics else { return }
+        if localInfoByTrack[track.id] != nil {
+            localLyricsMessage = "내 가사를 우선 사용 중입니다. 온라인 가사를 다시 사용하려면 내 가사를 해제해 주세요."
+            return
+        }
+        loadGenerations[track.id] = UUID(); loadTasks[track.id]?.cancel()
+        loadingTrackIDs.remove(track.id); loadFailures.removeValue(forKey: track.id)
+        lyricsByTrack.removeValue(forKey: track.id); plainLyricsByTrack.removeValue(forKey: track.id)
+        statusByTrack.removeValue(forKey: track.id); clearDisplayCache(for: track.id)
+        load(track, bypassCache: true)
+    }
+
     func availablePlainLyrics(for track: TrackInfo) -> String {
         if let entry = lyricsByTrack[track.id], let lyrics = entry?.lyrics {
             return lyrics.lines.filter { !$0.isInterlude }.map(\.text).joined(separator: "\n")
@@ -340,7 +417,7 @@ final class LyricsController {
             return false
         }
         guard urls.count == 1, let url = urls.first, url.isFileURL,
-              ["lrc", "ttml", "srt", "krc", "qrc"].contains(url.pathExtension.lowercased()) else {
+              ["txt", "lrc", "ttml", "srt", "krc", "qrc"].contains(url.pathExtension.lowercased()) else {
             localLyricsError = LocalLyricsError.unsupportedFile.localizedDescription
             return false
         }
@@ -362,12 +439,13 @@ final class LyricsController {
         do {
             let loaded = try await localLyricsStore.save(data: Data(contents.utf8), fileName: fileName, for: track)
             loadGenerations[track.id] = UUID()
+            loadTasks[track.id]?.cancel()
             loadingTrackIDs.remove(track.id)
             applyLocalLyrics(loaded, to: track)
             // 저장을 기다리는 동안 다른 곡으로 넘어가면 그 곡의 전역 미세조정을 바꾸지 않는다.
             let isCurrentTrack = currentTrackID == track.id
             if isCurrentTrack { offsetSeconds = 0 }
-            localLyricsMessage = "‘\(track.title)’에 \(label)를 저장했어요."
+            localLyricsMessage = "‘\(track.title)’에 \(label) 저장을 마쳤어요."
                 + (isCurrentTrack ? " 미세조정은 0초로 맞췄습니다." : " 다음에도 이 파일을 사용합니다.")
             return true
         } catch {
@@ -386,6 +464,7 @@ final class LyricsController {
         do {
             let loaded = try await localLyricsStore.importFile(at: url, for: track)
             loadGenerations[track.id] = UUID()
+            loadTasks[track.id]?.cancel()
             loadingTrackIDs.remove(track.id)
             applyLocalLyrics(loaded, to: track)
             localLyricsMessage = "‘\(track.title)’에 가사를 저장했어요. 다음에도 이 파일을 사용합니다."
@@ -403,7 +482,9 @@ final class LyricsController {
         do {
             try await localLyricsStore.remove(for: track)
             loadGenerations[track.id] = UUID()
+            loadTasks[track.id]?.cancel()
             lyricsByTrack.removeValue(forKey: track.id)
+            plainLyricsByTrack.removeValue(forKey: track.id)
             statusByTrack.removeValue(forKey: track.id)
             localInfoByTrack.removeValue(forKey: track.id)
             loadFailures.removeValue(forKey: track.id)
@@ -422,17 +503,18 @@ final class LyricsController {
                                                   modelVersion: localAlignment.modelVersion)]
         entry.candidateSources = [.localFile]
         entry.isLocal = true
-        lyricsByTrack[track.id] = .some(entry)
+        lyricsByTrack[track.id] = .some(loaded.isSynced ? entry : nil)
+        plainLyricsByTrack[track.id] = loaded.plainLyrics
         let info = LocalLyricsInfo(fileName: loaded.document.fileName, lineCount: loaded.lineCount,
-                                   preciseLineCount: loaded.preciseLineCount)
+                                   preciseLineCount: loaded.preciseLineCount, isSynced: loaded.isSynced)
         localInfoByTrack[track.id] = info
-        statusByTrack[track.id] = .ready(track, synced: true)
+        statusByTrack[track.id] = .ready(track, synced: loaded.isSynced)
         loadFailures.removeValue(forKey: track.id)
         clearDisplayCache(for: track.id)
         if currentTrackID == track.id {
             localLyricsInfo = info
-            status = .ready(track, synced: true)
-            autoSync = AutoSyncInfo(candidateCount: 1, source: .localFile)
+            status = .ready(track, synced: loaded.isSynced)
+            autoSync = AutoSyncInfo(candidateCount: loaded.isSynced ? 1 : 0, source: .localFile)
         }
     }
 
@@ -615,14 +697,21 @@ final class LyricsController {
         anchorDiagnostics.count = sorted.count
     }
 
-    private func load(_ track: TrackInfo) {
+    private func load(_ track: TrackInfo, bypassCache: Bool = false) {
         let generation = UUID()
         loadGenerations[track.id] = generation
         loadingTrackIDs.insert(track.id)
         if currentTrackID == track.id { status = .loading(track) }
         let sources = enabledExtraSources
-        Task { [weak self] in
+        loadSourcesByTrack[track.id] = sources
+        loadTasks[track.id]?.cancel()
+        loadTasks[track.id] = Task { [weak self] in
             guard let self else { return }
+            defer {
+                if loadGenerations[track.id] == generation {
+                    loadTasks[track.id] = nil; loadSourcesByTrack[track.id] = nil; loadingTrackIDs.remove(track.id)
+                }
+            }
             do {
                 let local = try await localLyricsStore.load(for: track)
                 guard loadGenerations[track.id] == generation else { return }
@@ -637,14 +726,17 @@ final class LyricsController {
             }
             let outcome: Status
             // LRCLIB 과 추가 소스(NetEase·AMLL)를 함께 찾는다. LRCLIB 이 실패해도 추가 소스에서 찾으면 쓴다.
-            async let extra = extraSources.candidates(for: track, sources: sources)
+            async let extra = extraSources.candidates(for: track, sources: sources, bypassCache: bypassCache)
             let base: Result<LyricsLookupResult, Error>
             do {
-                base = .success(try await client.lyrics(for: track))
+                base = .success(try await client.lyrics(for: track, bypassCache: bypassCache))
             } catch {
                 base = .failure(error)
             }
-            var pool = await extra
+            var extraFailure: Error?
+            var pool: [LyricsCandidate]
+            do { pool = try await extra }
+            catch { pool = []; extraFailure = error }
             guard loadGenerations[track.id] == generation else { return }
             if case let .success(.synced(list)) = base { pool += list }
             if case let .success(.plainOnly(candidate)) = base {
@@ -674,24 +766,25 @@ final class LyricsController {
                 statusByTrack[track.id] = outcome
                 loadFailures[track.id] = nil
             } else {
-                switch base {
-                case .success(.plainOnly):
+                let failure: Error?
+                if case let .failure(error) = base { failure = error }
+                else { failure = extraFailure }
+                if let plain = plainLyricsByTrack[track.id], !plain.isEmpty {
                     lyricsByTrack[track.id] = .some(nil)
                     outcome = .ready(track, synced: false)
                     statusByTrack[track.id] = outcome
                     loadFailures[track.id] = nil
-                case .success:
-                    lyricsByTrack[track.id] = .some(nil)
-                    outcome = .notFound(track)
-                    statusByTrack[track.id] = outcome
-                    loadFailures[track.id] = nil
-                case let .failure(error):
-                    // 5초 → 10 → 20 → 40 → 60초 간격으로 다시 시도 (그동안은 실패 상태를 유지)
+                } else if let error = failure {
                     let count = (loadFailures[track.id]?.count ?? 0) + 1
                     let wait = min(5 * pow(2, Double(count - 1)), 60)
                     loadFailures[track.id] = (count, ContinuousClock.now + .seconds(wait))
                     outcome = .failed("\(error.localizedDescription) — \(Int(wait))초 뒤 다시 시도합니다")
                     statusByTrack[track.id] = outcome
+                } else {
+                    lyricsByTrack[track.id] = .some(nil)
+                    outcome = .notFound(track)
+                    statusByTrack[track.id] = outcome
+                    loadFailures[track.id] = nil
                 }
             }
             loadingTrackIDs.remove(track.id)
@@ -729,7 +822,7 @@ final class LyricsController {
                 // 원본 시각에는 줄 싱크와 같은 오프셋을 적용한다. 보컬 추정과 달리 seek를 바로 따른다.
                 display.highlightedCharacters = characters
                 lastHighlight = nil
-            } else if trackLyrics.wordIdentities.indices.contains(trackLyrics.chosen),
+            } else if trackLyrics.permitsLearnedWordTimings, trackLyrics.wordIdentities.indices.contains(trackLyrics.chosen),
                       let learned = localAlignment.learnedLine(identity: trackLyrics.wordIdentities[trackLyrics.chosen], index: index,
                                                                source: line, end: end, shift: -shift),
                       let characters = learned.highlightedCharacters(at: t, lineEnd: end) {
@@ -784,7 +877,9 @@ final class LyricsController {
         }
         lastAlignmentPosition = (c, position)
         let entry = lyricsByTrack[position.trackID] ?? nil
-        let identity = entry.flatMap { $0.wordIdentities.indices.contains($0.chosen) ? $0.wordIdentities[$0.chosen] : nil }
+        let identity = entry.flatMap {
+            $0.permitsLearnedWordTimings && $0.wordIdentities.indices.contains($0.chosen) ? $0.wordIdentities[$0.chosen] : nil
+        }
         let shift = (displayCommits[position.trackID]?.delay ?? entry?.appliedDelay ?? 0) - offsetSeconds
         guard shift.isFinite, abs(shift) <= 120 else { invalidateAlignment(); return }
         let context = "\(position.trackID)#\(identity?.storageKey ?? "plain")#\(alignmentEpoch)#\(Int((shift * 1000).rounded()))"
@@ -859,4 +954,18 @@ final class LyricsController {
         wipeCache[key] = WipeCacheEntry(wipe: wipe, knownUntil: snapshot.knownUntil, complete: snapshot.knownUntil >= streamEnd)
         return wipe
     }
+}
+
+/// 옵저버 수명은 컨트롤러에 맞춘다. 성공한 계정 교체/해제 알림만 메인 큐에서 받는다.
+private final class LyricsAccountObserver: @unchecked Sendable {
+    private let token: NSObjectProtocol
+    init(_ changed: @escaping @MainActor @Sendable () -> Void) {
+        token = NotificationCenter.default.addObserver(forName: AppleMusicCredentialStore.connectionDidChange,
+                                                       object: nil, queue: .main) { notification in
+            guard let store = notification.object as? AppleMusicCredentialStore,
+                  store === AppleMusicCredentials.store else { return }
+            MainActor.assumeIsolated { changed() }
+        }
+    }
+    deinit { NotificationCenter.default.removeObserver(token) }
 }

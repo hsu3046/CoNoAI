@@ -4,14 +4,15 @@ import CryptoKit
 import Foundation
 
 enum LocalLyricsError: LocalizedError {
-    case unsupportedFile, invalidEncoding, tooLarge, noTimedLyrics, invalidStore
+    case unsupportedFile, invalidEncoding, tooLarge, noTimedLyrics, noLyrics, invalidStore
 
     var errorDescription: String? {
         switch self {
-        case .unsupportedFile: "LRC·TTML·SRT·KRC·QRC 가사 파일 하나를 선택해 주세요."
+        case .unsupportedFile: "TXT·LRC·TTML·SRT·KRC·QRC 가사 파일 하나를 선택해 주세요."
         case .invalidEncoding: "가사 파일을 읽지 못했어요. UTF-8 또는 UTF-16 형식으로 저장해 주세요."
         case .tooLarge: "가사는 1 MB, 4,000줄 이하이고 한 줄은 500글자 이하여야 해요."
         case .noTimedLyrics: "시간 정보가 있는 가사를 찾지 못했어요. 파일의 가사 형식을 확인해 주세요."
+        case .noLyrics: "가사 내용을 입력해 주세요."
         case .invalidStore: "저장된 가사 파일을 읽지 못했어요. 원본은 보존했습니다. 가사 폴더에서 확인해 주세요."
         }
     }
@@ -31,7 +32,9 @@ struct LoadedLocalLyrics: Sendable {
     let document: LocalLyricsDocument
     let lyrics: TimedLyrics
 
-    var lineCount: Int { lyrics.lines.filter { !$0.isInterlude }.count }
+    var isSynced: Bool { document.format != "txt" }
+    var plainLyrics: String { isSynced ? lyrics.lines.filter { !$0.isInterlude }.map(\.text).joined(separator: "\n") : document.contents }
+    var lineCount: Int { isSynced ? lyrics.lines.filter { !$0.isInterlude }.count : document.contents.components(separatedBy: .newlines).filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }.count }
     var preciseLineCount: Int { lyrics.lines.filter { !$0.segments.isEmpty }.count }
 }
 
@@ -75,7 +78,7 @@ actor LocalLyricsStore {
     func save(data: Data, fileName: String, for track: TrackInfo) throws -> LoadedLocalLyrics {
         guard data.count <= Self.maximumInputBytes else { throw LocalLyricsError.tooLarge }
         let format = URL(fileURLWithPath: fileName).pathExtension.lowercased()
-        guard ["lrc", "ttml", "srt", "krc", "qrc"].contains(format) else { throw LocalLyricsError.unsupportedFile }
+        guard ["txt", "lrc", "ttml", "srt", "krc", "qrc"].contains(format) else { throw LocalLyricsError.unsupportedFile }
         let decoded: String?
         if format == "krc" || format == "qrc" {
             // 바이너리 원본도 손실 없이 JSON 사본에 보존한다.
@@ -115,12 +118,15 @@ actor LocalLyricsStore {
         return directoryURL.appendingPathComponent("\(digest).json")
     }
 
-    private static func parse(_ contents: String, format: String) throws -> TimedLyrics {
+    static func parse(_ contents: String, format: String) throws -> TimedLyrics {
         let isBinaryFormat = format == "krc" || format == "qrc"
         guard contents.utf8.count <= (isBinaryFormat ? 1_398_104 : maximumInputBytes) else { throw LocalLyricsError.tooLarge }
         let lrc: String
         let lyrics: TimedLyrics
         switch format {
+        case "txt":
+            try validatePlain(contents)
+            return TimedLyrics(lines: [])
         case "lrc": lrc = contents
         case "ttml":
             // 사용자 파일의 DTD/entity 확장이나 외부 리소스를 해석할 이유가 없다.
@@ -137,6 +143,17 @@ actor LocalLyricsStore {
         }
         lyrics = LRCParser.parse(lrc)
         return try validated(lyrics)
+    }
+
+    /// 일반 가사는 시각을 만들어 붙이지 않는다. 원문은 JSON에 그대로 보관한다.
+    static func validatePlain(_ contents: String) throws {
+        guard contents.utf8.count <= maximumInputBytes else { throw LocalLyricsError.tooLarge }
+        guard !contents.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw LocalLyricsError.noLyrics }
+        let lines = contents.replacingOccurrences(of: "\r\n", with: "\n").components(separatedBy: .newlines)
+        guard lines.count <= 4_000, lines.allSatisfy({ $0.count <= 500 }) else { throw LocalLyricsError.tooLarge }
+        guard !contents.unicodeScalars.contains(where: { CharacterSet.controlCharacters.contains($0) && !CharacterSet.whitespacesAndNewlines.contains($0) }) else {
+            throw LocalLyricsError.invalidEncoding
+        }
     }
 
     private static func validated(_ lyrics: TimedLyrics) throws -> TimedLyrics {

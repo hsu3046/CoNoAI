@@ -40,6 +40,11 @@
 | `CoNoTests/DSPTests.swift` | STFT torch 일치·왕복, 슬라이딩 윈도우 정렬 테스트 |
 | `CoNoTests/PitchTests.swift` | 음정 스트리밍 연속성·문맥, 음표 묶기 테스트 |
 | `CoNo/Lyrics/ExtraLyricsSources.swift` | LRCLIB 외 가사 후보: NetEase 云音乐 · AMLL TTML DB (캐시 포함) |
+| `CoNo/Lyrics/Core/LyricsHTTPClient.swift` | 고정 HTTPS 호스트·인증 헤더 리다이렉트 보호·응답 크기·취소·서비스별 Retry-After와 최근 연결 상태 |
+| `CoNo/Lyrics/Core/PersonalLyricsStore.swift` | 곡 재생과 독립된 개인 TXT/LRC JSON 보관함, 리비전 검사·원자적 저장·손상 보존 |
+| `CoNo/App/PersonalLyricsLibraryView.swift` | 가사 등록·검색·편집·삭제·내보내기·선택 곡에 사본 적용·선택 LRCLIB 공개 |
+| `CoNo/Lyrics/Core/AppleMusicCredentialPolicy.swift` | Keychain 저장소 경계와 연결 세대, 쿠키/지역 검증·오래된 인증 응답 차단 |
+| `CoNo/Lyrics/Core/LyricsPrivacyMigration.swift` | 구형 혼합 캐시·검증된 Apple 학습 파일만 정리, 개인 가사·손상·링크 보존 |
 | `CoNo/Lyrics/AppleMusicCatalog.swift` | Apple Music 음절 가사 (선택): 개발자 토큰 추출·카탈로그 검색·TTML, 사용자 토큰은 키체인 |
 | `CoNo/App/AppleMusicConnection.swift` | Apple Music 계정 연결 창 (Apple 로그인 페이지 → 쿠키의 토큰만 저장) |
 | `CoNo/Lyrics/Core/LyricsSources.swift` | 소스 구분, NetEase 크레딧 줄 제거, TTML → LRC, AMLL 색인 찾기 |
@@ -96,6 +101,8 @@
 ## 2026-10-02 — 점수 기록·공유·로컬 챌린지
 
 `CoNo/Records`의 버전 있는 JSON을 앱과 웹이 교환한다. 곡 종료 시 `KaraokeEngine`이 `ScoreHistory`에 기록하고, `ScoreHistoryView`에서 공유·이미지·파일 내보내기를 제공한다. 웹은 `ScoreRepository`의 `JsonRepository` 구현을 사용하며 DB 호출은 하지 않는다. 개인 기록과 공개 기록을 구분한다. 상세 계약과 테스트는 [LOCAL_FEATURES.md](LOCAL_FEATURES.md).
+
+개인 가사 보관함은 곡별 적용 사본과 별도로 저장한다. 웹 `/lyrics`는 쿠키 소유자별 `lyrics/store.json`과 리비전 검사를 사용하며, 기존 점수 파일 잠금 구현을 공유한다. `/api/lyrics/publish`는 저장된 본인 버전의 검토 자료를 준비하고 사용자 동의 후 LRCLIB 게시를 전달한다. 인증 계산은 취소 가능한 브라우저 Worker에서 수행한다. Mac과 웹은 TXT/LRC로 교환하며 DB 동기화는 연결하지 않았다.
 
 출력 장치 변경 시 `PlaybackOutput`만 재생성하고 기존 `DelayPipeline.outputSampleRate`를 새 소스 노드 포맷으로 사용한다. 하드웨어 레이트가 달라지면 새 출력 믹서가 변환한다. 분석·채점 시계를 초기화하지 않는다. 시작 중 변경 및 재연결 실패 시에는 안전하게 정지하고 안내한다.
 

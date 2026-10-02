@@ -54,12 +54,57 @@ struct LRCLIBPublishingTests {
         #expect(await stub.requests.isEmpty)
     }
 
+    @Test func explicitPlainPublicationUsesEmptySyncedTextAndRejectsEmptyLyrics() async throws {
+        let stub = PublishingStub()
+        let publisher = LRCLIBPublisher(transport: { try await stub.reply(to: $0) })
+        let plain = LRCLIBPublishPayload(trackName: "직접 쓴 곡", artistName: "CoNo", albumName: "", duration: 180,
+                                        plainLyrics: "시간 없는 첫 줄\n둘째 줄", syncedLyrics: "")
+        try await publisher.publish(plain)
+        let requests = await stub.requests
+        #expect(requests.count == 2)
+        let sent = try JSONDecoder().decode(LRCLIBPublishPayload.self, from: #require(requests.last?.httpBody))
+        #expect(sent == plain)
+        #expect(throws: LRCLIBPublishError.self) {
+            try LRCLIBPublishPayload(trackName: "곡", artistName: "가수", albumName: "", duration: 100,
+                                     plainLyrics: "\n ", syncedLyrics: "").validatedData()
+        }
+    }
+
     @Test func publishDoesNotRetryAnAmbiguousNetworkFailure() async throws {
         let stub = PublishingStub(failPublish: true)
         let publisher = LRCLIBPublisher(transport: { try await stub.reply(to: $0) })
         do {
             try await publisher.publish(payload)
             Issue.record("전송 오류를 성공으로 처리하면 안 된다")
+        } catch LRCLIBPublishError.uncertainOutcome { }
+        #expect(await stub.requests.count == 2)
+    }
+
+    @Test func sharedTransportPreflightRefusalRemainsAConfirmedNonPublication() async throws {
+        let until = Date().addingTimeInterval(120)
+        for issue in [LyricsAccessError.rateLimited(until), .unavailable(until), .unsafeAddress] {
+            let stub = PublishingStub(preflightRefusal: issue)
+            let publisher = LRCLIBPublisher(transport: { try await stub.reply(to: $0) })
+            await #expect(throws: issue) { try await publisher.publish(payload) }
+            #expect(await stub.requests.count == 1, "공개 transport 진입 전에 거부되어 인증 요청만 전송됐다")
+        }
+    }
+
+    @Test func postDispatchCancellationAndNetworkFailureRemainUncertain() async throws {
+        for issue in [LyricsAccessError.network, .secureConnection] {
+            let stub = PublishingStub(publishFailure: issue)
+            let publisher = LRCLIBPublisher(transport: { try await stub.reply(to: $0) })
+            do {
+                try await publisher.publish(payload)
+                Issue.record("전송 도중 연결 오류는 미확정으로 처리해야 한다")
+            } catch LRCLIBPublishError.uncertainOutcome { }
+            #expect(await stub.requests.count == 2)
+        }
+        let stub = PublishingStub(cancelPublish: true)
+        let publisher = LRCLIBPublisher(transport: { try await stub.reply(to: $0) })
+        do {
+            try await publisher.publish(payload)
+            Issue.record("전송 도중 취소는 미확정으로 처리해야 한다")
         } catch LRCLIBPublishError.uncertainOutcome { }
         #expect(await stub.requests.count == 2)
     }
@@ -81,13 +126,25 @@ struct LRCLIBPublishingTests {
 private actor PublishingStub {
     private(set) var requests: [URLRequest] = []
     let failPublish: Bool
+    let preflightRefusal: LyricsAccessError?
+    let publishFailure: LyricsAccessError?
+    let cancelPublish: Bool
 
-    init(failPublish: Bool = false) { self.failPublish = failPublish }
+    init(failPublish: Bool = false, preflightRefusal: LyricsAccessError? = nil,
+         publishFailure: LyricsAccessError? = nil, cancelPublish: Bool = false) {
+        self.failPublish = failPublish
+        self.preflightRefusal = preflightRefusal
+        self.publishFailure = publishFailure
+        self.cancelPublish = cancelPublish
+    }
 
     func reply(to request: URLRequest) throws -> (Data, HTTPURLResponse) {
-        requests.append(request)
         let isChallenge = request.url?.lastPathComponent == "request-challenge"
+        if !isChallenge, let preflightRefusal { throw preflightRefusal }
+        requests.append(request)
         if !isChallenge && failPublish { throw URLError(.timedOut) }
+        if !isChallenge, let publishFailure { throw publishFailure }
+        if !isChallenge && cancelPublish { throw CancellationError() }
         let data = isChallenge ? try JSONEncoder().encode(LRCLIBChallenge(prefix: "fixture", target: String(repeating: "f", count: 64))) : Data()
         let url = try #require(request.url)
         let response = try #require(HTTPURLResponse(url: url, statusCode: isChallenge ? 200 : 201,

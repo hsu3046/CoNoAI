@@ -594,10 +594,11 @@ export function SiteHeader() {
             ["#listen", "들어보기"],
             ["#try", "불러보기"],
             ["#records", "나의 기록"],
+            ["/lyrics", "내 가사"],
             ["#challenge", "챌린지"],
             ["#faq", "FAQ"],
           ].map(([href, label]) => (
-            <a key={href} href={href} className="hidden rounded-full px-3 py-2 text-ink2 transition hover:text-ink sm:block">
+            <a key={href} href={href} className={`${href === "/lyrics" ? "" : "hidden lg:block"} rounded-full px-3 py-2 text-ink2 transition hover:text-ink`}>
               {label}
             </a>
           ))}

@@ -7,12 +7,14 @@ import UniformTypeIdentifiers
 struct LyricsAIDraftRequest: Identifiable {
     let id = UUID()
     let track: TrackInfo
+    var initialText: String? = nil
 }
 
 /// 원본 가사와 분리된 검토 화면. 오디오는 메모리에서만 처리하고 저장 버튼은 명시적으로 확인한다.
 struct LyricsAIDraftView: View {
     let engine: KaraokeEngine
     let track: TrackInfo
+    private let initialText: String
     @Environment(\.dismiss) private var dismiss
     @State private var text = ""
     @State private var draft: AlignedLyricsDraft?
@@ -29,6 +31,13 @@ struct LyricsAIDraftView: View {
     @State private var editorRequest: LyricsEditorRequest?
     private enum Confirmation { case close, save, replace }
     private var coordinator: AlignmentCoordinator { engine.lyrics.localAlignment }
+
+    init(engine: KaraokeEngine, track: TrackInfo, initialText: String? = nil) {
+        self.engine = engine
+        self.track = track
+        self.initialText = initialText ?? ""
+        _text = State(initialValue: self.initialText)
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -127,7 +136,7 @@ struct LyricsAIDraftView: View {
             && !isSaving && engine.isRunning && !engine.showsPaused && engine.seekTarget == nil
             && engine.lyrics.currentTrack?.id == track.id
     }
-    private var hasUnsavedChanges: Bool { !hasSaved && (draft != nil || !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty) }
+    private var hasUnsavedChanges: Bool { !hasSaved && (draft != nil || text != initialText) }
     private var alertTitle: String {
         confirmation == .save ? "‘\(track.title)’의 내 가사로 저장할까요?" : "아직 저장하지 않은 초안을 버릴까요?"
     }

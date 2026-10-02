@@ -330,9 +330,14 @@ private struct LyricsSettings: View {
     let engine: KaraokeEngine
     let settings: AppSettings
     @State private var cleared = false
+    @Environment(\.openWindow) private var openWindow
 
     var body: some View {
         Form {
+            Section("내 가사 보관함") {
+                Button("내 가사 보관함 열기…") { openWindow(id: "personal-lyrics") }
+                Caption("곡을 틀지 않아도 직접 입력하거나 TXT·LRC 파일을 등록합니다. 개인 보관함에 저장하고 필요한 가사만 LRCLIB에 공개할 수 있어요.")
+            }
             Section("싱크") {
                 LabeledContent("가사 미세조정") {
                     HStack {
@@ -361,8 +366,10 @@ private struct LyricsSettings: View {
                 Caption("일본·한국·중국 곡이 많습니다. 공식 공개 API 가 아니라서 언젠가 막힐 수 있어요.")
                 Toggle("AMLL 커뮤니티 가사", isOn: Binding(get: { settings.lyricsAMLL }, set: { settings.lyricsAMLL = $0 }))
                 Caption("사람이 손으로 맞춘 단어 단위 싱크 가사 모음(CC0)입니다. 곡 수는 적지만 정확해요.")
-                Caption("여러 소스에서 후보를 모은 뒤, 분리한 보컬과 대 보아 가장 잘 맞는 가사를 고릅니다. 바꾼 설정은 다음 곡부터 반영돼요.")
+                Caption("여러 소스에서 후보를 모은 뒤, 분리한 보컬과 대 보아 가장 잘 맞는 가사를 고릅니다. 바꾼 설정은 아래에서 다시 검색하거나 다음 곡부터 반영할 수 있어요.")
             }
+
+            LyricsAccessSection(engine: engine, settings: settings)
 
             AppleMusicLyricsSection(settings: settings)
 
@@ -441,9 +448,9 @@ private struct LocalLyricsSection: View {
                 }
                 if let info = controller.localLyricsInfo {
                     Text(info.fileName).font(.callout)
-                    Caption("\(info.lineCount)줄 · 단어 시각이 있는 줄 \(info.preciseLineCount)개")
+                    Caption(info.isSynced ? "\(info.lineCount)줄 · 단어 시각이 있는 줄 \(info.preciseLineCount)개" : "일반 가사 \(info.lineCount)줄 · 시간 정보 없음")
                 } else {
-                    Caption("LRC·TTML·SRT·KRC·QRC 파일을 이곳이나 노래방 가사 영역에 놓아 주세요.")
+                    Caption("TXT·LRC·TTML·SRT·KRC·QRC 파일을 이곳이나 노래방 가사 영역에 놓아 주세요.")
                 }
                 HStack {
                     Button(controller.localLyricsInfo == nil ? "가사 파일 가져오기…" : "가사 파일 바꾸기…") {
@@ -460,7 +467,7 @@ private struct LocalLyricsSection: View {
             } else {
                 Caption("곡을 연결하면 내 가사 파일을 가져올 수 있어요.")
             }
-            Caption("선택한 곡에 파일 사본을 보관합니다. 단어 시각이 있으면 그대로 따라가고, 줄 시각만 있으면 기존 음절 색칠을 사용해요. 내 가사의 싱크는 위의 미세조정으로 맞출 수 있습니다.")
+            Caption("선택한 곡에 파일 사본을 보관합니다. 일반 가사는 직접 스크롤해 읽고, 단어 시각이 있으면 그대로 따라갑니다. 줄 시각은 탭 편집으로 맞출 수 있어요.")
             if let message = controller.localLyricsMessage { Caption(message) }
             if let error = controller.localLyricsError {
                 Text(error).font(.caption).foregroundStyle(.red).textSelection(.enabled)
@@ -492,7 +499,7 @@ private struct LocalLyricsSection: View {
     private func importFile(for track: TrackInfo) {
         let panel = NSOpenPanel()
         panel.title = "‘\(track.title)’에 사용할 가사"
-        panel.allowedContentTypes = [UTType(filenameExtension: "lrc") ?? .plainText,
+        panel.allowedContentTypes = [.plainText, UTType(filenameExtension: "lrc") ?? .plainText,
                                      UTType(filenameExtension: "ttml") ?? .xml,
                                      UTType(filenameExtension: "srt") ?? .plainText,
                                      UTType(filenameExtension: "krc") ?? .data,
@@ -516,14 +523,16 @@ private struct AppleMusicLyricsSection: View {
     var body: some View {
         Section("Apple Music 음절 가사 (선택)") {
             Toggle("Apple Music 가사 사용", isOn: Binding(get: { settings.lyricsAppleMusic }, set: { settings.lyricsAppleMusic = $0 }))
-            Caption("Apple Music 이 직접 만든 음절 단위 싱크 가사를 씁니다. 가장 정확하지만 Apple Music 구독 계정 연결이 필요해요. 공개 API 가 아닌 Apple 웹 플레이어의 통로를 쓰므로 예고 없이 막힐 수 있습니다.")
+            Caption("Apple Music 계정으로 접근할 수 있는 가사를 찾습니다. 구독·지역·서비스 권한에 따라 이용 가능 여부가 달라요. 공개 API가 아닌 웹 플레이어의 통로를 쓰므로 예고 없이 바뀔 수 있습니다.")
             if settings.lyricsAppleMusic {
                 HStack(alignment: .firstTextBaseline) {
                     status
                     Spacer()
                     buttons
+                        .disabled(connection.isConnecting || connection.isDisconnecting)
                 }
-                Caption("연결을 누르면 Apple 의 로그인 페이지가 열립니다. 로그인은 Apple 페이지에서만 이뤄지고, CoNo 는 로그인 뒤 받은 이용 토큰만 이 Mac 의 키체인에 보관해요 (6개월 뒤 다시 연결).")
+                Caption("연결을 누르면 Apple의 로그인 페이지가 열립니다. 로그인은 Apple 페이지에서만 이뤄지고, 로그인 뒤 받은 이용 토큰은 이 Mac의 키체인에 보관해요. 인증이 거절되면 구독·지역을 확인하거나 다시 연결해 주세요.")
+                if let error = connection.errorMessage { Text(error).font(.caption).foregroundStyle(.orange).textSelection(.enabled) }
             }
         }
         .onAppear { connection.refresh() }
@@ -537,12 +546,9 @@ private struct AppleMusicLyricsSection: View {
         case let .connected(_, storefront):
             VStack(alignment: .leading, spacing: 2) {
                 if connection.rejected {
-                    Text("연결이 만료됐어요. 다시 연결해 주세요.").foregroundStyle(.orange)
+                    Text("인증이 거절됐어요. 구독·지역을 확인하거나 다시 연결해 주세요.").foregroundStyle(.orange)
                 } else {
                     Text("연결됨" + (storefront.isEmpty ? "" : " · 지역 \(storefront.uppercased())"))
-                }
-                if let expires = connection.expiresAt {
-                    Text("\(expires.formatted(date: .abbreviated, time: .omitted)) 까지").font(.caption).foregroundStyle(.secondary)
                 }
             }
         }
@@ -559,7 +565,7 @@ private struct AppleMusicLyricsSection: View {
                 if connection.rejected {
                     Button("다시 연결") { connection.connect() }
                 }
-                Button("연결 끊기") { connection.disconnect() }
+                Button(connection.isDisconnecting ? "연결 끊는 중…" : "연결 끊기") { connection.disconnect() }
             }
         }
     }
