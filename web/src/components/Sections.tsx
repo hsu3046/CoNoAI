@@ -233,7 +233,7 @@ function AutoStartDemo() {
 export function Videos() {
   return (
     <Screen glow={{ color: "rgba(92,199,255,0.08)", x: "20%", y: "60%" }}>
-      <SectionTitle kicker="WATCH" title="영상으로 보기" />
+      <SectionTitle kicker="WATCH" title="직접 체험하며 알아보기" />
       <div className="mt-10 grid gap-6 md:grid-cols-2">
         {videos.map((video, index) => (
           <Reveal key={video.id} delay={index * 120}>
@@ -263,59 +263,14 @@ export function Videos() {
 
 function ComingSoon() {
   return (
-    <div className="absolute inset-0 grid place-items-center overflow-hidden bg-[radial-gradient(ellipse_at_center,#2a1147,#0b0d1a)]">
-      <div className="absolute inset-0 opacity-[0.07] [background-image:repeating-linear-gradient(0deg,#fff_0_1px,transparent_1px_3px)]" />
-      <div className="text-center">
-        <p className="text-5xl" style={{ animation: "floaty 3s ease-in-out infinite" }}>
-          🎬
-        </p>
-        <p className="neon neon-gold mt-3 font-display text-3xl flicker">촬영 중</p>
-        <p className="mt-2 text-sm text-ink2">곧 올라와요</p>
+    <div className="absolute inset-0 flex flex-col items-center justify-center gap-5 bg-[radial-gradient(ellipse_at_center,#2a1147,#0b0d1a)] p-6 text-center">
+      <p className="font-cute text-2xl">직접 듣고, 직접 불러 보세요</p>
+      <div className="flex flex-wrap justify-center gap-3">
+        <a href="#listen" className="rounded-full border border-mint/40 px-5 py-3 text-mint">원곡 ↔ 반주 비교</a>
+        <a href="#try" className="rounded-full bg-pink px-5 py-3 text-night">마이크 채점 체험</a>
       </div>
+      <a href="/demo/score?score=92" className="text-sm text-gold underline">92점 축하 연출 미리보기</a>
     </div>
-  );
-}
-
-// MARK: - 챌린지 예고
-
-export function ChallengeTeaser() {
-  const rows = [
-    ["🥇", "노래하는고양이", 98],
-    ["🥈", "거실가왕", 96],
-    ["🥉", "샤워실디바", 95],
-    ["4", "퇴근후한곡", 93],
-    ["5", "고음불가", 91],
-  ] as const;
-  return (
-    <Screen glow={{ color: "rgba(255,204,92,0.09)", x: "75%", y: "50%" }}>
-      <div className="grid items-center gap-10 lg:grid-cols-2">
-        <SectionTitle kicker="COMING SOON" title="이번 주 챌린지 곡, 1등은 누구?" align="left">
-          <p>같은 곡을 불러 점수를 겨루는 챌린지를 준비하고 있어요. 앱에서 받은 점수를 한 번에 올리고, 친구에게 도전장을 보내세요.</p>
-          <a href="#feedback" className="mt-6 inline-block rounded-full bg-gold px-6 py-3 font-cute text-lg text-night shadow-[0_0_30px_rgba(255,204,92,0.6)] transition hover:scale-105">
-            소식 먼저 받기 →
-          </a>
-        </SectionTitle>
-        <Reveal className="relative">
-          <div className="rounded-3xl border border-gold/30 bg-gradient-to-b from-gold/10 to-transparent p-6 shadow-[0_0_60px_rgba(255,204,92,0.15)]">
-            <p className="text-center font-cute text-lg text-gold">🎤 이번 주: 〈우리 집 무대〉</p>
-            <ol className="mt-5 space-y-2 blur-[3px]" aria-hidden>
-              {rows.map(([rank, name, score]) => (
-                <li key={name} className="flex items-center justify-between rounded-xl bg-black/30 px-4 py-3">
-                  <span className="flex items-center gap-3">
-                    <span className="w-6 text-center font-display">{rank}</span>
-                    {name}
-                  </span>
-                  <span className="font-display text-xl text-gold">{score}</span>
-                </li>
-              ))}
-            </ol>
-          </div>
-          <div className="absolute inset-0 grid place-items-center">
-            <span className="neon neon-gold rotate-[-6deg] font-display text-4xl">곧 열려요</span>
-          </div>
-        </Reveal>
-      </div>
-    </Screen>
   );
 }
 
@@ -419,8 +374,8 @@ function SendToMac() {
             }
             await navigator.clipboard.writeText(url);
             setNote("링크를 복사했어요. Mac으로 보내 주세요");
-          } catch {
-            // 공유 창을 닫은 경우
+          } catch (error) {
+            if (!(error instanceof DOMException && error.name === "AbortError")) setNote("링크를 복사하지 못했어요. 주소창의 주소를 복사해 주세요.");
           }
         }}
         className="rounded-full border border-white/20 bg-white/5 px-6 py-3 font-cute text-lg"

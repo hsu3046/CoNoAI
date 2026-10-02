@@ -126,10 +126,11 @@ CoNoAI is an early preview.
 - [x] "My key", guide vocal, pause/seek, interlude skip
 - [x] More lyric sources: NetEase, AMLL TTML DB and optional Apple Music syllable lyrics
 - [x] Signed and notarized release build
-- [ ] Live "am I on pitch?" view on the pitch bar and microphone scoring — works with speakers, not just headphones
+- [x] Live pitch feedback and microphone scoring
+- [x] Local score history, PNG/text sharing, JSON exchange, and web challenges ([local test guide](docs/LOCAL_FEATURES.md))
 - [ ] Find and fix the intermittent click
 - [ ] Optional forced-alignment model for word-perfect lyric timing
-- [ ] Follow output device changes without stopping
+- [x] Reconnect playback after output device changes while keeping the scoring pipeline (physical device-switch validation pending)
 
 ---
 

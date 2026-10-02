@@ -92,3 +92,9 @@
 - 재생 제어: 음악 앱은 `AppleMusicScript.command`, 그 밖의 앱은 `MediaRemoteBridge`(번들의 mediaremote-adapter 를 `/usr/bin/perl` 로 실행 — "지금 재생 중" 이 캡처 중인 앱일 때만 명확한 멈춤/재생). 그것도 안 되면 `MediaKey`(⏯ 합성, 토글이라 캡처 소리로 재생 여부 확인 후).
 - 끝내기 `KaraokeEngine.finish()`: 출력 얼림 → 원곡 멈춤 → 캡처가 조용해질 때까지(최대 1초) → 정리.
 
+
+## 2026-10-02 — 점수 기록·공유·로컬 챌린지
+
+`CoNo/Records`의 버전 있는 JSON을 앱과 웹이 교환한다. 곡 종료 시 `KaraokeEngine`이 `ScoreHistory`에 기록하고, `ScoreHistoryView`에서 공유·이미지·파일 내보내기를 제공한다. 웹은 `ScoreRepository`의 `JsonRepository` 구현을 사용하며 DB 호출은 하지 않는다. 개인 기록과 공개 기록을 구분한다. 상세 계약과 테스트는 [LOCAL_FEATURES.md](LOCAL_FEATURES.md).
+
+출력 장치 변경 시 `PlaybackOutput`만 재생성하고 기존 `DelayPipeline.outputSampleRate`를 새 소스 노드 포맷으로 사용한다. 하드웨어 레이트가 달라지면 새 출력 믹서가 변환한다. 분석·채점 시계를 초기화하지 않는다. 시작 중 변경 및 재연결 실패 시에는 안전하게 정지하고 안내한다.

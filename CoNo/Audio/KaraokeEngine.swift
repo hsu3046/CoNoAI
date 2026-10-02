@@ -48,6 +48,13 @@ struct SingingResult: Identifiable, Equatable, Sendable {
     let title: String?
     let artist: String?
     let score: SongScore
+    var keyShift: Int = 0
+    var difficulty: String = "normal"
+    var createdAt: String = ScoreRecord.timestamp()
+
+    var record: ScoreRecord {
+        ScoreRecord(id: id.uuidString.lowercased(), songId: ScoreRecord.songIdentifier(title: title, artist: artist, fallback: id), title: title ?? "제목 없는 곡", artist: artist ?? "", source: "macos", difficulty: difficulty, keyShift: keyShift, score: score.score, notesHit: score.notesHit, notesTotal: score.notesTotal, bestStreak: score.bestStreak, createdAt: createdAt)
+    }
 }
 
 @MainActor
@@ -187,6 +194,7 @@ final class KaraokeEngine {
     private(set) var singing: SingingTracker?
     /// 곡이 끝나면 화면이 보여주고 지운다
     var singingResult: SingingResult?
+    let scoreHistory = ScoreHistory()
     var singingDifficulty: SingingJudge.Difficulty = .normal {
         didSet { singing?.difficulty = singingDifficulty }
     }
@@ -289,7 +297,9 @@ final class KaraokeEngine {
         guard let singing else { return false }
         let score = singing.snapshot().score
         guard score.notesTotal >= minimumNotes else { return false }
-        singingResult = SingingResult(trackID: scoringTrack?.id, title: scoringTrack?.title, artist: scoringTrack?.artist, score: score)
+        let result = SingingResult(trackID: scoringTrack?.id, title: scoringTrack?.title, artist: scoringTrack?.artist, score: score, keyShift: keyShift, difficulty: singingDifficulty == .hard ? "hard" : "normal")
+        scoreHistory.record(result.record)
+        singingResult = result
         return true
     }
 
@@ -846,7 +856,7 @@ final class KaraokeEngine {
             // 먼저 띄우면 권한 대기 중 정지·재시작했을 때 옛 워커와 새 워커가 같은 분리 모델을 동시에 쓴다.
             createdPipeline = pipeline
 
-            // 3) 재생 (출력 장치가 바뀌면 엔진이 멈추므로 안전하게 정지하고 안내)
+            // 3) 재생 (실행 중 출력 장치 변경은 재생 그래프만 다시 연결)
             playback.setKeyShift(keyShift)
             try playback.start(
                 render: { [pipeline] frames, buffers, timestamp in
@@ -857,8 +867,7 @@ final class KaraokeEngine {
                         // 시작 중(권한 대기)에 바뀌어도 정지해야 한다 — isRunning 만 보면 알림이 버려지고
                         // 멈춘 엔진으로 .running 이 된다. 정지하면 번호가 바뀌어 대기 중인 시작도 스스로 정리한다.
                         guard let self, generation == self.startGeneration, self.isBusy else { return }
-                        self.stop()
-                        self.status = .failed("출력 장치가 바뀌어 정지했습니다. 다시 시작해 주세요.")
+                        self.reconnectPlayback(generation: generation)
                     }
                 }
             )
@@ -919,6 +928,42 @@ final class KaraokeEngine {
 
     private func isCurrentStart(_ generation: Int) -> Bool {
         generation == startGeneration && status == .starting
+    }
+
+    /// 출력 그래프만 교체해 탭·분리 모델·음정 타임라인·채점·재생 위치를 유지한다.
+    /// 파이프라인의 고정 샘플레이트를 새 출력 믹서 입력에 명시하므로 장치 레이트가 바뀌어도 음높이·속도가 유지된다.
+    private func reconnectPlayback(generation: Int) {
+        guard generation == startGeneration, isBusy else { return }
+        guard isRunning, let pipeline else {
+            stop()
+            status = .failed("시작 중 출력 장치가 바뀌었습니다. 장치 연결을 마친 뒤 다시 시작해 주세요.")
+            return
+        }
+        output?.stop()
+        output = nil
+        let playback = PlaybackOutput()
+        do {
+            guard playback.sampleRate > 0 else { throw CoreAudioError("사용할 수 있는 출력 장치가 없습니다") }
+            playback.setKeyShift(keyShift)
+            try playback.start(
+                render: { [pipeline] frames, buffers, timestamp in
+                    pipeline.renderPlayback(frameCount: frames, output: buffers, timestamp: timestamp)
+                },
+                sourceSampleRate: pipeline.outputSampleRate,
+                onConfigurationChange: { [weak self] in
+                    MainActor.assumeIsolated { self?.reconnectPlayback(generation: generation) }
+                }
+            )
+            output = playback
+            outputSampleRate = playback.sampleRate
+            outputDeviceName = playback.deviceName
+            playbackMessage = nil
+        } catch {
+            playback.stop()
+            concludeSong()
+            stop()
+            status = .failed("출력 장치를 다시 연결하지 못했습니다: \(error.localizedDescription)")
+        }
     }
 
     /// 파이프라인 워커를 멈춘다. 시간 안에 안 멈추면 워커가 분리 모델·음정 검출기를 아직 쓰고 있을 수 있으므로

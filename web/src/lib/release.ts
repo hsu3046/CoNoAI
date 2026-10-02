@@ -24,6 +24,6 @@ export type VideoItem = {
 };
 
 export const videos: VideoItem[] = [
-  { id: "demo", title: "30초 만에 보는 CoNo", caption: "음악 앱에서 ▶ 누르면 벌어지는 일" },
-  { id: "party", title: "진짜로 불러 봤습니다", caption: "거실 노래방 실전 — 점수는 과연?" },
+  { id: "demo", title: "듣던 노래가 반주로", caption: "원곡과 AI 반주를 직접 비교해 보세요" },
+  { id: "party", title: "내 목소리로 채점 체험", caption: "한 곡을 마치고 기록·공유까지" },
 ];

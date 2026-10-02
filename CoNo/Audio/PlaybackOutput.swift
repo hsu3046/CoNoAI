@@ -42,8 +42,9 @@ final class PlaybackOutput: @unchecked Sendable {
     }
 
     /// - Parameter onConfigurationChange: 출력 장치가 바뀌거나 포맷이 바뀌어 엔진이 멈췄을 때 (메인 스레드)
-    func start(render: @escaping PlaybackRenderBlock, onConfigurationChange: @escaping @Sendable () -> Void) throws {
-        let rate = sampleRate
+    func start(render: @escaping PlaybackRenderBlock, sourceSampleRate: Double? = nil, onConfigurationChange: @escaping @Sendable () -> Void) throws {
+        // 장치 변경 후에는 기존 파이프라인의 레이트를 유지한다. 새 하드웨어와의 차이는 믹서가 변환한다.
+        let rate = sourceSampleRate ?? sampleRate
         guard rate > 0, let format = AVAudioFormat(standardFormatWithSampleRate: rate, channels: 2) else {
             throw CoreAudioError("출력 장치 포맷을 읽지 못했습니다")
         }

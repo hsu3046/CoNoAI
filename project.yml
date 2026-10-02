@@ -107,6 +107,7 @@ targets:
       - path: CoNoTests
       - path: CoNo/DSP
       - path: CoNo/Lyrics/Core
+      - path: CoNo/Records
     settings:
       base:
         CODE_SIGN_STYLE: Manual
