@@ -2,7 +2,7 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { changeScores, exportScores, requestJSON, type HistoryResponse } from "@/lib/score-client";
-import { parseDocument } from "@/lib/score-record";
+import { MAX_ARCHIVE_BYTES, parseDocument } from "@/lib/score-record";
 import { Screen, SectionTitle } from "./Screen";
 import { ScoreActions, scoreButton } from "./ScoreActions";
 
@@ -50,12 +50,15 @@ export function ScoreLibrary() {
         <label className={`${scoreButton} cursor-pointer`}>JSON 가져오기<input aria-label="점수 JSON 가져오기" className="sr-only" type="file" accept=".json,application/json" disabled={busy || !data} onChange={(event) => {
           const file = event.target.files?.[0]; event.target.value = "";
           if (file) void perform(async () => {
-            if (file.size > 1024 * 1024) throw new Error("파일은 1 MB까지 가져올 수 있어요.");
+            if (file.size > MAX_ARCHIVE_BYTES) throw new Error("파일은 1 MB까지 가져올 수 있어요.");
             const document = parseDocument(JSON.parse(await file.text()));
             await changeScores({ action: "import", document });
           });
         }} /></label>
-        <button className={scoreButton} disabled={!data?.records.length} onClick={() => data && exportScores(data.records)}>전체 JSON 내보내기</button>
+        <button className={scoreButton} disabled={!data?.records.length} onClick={() => {
+          try { if (data) exportScores(data.records); }
+          catch (error) { setError(error instanceof Error ? error.message : "백업을 만들지 못했어요."); }
+        }}>전체 JSON 내보내기</button>
         <button className={scoreButton} disabled={busy} onClick={() => void reload()}>새로고침</button>
       </div>
       {error && <p role="alert" className="text-center text-stop">{error}</p>}

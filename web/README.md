@@ -10,7 +10,7 @@ CoNo 를 알리고, 사용법을 보여 주고, 내려받게 하고, 의견을 �
 | 들어 보기 | `ListenSection.tsx` · `fx/stems.ts` · `lib/songs.ts` | 자작곡 4곡 하이라이트를 원곡 ↔ 반주 ↔ 보컬로 끊김 없이 바꿔 듣기 (앱의 스위치와 같은 모양) |
 | 브라우저 체험 | `TryItLive.tsx` · `fx/backing.ts` · `lib/pitch.ts` · `lib/melody.ts` | 자작곡 〈우리 집 무대〉 반주 + 마이크 음정(YIN) 채점, 끝나면 `ScoreShow` |
 | 점수 연출 | `ScoreShow.tsx` · `fx/fireworks.ts` · `fx/sfx.ts` | 앱의 CelebrationView 를 옮긴 것 (드럼롤 · 불꽃 · 폭죽 · 별) |
-| 소개·사용법·체험 안내·FAQ·다운로드 | `Sections.tsx` | |
+| 소개·사용법·체험 안내·FAQ·다운로드 | `Sections.tsx` · `FeatureVideo.tsx` | 실제 화면 안내 영상·자막·텍스트 설명 |
 | 기록·공유·주간 챌린지 | `ScoreLibrary.tsx` · `ChallengeBoard.tsx` · `ScoreActions.tsx` | 로컬 기록·JSON 교환·공개/해제·PNG 저장 |
 | 의견 | `Feedback.tsx` → `app/api/feedback/route.ts` → 로컬 JSON | 만족도·의견·이메일(선택) |
 
@@ -20,7 +20,7 @@ CoNo 를 알리고, 사용법을 보여 주고, 내려받게 하고, 의견을 �
 - **페이드**: `fx/stems.ts` 의 `FADE_IN`(1.2초) · `FADE_OUT`(1.0초) 는 dB 로 부드럽게(smoothstep, 바닥 −40 dB — 음량 비율 곡선은 끝에서 뚝 끊겨 들린다), `MODE_FADE`(0.35초) 전환은 반 코사인. 재생마다 자기 페이더를 만들어 멈추는 소리와 새 소리가 겹쳐 이어진다 (곡 바꾸기·다시 틀기·위치 이동에서 뚝 끊기지 않게).
 - **소리는 한 번에 한 곳**: 첫 화면 ▶ · 들어 보기 · 체험은 `claimAudio(owner)` 로 알리고, 다른 곳이 시작하면 멈춘다 (`onAudioClaim`). 화면 밖으로 나가도 멈춘다.
 - **배포판 정보**: `src/lib/release.ts` (버전·다운로드 주소·크기·SHA-256). 새 DMG 를 올리면 여기만 바꾼다.
-- **영상**: `release.ts` 의 `videos[].src` 에 mp4 경로나 YouTube 임베드 주소를 넣으면 체험 안내 대신 나온다.
+- **영상**: `public/videos/`의 1280×720 H.264 무음 안내 2편, 포스터·한국어 WebVTT·텍스트 설명. 실제 로컬 웹의 원곡/반주/보컬 전환과 테스트 점수 기록/공유/챌린지를 보여 준다. 자동 재생/사전 다운로드 없이 사용자가 재생하며, 다른 소리가 시작되거나 화면 밖·백그라운드로 가면 멈춘다. [제작·갱신 방법](../docs/VIDEO_GUIDES.md).
 - **점수 연출 미리보기**: `/demo/score?score=92` (검색 노출 안 함 — 영상 촬영용)
 - **공유 이미지**: `public/og.png` (첫 화면을 1200×630 으로 찍은 것)
 - **아이콘**: `public/logo.png` = 배경 없는 마이크 그림 (`assets/AppIcon.icon/Assets/CoNo.png`) — 헤더·다운로드·바닥글.

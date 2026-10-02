@@ -11,7 +11,7 @@ export function session(request: Request) {
   const id = cookie && UUID.test(cookie) ? cookie.toLowerCase() : randomUUID();
   return { id, headers: { "Set-Cookie": `cono-session=${id}; HttpOnly; SameSite=Strict; Path=/; Max-Age=31536000`, "Cache-Control": "no-store" } };
 }
-export async function payload(request: Request): Promise<unknown> {
+export async function payload(request: Request, maxBytes = 1_048_576): Promise<unknown> {
   const origin = request.headers.get("origin");
   // Next 개발 서버는 내부 URL의 호스트를 정규화할 수 있으므로 실제 Host와 비교한다.
   if (origin) {
@@ -28,7 +28,7 @@ export async function payload(request: Request): Promise<unknown> {
     const { value, done } = await reader.read();
     if (done) break;
     length += value.byteLength;
-    if (length > 1024 * 1024) { await reader.cancel(); throw new RequestError("파일은 1 MB까지 가져올 수 있어요.", 413); }
+    if (length > maxBytes) { await reader.cancel(); throw new RequestError("요청 데이터가 너무 커요. 파일 크기를 확인해 주세요.", 413); }
     chunks.push(value);
   }
   try { return JSON.parse(Buffer.concat(chunks).toString("utf8")); }

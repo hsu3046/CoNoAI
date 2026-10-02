@@ -72,11 +72,16 @@ struct SingingResultCard: View {
         .contentShape(Rectangle())
         .safeAreaInset(edge: .bottom, spacing: 0) {
             VStack(spacing: 10) {
-                if let error = history.errorMessage {
-                    Text(error).font(.caption).foregroundStyle(StageTheme.pink)
+                let recordID = result.id.uuidString.lowercased()
+                if history.pending.contains(where: { $0.id == recordID }) {
+                    Text(history.errorMessage ?? "아직 기록을 저장하지 못했어요. 앱을 종료하기 전에 JSON으로 내보내 주세요.")
+                        .font(.caption).foregroundStyle(StageTheme.pink)
                     Button("저장 다시 시도") { history.retryPending() }
-                } else {
+                } else if history.records.contains(where: { $0.id == recordID }) {
                     Text("나의 기록에 저장했어요").font(.caption).foregroundStyle(StageTheme.mint)
+                } else {
+                    Text("나의 기록에 없는 결과예요. 필요한 경우 JSON으로 내보내 주세요.")
+                        .font(.caption).foregroundStyle(StageTheme.secondaryInk)
                 }
                 ScoreRecordActions(record: result.record)
                 HStack {

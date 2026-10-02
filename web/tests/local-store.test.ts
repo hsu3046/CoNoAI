@@ -5,7 +5,8 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { JsonRepository } from "../src/lib/local-repository.ts";
-import { parseDocument, parseRecord, weekKey } from "../src/lib/score-record.ts";
+import { MAX_ARCHIVE_BYTES, parseDocument, parseRecord, serializeDocument, weekKey } from "../src/lib/score-record.ts";
+import { randomUUID } from "node:crypto";
 const fixture = JSON.parse(await readFile(new URL("../../docs/fixtures/score-v1.json", import.meta.url), "utf8"));
 const record = parseDocument(fixture).records[0];
 
@@ -19,6 +20,20 @@ test("shared native/web schema rejects unsupported, inconsistent, and duplicate 
   assert.throws(() => parseDocument({ ...fixture, schemaVersion: 2 }));
   assert.throws(() => parseDocument({ schemaVersion: 1, records: [record, record] }));
   assert.throws(() => parseDocument(null));
+});
+test("timestamps carry a timezone and normalize identically across platforms", () => {
+  assert.throws(() => parseRecord({ ...record, createdAt: "2026-10-02T12:00:00" }));
+  assert.throws(() => parseRecord({ ...record, createdAt: "2026-10-02" }));
+  assert.equal(parseRecord({ ...record, createdAt: "2026-09-30T21:00:00+09:00" }).createdAt, record.createdAt);
+});
+test("archive size counts UTF-8 bytes independently of the record limit", () => {
+  const records = Array.from({ length: 360 }, () => ({ ...record, id: randomUUID(), songId: "가".repeat(500), title: "나".repeat(200), artist: "다".repeat(200) }));
+  const document = { schemaVersion: 1, records };
+  assert.ok(Buffer.byteLength(JSON.stringify(document)) > MAX_ARCHIVE_BYTES);
+  assert.throws(() => parseDocument(document));
+  const encoded = serializeDocument(records.slice(0, 300));
+  assert.ok(Buffer.byteLength(encoded) < MAX_ARCHIVE_BYTES);
+  assert.equal(parseDocument(JSON.parse(encoded)).records.length, 300);
 });
 test("week rolls over at Monday midnight in Seoul, including year boundary", () => {
   assert.equal(weekKey(new Date("2026-10-04T14:59:59Z")), "2026-09-28");

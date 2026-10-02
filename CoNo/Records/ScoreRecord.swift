@@ -76,7 +76,8 @@ struct ScoreArchive: Codable, Sendable {
 
     func encoded() throws -> Data {
         let encoder = JSONEncoder()
-        encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
+        // 웹과 같은 1 MB 한도: 사람이 읽기 위한 공백이 백업 용량을 바꾸지 않게 한다.
+        encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
         let data = try encoder.encode(self)
         _ = try Self.decode(data)
         return data

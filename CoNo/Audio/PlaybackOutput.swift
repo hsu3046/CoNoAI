@@ -1,15 +1,26 @@
 // CoNo — Copyright (C) 2026 AIB Inc. (https://www.aib.vote) — GPL-3.0-or-later
 //
 // 기본 출력 장치로 재생 (AVAudioEngine: 소스 노드 → 키 조절(TimePitch) → 믹서 → 출력).
-// 소스 노드를 출력 장치의 하드웨어 레이트로 만들어 믹서가 레이트 변환을 하지 않게 한다.
-// 입력(탭) 레이트와 다르면 변환은 워커 스레드에서 CoNo 가 직접 한다 (DelayPipeline).
+// 최초에는 하드웨어 레이트로 만들고, 출력 장치 교체 시에는 기존 파이프라인 레이트를 유지한다.
+// 입력(탭) 변환은 워커가, 출력 장치 교체로 생긴 차이는 재생 믹서가 처리한다.
 // 키 조절은 재생 직전에만 한다 — 분리·음정 추적은 원키 그대로 하고, 화면은 반음 오프셋만 더한다.
 
 import AVFoundation
 import AudioToolbox
+import Synchronization
 
 /// 렌더 스레드에서 호출: (프레임 수, 출력 버퍼 목록, 타임스탬프)
 typealias PlaybackRenderBlock = @Sendable (Int, UnsafeMutablePointer<AudioBufferList>, UnsafePointer<AudioTimeStamp>) -> Void
+
+/// 출력 인스턴스의 observer 수명. removeObserver 전에 이미 대기 중이던 알림도 stop 뒤에는 무효다.
+/// 같은 인스턴스를 다시 시작해도 이전 등록의 알림이 새 등록으로 인정되지 않는다.
+final class PlaybackConfigurationGate: Sendable {
+    private let generation = Atomic<UInt64>(0)
+
+    func activate() -> UInt64 { generation.add(1, ordering: .acquiringAndReleasing).newValue }
+    func invalidate() { generation.add(1, ordering: .acquiringAndReleasing) }
+    func isCurrent(_ registration: UInt64) -> Bool { generation.load(ordering: .acquiring) == registration }
+}
 
 final class PlaybackOutput: @unchecked Sendable {
     private let engine = AVAudioEngine()
@@ -17,6 +28,7 @@ final class PlaybackOutput: @unchecked Sendable {
     /// 키 조절 (속도는 1.0 고정). 원키면 bypass 해서 음질 손실·지연이 없다.
     private let timePitch = AVAudioUnitTimePitch()
     private var configurationObserver: NSObjectProtocol?
+    private let configurationGate = PlaybackConfigurationGate()
 
     /// 키 조절 범위 (반음)
     static let keyShiftRange = -6...6
@@ -45,10 +57,33 @@ final class PlaybackOutput: @unchecked Sendable {
     func start(render: @escaping PlaybackRenderBlock, sourceSampleRate: Double? = nil, onConfigurationChange: @escaping @Sendable () -> Void) throws {
         // 장치 변경 후에는 기존 파이프라인의 레이트를 유지한다. 새 하드웨어와의 차이는 믹서가 변환한다.
         let rate = sourceSampleRate ?? sampleRate
-        guard rate > 0, let format = AVAudioFormat(standardFormatWithSampleRate: rate, channels: 2) else {
-            throw CoreAudioError("출력 장치 포맷을 읽지 못했습니다")
+        sourceNode = try Self.connectGraph(engine: engine, timePitch: timePitch, sourceSampleRate: rate, render: render)
+
+        let registration = configurationGate.activate()
+        configurationObserver = NotificationCenter.default.addObserver(
+            forName: .AVAudioEngineConfigurationChange,
+            object: engine,
+            queue: .main
+        ) { [configurationGate] _ in
+            guard configurationGate.isCurrent(registration) else { return }
+            onConfigurationChange()
         }
 
+        engine.prepare()
+        do {
+            try engine.start()
+        } catch {
+            stop()
+            throw CoreAudioError("재생 엔진 시작 실패: \(error.localizedDescription)")
+        }
+    }
+
+    /// 하드웨어에 연결하거나 시작하지 않는 그래프 구성. 같은 경로를 offline 신호 테스트에서도 쓴다.
+    static func connectGraph(engine: AVAudioEngine, timePitch: AVAudioUnitTimePitch, sourceSampleRate: Double, render: @escaping PlaybackRenderBlock) throws -> AVAudioSourceNode {
+        guard sourceSampleRate.isFinite, sourceSampleRate > 0,
+              let format = AVAudioFormat(standardFormatWithSampleRate: sourceSampleRate, channels: 2) else {
+            throw CoreAudioError("출력 장치 포맷을 읽지 못했습니다")
+        }
         let node = AVAudioSourceNode(format: format) { _, timestamp, frameCount, outputData in
             render(Int(frameCount), outputData, timestamp)
             return noErr
@@ -61,24 +96,12 @@ final class PlaybackOutput: @unchecked Sendable {
         engine.connect(node, to: timePitch, format: format)
         engine.connect(timePitch, to: engine.mainMixerNode, format: format)
         engine.mainMixerNode.outputVolume = 1
-        sourceNode = node
-
-        configurationObserver = NotificationCenter.default.addObserver(
-            forName: .AVAudioEngineConfigurationChange,
-            object: engine,
-            queue: .main
-        ) { _ in onConfigurationChange() }
-
-        engine.prepare()
-        do {
-            try engine.start()
-        } catch {
-            stop()
-            throw CoreAudioError("재생 엔진 시작 실패: \(error.localizedDescription)")
-        }
+        return node
     }
 
     func stop() {
+        // 새 PlaybackOutput 이 설치되기 전에 이전 출력의 대기 중인 notification 을 차단한다.
+        configurationGate.invalidate()
         if let configurationObserver {
             NotificationCenter.default.removeObserver(configurationObserver)
             self.configurationObserver = nil

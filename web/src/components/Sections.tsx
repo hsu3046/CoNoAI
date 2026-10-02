@@ -9,6 +9,7 @@ import { useState, type ReactNode } from "react";
 import { useInView } from "@/fx/hooks";
 import { release, videos } from "@/lib/release";
 import { CONTAINER, Screen, SectionTitle } from "./Screen";
+import { FeatureVideo } from "./FeatureVideo";
 
 function Reveal({ children, delay = 0, className = "" }: { children: ReactNode; delay?: number; className?: string }) {
   // 화면 아래 끝에 닿기 조금 전부터 나타나기 시작 (스크롤보다 늦게 튀어나오지 않게)
@@ -232,45 +233,18 @@ function AutoStartDemo() {
 
 export function Videos() {
   return (
-    <Screen glow={{ color: "rgba(92,199,255,0.08)", x: "20%", y: "60%" }}>
-      <SectionTitle kicker="WATCH" title="직접 체험하며 알아보기" />
+    <Screen id="watch" glow={{ color: "rgba(92,199,255,0.08)", x: "20%", y: "60%" }}>
+      <SectionTitle kicker="WATCH" title="짧게 보고, 직접 해보기">실제 화면으로 익히는 사용법. 소리 없이도 따라갈 수 있어요.</SectionTitle>
       <div className="mt-10 grid gap-6 md:grid-cols-2">
         {videos.map((video, index) => (
           <Reveal key={video.id} delay={index * 120}>
             <figure className="overflow-hidden rounded-3xl border border-white/10 bg-black/40">
-              <div className="relative aspect-video max-h-[52dvh] w-full">
-                {video.src ? (
-                  video.src.includes("youtube") ? (
-                    <iframe src={video.src} title={video.title} className="absolute inset-0 size-full" allow="autoplay; encrypted-media; picture-in-picture" allowFullScreen />
-                  ) : (
-                    <video src={video.src} poster={video.poster} controls playsInline className="absolute inset-0 size-full object-cover" />
-                  )
-                ) : (
-                  <ComingSoon />
-                )}
-              </div>
-              <figcaption className="p-5">
-                <p className="font-cute text-xl">{video.title}</p>
-                <p className="mt-1 text-sm text-ink2">{video.caption}</p>
-              </figcaption>
+              <FeatureVideo video={video} />
             </figure>
           </Reveal>
         ))}
       </div>
     </Screen>
-  );
-}
-
-function ComingSoon() {
-  return (
-    <div className="absolute inset-0 flex flex-col items-center justify-center gap-5 bg-[radial-gradient(ellipse_at_center,#2a1147,#0b0d1a)] p-6 text-center">
-      <p className="font-cute text-2xl">직접 듣고, 직접 불러 보세요</p>
-      <div className="flex flex-wrap justify-center gap-3">
-        <a href="#listen" className="rounded-full border border-mint/40 px-5 py-3 text-mint">원곡 ↔ 반주 비교</a>
-        <a href="#try" className="rounded-full bg-pink px-5 py-3 text-night">마이크 채점 체험</a>
-      </div>
-      <a href="/demo/score?score=92" className="text-sm text-gold underline">92점 축하 연출 미리보기</a>
-    </div>
   );
 }
 

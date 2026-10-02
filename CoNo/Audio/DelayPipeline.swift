@@ -26,7 +26,7 @@ enum ProcessingMode: Int, CaseIterable, Sendable {
 }
 
 /// 오디오 콜백 하나의 진단값
-struct CallbackDiagnostics: Sendable {
+struct CallbackDiagnostics: Codable, Sendable {
     /// 타임스탬프가 연속이 아니었던 횟수 (= 시스템이 제때 IO 를 못 돌림 → 틱 소리)
     var skippedCycles = 0
     /// CoNo 콜백 처리 시간 최대값과 한 주기 길이 (ms)
@@ -35,7 +35,7 @@ struct CallbackDiagnostics: Sendable {
 }
 
 /// UI 표시용 스냅샷.
-struct PipelineStats: Sendable {
+struct PipelineStats: Codable, Sendable {
     var inputPeak: Float = 0
     var outputPeak: Float = 0
     var bufferedSeconds: Double = 0
@@ -44,6 +44,9 @@ struct PipelineStats: Sendable {
     var isOutputMuted = false
     var underruns = 0
     var captureOverflows = 0
+    /// 렌더 버퍼가 미리 확보한 스크래치보다 컸던 횟수 (초과 부분은 무음)
+    var oversizedPlaybackCallbacks = 0
+    var isPlaybackSuspended = false
     var capturedSeconds: Double = 0
     /// 캡처된 신호가 한 번이라도 무음이 아니었는지 (권한 거부 시 탭은 무음만 준다)
     var hasReceivedSignal = false
@@ -61,6 +64,11 @@ private final class CycleMonitor: @unchecked Sendable {
     // 콜백 스레드 전용
     private var lastSampleTime: Double = -1
     private var lastFrames = 0
+
+    func resetContinuity() {
+        lastSampleTime = -1
+        lastFrames = 0
+    }
 
     /// 샘플 시각이 "직전 시각 + 직전 길이" 와 다르면 사이클을 건너뛴 것.
     /// 0.5초 이상 점프는 재시작으로 보고 세지 않는다.
@@ -131,6 +139,10 @@ final class DelayPipeline: @unchecked Sendable {
     private static let edgeFadeFrames = 64
     /// 재생 스레드 전용 누적 재생 프레임 (= 출력 스트림 위치)
     private var playedFrames = 0
+    /// 0 = 연결됨, 1 = 출력 교체 중, 2 = 새 출력의 첫 렌더를 기다림.
+    /// UI 는 원자 상태만 바꾸고, 렌더 전용 상태는 새 렌더가 직접 재개한다.
+    private let playbackConnection = Atomic<Int>(0)
+    private let suspendedPositionBits = Atomic<UInt64>(0)
 
     // 일시정지: 재생은 즉시 얼리고, 캡처는 음악 앱이 실제로 멈출 때까지 들어온 소리만 받고 그 뒤 무음은 버린다.
     // → 재개하면 멈춘 지점부터 한 샘플도 빠지지 않고 이어진다 (지연·스트림 시각이 그대로라 음정 바·가사 싱크 유지).
@@ -180,6 +192,7 @@ final class DelayPipeline: @unchecked Sendable {
     private let primedFlag = Atomic<Bool>(false)
     private let underrunCount = Atomic<Int>(0)
     private let overflowCount = Atomic<Int>(0)
+    private let oversizedPlaybackCount = Atomic<Int>(0)
     private let capturedFrameCount = Atomic<Int>(0)
     private let receivedSignal = Atomic<Bool>(false)
     private let processingError = Mutex<String?>(nil)
@@ -413,8 +426,18 @@ final class DelayPipeline: @unchecked Sendable {
     /// AVAudioSourceNode 렌더 블록에서 호출.
     func renderPlayback(frameCount: Int, output: UnsafeMutablePointer<AudioBufferList>, timestamp: UnsafePointer<AudioTimeStamp>) {
         let start = mach_absolute_time()
+        let connection = playbackConnection.load(ordering: .acquiring)
+        if connection == 1 {
+            Self.silence(output, frameCount: frameCount)
+            return
+        }
+        if connection == 2 {
+            playbackNeedsFadeIn = true
+            playbackMonitor.resetContinuity()
+        }
         let frames = min(frameCount, Self.maxIOFrames)
         let samples = frames * Self.channels
+        if frameCount > Self.maxIOFrames { oversizedPlaybackCount.add(1, ordering: .relaxed) }
 
         // 프리롤: 목표 지연만큼 쌓이기 전엔 무음. 언더런 후에도 다시 목표 지연까지 채운다
         // (지연을 일정하게 유지해야 가사·음정 표시 싱크가 맞는다).
@@ -494,11 +517,12 @@ final class DelayPipeline: @unchecked Sendable {
         for buffer in UnsafeMutableAudioBufferListPointer(output) {
             let channelCount = Int(buffer.mNumberChannels)
             guard channelCount > 0, let data = buffer.mData?.assumingMemoryBound(to: Float.self) else { continue }
-            let bufferFrames = min(Int(buffer.mDataByteSize) / (MemoryLayout<Float>.size * channelCount), frames)
+            let bufferFrames = min(Int(buffer.mDataByteSize) / (MemoryLayout<Float>.size * channelCount), frameCount)
             for channel in 0..<channelCount {
                 let source = globalChannel + channel
                 for frame in 0..<bufferFrames {
-                    let value: Float = source < Self.channels ? playScratch[frame * 2 + source] : 0
+                    // 스크래치 한도를 넘는 꼬리도 반드시 지운다. 이전 렌더 메모리가 소리로 나가지 않게 한다.
+                    let value: Float = source < Self.channels && frame < frames ? playScratch[frame * 2 + source] : 0
                     data[frame * channelCount + channel] = value
                     peak = max(peak, abs(value))
                 }
@@ -510,6 +534,15 @@ final class DelayPipeline: @unchecked Sendable {
         let valid = timestamp.pointee.mFlags.contains(.sampleTimeValid)
         playbackMonitor.record(sampleTime: valid ? timestamp.pointee.mSampleTime : nil, frames: frames, sampleRate: outputSampleRate)
         playbackMonitor.recordCallback(ticks: mach_absolute_time() &- start)
+        if connection == 2 { playbackConnection.store(0, ordering: .releasing) }
+    }
+
+    private static func silence(_ output: UnsafeMutablePointer<AudioBufferList>, frameCount: Int) {
+        for buffer in UnsafeMutableAudioBufferListPointer(output) {
+            guard let data = buffer.mData?.assumingMemoryBound(to: Float.self) else { continue }
+            let samples = min(Int(buffer.mDataByteSize) / MemoryLayout<Float>.size, frameCount * Int(buffer.mNumberChannels))
+            data.update(repeating: 0, count: samples)
+        }
     }
 
     /// 인터리브 스테레오 버퍼의 앞(페이드인) 또는 끝(페이드아웃) 을 선형으로 줄인다. 실시간 안전 (할당 없음).
@@ -534,12 +567,27 @@ final class DelayPipeline: @unchecked Sendable {
 
     /// 재생이 실제로 앞으로 가며 소리를 내는 중인지 (멈춤·버퍼 채우는 중·이동 음소거가 아님). 아무 스레드.
     var isAdvancing: Bool {
-        !pauseRequested.load(ordering: .relaxed) && primedFlag.load(ordering: .relaxed) && !outputMutedFlag.load(ordering: .relaxed)
+        playbackConnection.load(ordering: .acquiring) == 0
+            && !pauseRequested.load(ordering: .relaxed) && primedFlag.load(ordering: .relaxed) && !outputMutedFlag.load(ordering: .relaxed)
+    }
+
+    /// 이전 출력 엔진을 멈춘 뒤 호출한다. 캡처·사용자 일시정지·링 버퍼는 그대로 유지한다.
+    func suspendPlayback() {
+        suspendedPositionBits.store((playbackPosition() ?? 0).bitPattern, ordering: .relaxed)
+        playbackConnection.store(1, ordering: .releasing)
+    }
+
+    /// 새 엔진 시작 직전 호출. 채점은 실제 첫 렌더가 시계를 갱신한 뒤에만 재개한다.
+    func resumePlaybackOnNextRender() {
+        playbackConnection.store(2, ordering: .releasing)
     }
 
     /// 지금 스피커로 나가고 있는 출력 스트림 위치 (초). 아직 재생 전이면 nil.
     /// 마지막 렌더의 (위치, 호스트 시각) 에서 경과 시간으로 보간하되, 끊김(언더런) 중에 앞으로 달려가지 않도록 +50 ms 로 제한.
     func playbackPosition() -> Double? {
+        if playbackConnection.load(ordering: .acquiring) != 0 {
+            return Double(bitPattern: suspendedPositionBits.load(ordering: .relaxed))
+        }
         for _ in 0..<4 {
             let before = clockVersion.load(ordering: .acquiring)
             guard before % 2 == 0 else { continue }
@@ -642,6 +690,8 @@ final class DelayPipeline: @unchecked Sendable {
             isOutputMuted: outputMutedFlag.load(ordering: .relaxed),
             underruns: underrunCount.load(ordering: .relaxed),
             captureOverflows: overflowCount.load(ordering: .relaxed),
+            oversizedPlaybackCallbacks: oversizedPlaybackCount.load(ordering: .relaxed),
+            isPlaybackSuspended: playbackConnection.load(ordering: .acquiring) != 0,
             capturedSeconds: Double(capturedFrameCount.load(ordering: .relaxed)) / inputSampleRate,
             hasReceivedSignal: receivedSignal.load(ordering: .relaxed),
             processingError: processingError.withLock { $0 },

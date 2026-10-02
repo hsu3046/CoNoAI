@@ -7,9 +7,16 @@ struct ScoreHistoryView: View {
     let history: ScoreHistory
     @State private var query = ""
     @State private var message: String?
-    @State private var deleting: ScoreRecord?
+    @State private var deleting: Deletion?
+    private struct Deletion {
+        let record: ScoreRecord
+        let isPending: Bool
+    }
     private var filtered: [ScoreRecord] {
         history.records.filter { query.isEmpty || "\($0.title) \($0.artist)".localizedCaseInsensitiveContains(query) }
+    }
+    private var filteredPending: [ScoreRecord] {
+        history.pending.filter { query.isEmpty || "\($0.title) \($0.artist)".localizedCaseInsensitiveContains(query) }
     }
 
     var body: some View {
@@ -17,12 +24,12 @@ struct ScoreHistoryView: View {
             HStack {
                 VStack(alignment: .leading) {
                     Text("나의 노래 기록").font(StageTheme.rounded(26))
-                    Text("\(history.records.count)곡 · 최고 \(history.records.map(\.score).max().map(String.init) ?? "—")점")
+                    Text("저장된 기록 \(history.records.count)곡 · 최고 \(history.records.map(\.score).max().map(String.init) ?? "—")점")
                         .foregroundStyle(StageTheme.secondaryInk)
                 }
                 Spacer()
                 Button("JSON 가져오기", systemImage: "square.and.arrow.down", action: importFile)
-                Button("전체 내보내기", systemImage: "square.and.arrow.up") {
+                Button("저장된 기록 내보내기", systemImage: "square.and.arrow.up") {
                     perform { try ScoreExport.save(history.exportData(), type: .json, name: "cono-scores.json") }
                 }
             }
@@ -32,32 +39,39 @@ struct ScoreHistoryView: View {
             if let error = history.errorMessage {
                 HStack {
                     Text(error).foregroundStyle(StageTheme.pink)
-                    Button("저장 다시 시도") { history.retryPending() }
+                    if history.pending.isEmpty {
+                        Button("다시 읽기") { history.reload() }
+                    } else {
+                        Button("저장 다시 시도") { history.retryPending() }
+                    }
                     Button("파일 위치") { NSWorkspace.shared.selectFile(history.fileURL.path, inFileViewerRootedAtPath: "") }
                 }
             }
-            if let message { Text(message).foregroundStyle(StageTheme.mint) }
-            if filtered.isEmpty {
+            if !history.pending.isEmpty {
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Text("저장되지 않은 기록 \(history.pending.count)곡").font(StageTheme.rounded(18))
+                        Spacer()
+                        Button("미저장 기록 모두 내보내기", systemImage: "square.and.arrow.up") {
+                            perform { try ScoreExport.savePendingBatches(history.exportPendingData()) }
+                        }
+                    }
+                    Text("이 기록은 앱을 종료하면 사라질 수 있어요. 먼저 JSON으로 내보낸 뒤 저장된 기록을 정리하거나 다시 저장해 주세요.")
+                        .font(.callout)
+                }
+                .foregroundStyle(StageTheme.pink)
+            }
+            if let message { Text(message).foregroundStyle(StageTheme.pink) }
+            if filtered.isEmpty && filteredPending.isEmpty {
                 ContentUnavailableView(query.isEmpty ? "첫 무대를 기다리고 있어요" : "검색한 곡이 없어요", systemImage: "music.mic", description: Text("마이크 채점을 켜고 한 곡을 마치면 기록이 남아요."))
             } else {
                 ScrollView {
                     LazyVStack(spacing: 12) {
+                        ForEach(filteredPending) { record in
+                            recordCard(record, isPending: true)
+                        }
                         ForEach(filtered) { record in
-                            VStack(alignment: .leading, spacing: 12) {
-                                HStack {
-                                    VStack(alignment: .leading, spacing: 4) {
-                                        Text(record.title).font(StageTheme.rounded(20))
-                                        Text("\(record.artist) · \(record.source == "macos" ? "Mac" : "브라우저") · \(record.difficulty == "hard" ? "어려움" : "보통")")
-                                            .font(.caption).foregroundStyle(StageTheme.secondaryInk)
-                                        if let date = record.date { Text(date, format: .dateTime.year().month().day().hour().minute()).font(.caption).foregroundStyle(StageTheme.secondaryInk) }
-                                    }
-                                    Spacer()
-                                    Text("\(record.score)점").font(StageTheme.rounded(32)).foregroundStyle(StageTheme.gold)
-                                }
-                                ScoreRecordActions(record: record)
-                                HStack { Spacer(); Button("기록 삭제", role: .destructive) { deleting = record }.buttonStyle(.borderless) }
-                            }
-                            .padding(18).background(.white.opacity(0.04), in: RoundedRectangle(cornerRadius: 18))
+                            recordCard(record, isPending: false)
                         }
                     }
                 }
@@ -68,8 +82,41 @@ struct ScoreHistoryView: View {
         .onAppear { history.reload() }
         .alert("이 기록을 삭제할까요?", isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } })) {
             Button("취소", role: .cancel) { deleting = nil }
-            Button("삭제", role: .destructive) { if let record = deleting { perform { try history.delete(id: record.id) } }; deleting = nil }
-        } message: { Text("내보낸 JSON이나 이미지는 유지됩니다.") }
+            Button("삭제", role: .destructive) {
+                if let deletion = deleting {
+                    if deletion.isPending { history.discardPending(id: deletion.record.id) }
+                    else { perform { try history.delete(id: deletion.record.id) } }
+                }
+                deleting = nil
+            }
+        } message: {
+            Text(deleting?.isPending == true ? "아직 저장되지 않은 기록입니다. JSON으로 내보내지 않았다면 복구할 수 없어요. 원본 저장 파일은 변경하지 않습니다." : "내보낸 JSON이나 이미지는 유지됩니다.")
+        }
+    }
+
+    private func recordCard(_ record: ScoreRecord, isPending: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(isPending ? "미저장 · 앱 종료 전 백업 필요" : "저장 완료")
+                        .font(.caption).foregroundStyle(isPending ? StageTheme.pink : StageTheme.mint)
+                    Text(record.title).font(StageTheme.rounded(20))
+                    Text("\(record.artist) · \(record.source == "macos" ? "Mac" : record.source == "demo" ? "데모" : "브라우저") · \(record.difficulty == "hard" ? "어려움" : "보통")")
+                        .font(.caption).foregroundStyle(StageTheme.secondaryInk)
+                    if let date = record.date { Text(date, format: .dateTime.year().month().day().hour().minute()).font(.caption).foregroundStyle(StageTheme.secondaryInk) }
+                }
+                Spacer()
+                Text("\(record.score)점").font(StageTheme.rounded(32)).foregroundStyle(StageTheme.gold)
+            }
+            ScoreRecordActions(record: record)
+            HStack {
+                Spacer()
+                Button(isPending ? "미저장 기록 삭제" : "기록 삭제", role: .destructive) {
+                    deleting = Deletion(record: record, isPending: isPending)
+                }.buttonStyle(.borderless)
+            }
+        }
+        .padding(18).background(isPending ? StageTheme.pink.opacity(0.06) : .white.opacity(0.04), in: RoundedRectangle(cornerRadius: 18))
     }
 
     private func perform(_ operation: () throws -> Void) {
@@ -115,6 +162,28 @@ enum ScoreExport {
         panel.nameFieldStringValue = name
         guard panel.runModal() == .OK, let url = panel.url else { return }
         try data.write(to: url, options: .atomic)
+    }
+    static func savePendingBatches(_ batches: [Data]) throws {
+        guard !batches.isEmpty else { return }
+        if batches.count == 1 {
+            try save(batches[0], type: .json, name: "cono-unsaved-scores.json")
+            return
+        }
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.canCreateDirectories = true
+        panel.allowsMultipleSelection = false
+        panel.prompt = "내보내기"
+        panel.message = "가져오기 한도에 맞춰 나눈 JSON \(batches.count)개를 새 폴더에 저장합니다."
+        guard panel.runModal() == .OK, let destination = panel.url else { return }
+        // 기존 파일에 겹쳐 쓰지 않도록 새 폴더와 no-replace 쓰기를 함께 사용한다.
+        let folder = destination.appendingPathComponent("CoNo-unsaved-\(UUID().uuidString.lowercased())", isDirectory: true)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: false)
+        for (index, data) in batches.enumerated() {
+            try data.write(to: folder.appendingPathComponent("cono-unsaved-\(index + 1).json"), options: .withoutOverwriting)
+        }
+        NSWorkspace.shared.selectFile(folder.path, inFileViewerRootedAtPath: destination.path)
     }
     static func image(_ record: ScoreRecord) throws {
         let renderer = ImageRenderer(content: ScoreShareCard(record: record))

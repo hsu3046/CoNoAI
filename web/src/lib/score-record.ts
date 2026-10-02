@@ -7,6 +7,7 @@ export type ScoreRecord = {
   keyShift: number; score: number; notesHit: number; notesTotal: number; bestStreak: number; createdAt: string;
 };
 export type ScoreDocument = { schemaVersion: 1; records: ScoreRecord[] };
+export const MAX_ARCHIVE_BYTES = 1_048_576;
 export const PRACTICE_SONG = "cono-home-stage-v1";
 export const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export function object(value: unknown): Record<string, unknown> {
@@ -31,7 +32,7 @@ export function parseRecord(value: unknown): ScoreRecord {
   if (difficulty !== "normal" && difficulty !== "hard") throw new Error("난이도를 확인해 주세요.");
   const createdAt = text(v.createdAt, 40);
   const timestamp = Date.parse(createdAt);
-  if (!/^\d{4}-\d{2}-\d{2}T/.test(createdAt) || !Number.isFinite(timestamp) || timestamp < Date.UTC(2020, 0, 1) || timestamp > Date.now() + 300_000) throw new Error("기록 날짜가 올바르지 않아요.");
+  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$/.test(createdAt) || !Number.isFinite(timestamp) || timestamp < Date.UTC(2020, 0, 1) || timestamp > Date.now() + 300_000) throw new Error("기록 날짜에 시간대(Z 또는 +09:00)를 포함해 주세요.");
   const notesTotal = integer(v.notesTotal, 1, 50_000);
   const notesHit = integer(v.notesHit, 0, notesTotal);
   return { id, source, difficulty, createdAt: new Date(timestamp).toISOString(),
@@ -44,7 +45,13 @@ export function parseDocument(value: unknown): ScoreDocument {
   if (v.schemaVersion !== 1 || !Array.isArray(v.records) || v.records.length > 1000) throw new Error("CoNo 점수 JSON v1(최대 1,000곡)이 필요해요.");
   const records = v.records.map(parseRecord);
   if (new Set(records.map((record) => record.id)).size !== records.length) throw new Error("파일 안에 중복 기록이 있어요.");
-  return { schemaVersion: 1, records };
+  const document: ScoreDocument = { schemaVersion: 1, records };
+  if (new TextEncoder().encode(JSON.stringify(document)).byteLength > MAX_ARCHIVE_BYTES) throw new Error("기록은 1 MB까지 저장할 수 있어요. JSON으로 백업한 뒤 정리해 주세요.");
+  return document;
+}
+/** 두 플랫폼 모두 공백을 덧붙이지 않는 UTF-8 JSON으로 같은 1 MB 한도를 적용한다. */
+export function serializeDocument(records: ScoreRecord[]): string {
+  return JSON.stringify(parseDocument({ schemaVersion: 1, records }));
 }
 /** 한국 시간 월요일 00:00을 기준으로 같은 주·곡·방식·난이도만 비교한다. */
 export function weekKey(date: Date): string {

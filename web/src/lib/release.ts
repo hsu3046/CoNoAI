@@ -13,17 +13,29 @@ export const release = {
   releasesUrl: "https://github.com/hsu3046/CoNoAI/releases",
 } as const;
 
-/** 나중에 찍을 영상. src 가 생기면 자리 표시 대신 영상이 나온다 */
+/** 로컬 웹에서 직접 캡처한 기능 안내. 소리·음성 녹음은 포함하지 않는다. */
 export type VideoItem = {
   id: string;
   title: string;
   caption: string;
-  /** mp4 경로 또는 YouTube 임베드 주소 */
-  src?: string;
-  poster?: string;
+  src: string;
+  poster: string;
+  captions: string;
+  transcript: string[];
+  action: { href: string; label: string };
 };
 
 export const videos: VideoItem[] = [
-  { id: "demo", title: "듣던 노래가 반주로", caption: "원곡과 AI 반주를 직접 비교해 보세요" },
-  { id: "party", title: "내 목소리로 채점 체험", caption: "한 곡을 마치고 기록·공유까지" },
+  {
+    id: "demo", title: "원곡에서 반주, 보컬까지", caption: "실제 웹 화면으로 보는 소리 전환 · 무음 안내",
+    src: "/videos/listen-guide.mp4", poster: "/videos/listen-guide.jpg", captions: "/videos/listen-guide.ko.vtt",
+    transcript: ["곡을 고르고 재생합니다.", "‘반주’를 누르면 가수 목소리를 제거한 소리로 바뀝니다.", "‘보컬’을 누르면 가수 목소리만 들을 수 있습니다. 실제 소리는 ‘들어보기’에서 비교하세요."],
+    action: { href: "#listen", label: "직접 소리 비교하기" },
+  },
+  {
+    id: "scores", title: "한 곡의 기록을 공유하기", caption: "테스트 기록으로 보는 JSON 백업·공유·챌린지 · 무음 안내",
+    src: "/videos/scores-guide.mp4", poster: "/videos/scores-guide.jpg", captions: "/videos/scores-guide.ko.vtt",
+    transcript: ["나의 기록에서 점수 확인, JSON 백업, 이미지 저장을 할 수 있습니다.", "챌린지에 공개한 기록은 공유 페이지로 연결됩니다. localhost 링크는 같은 컴퓨터에서만 열립니다.", "같은 곡·난이도·채점 방식의 개인 최고 기록으로 순위를 매깁니다. 영상의 92점은 테스트 기록입니다."],
+    action: { href: "#records", label: "나의 기록 열기" },
+  },
 ];

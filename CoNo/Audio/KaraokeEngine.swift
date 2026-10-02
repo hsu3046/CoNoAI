@@ -195,9 +195,8 @@ final class KaraokeEngine {
     /// 곡이 끝나면 화면이 보여주고 지운다
     var singingResult: SingingResult?
     let scoreHistory = ScoreHistory()
-    var singingDifficulty: SingingJudge.Difficulty = .normal {
-        didSet { singing?.difficulty = singingDifficulty }
-    }
+    /// 설정 변경은 다음 채점 세션/곡부터. 이미 얻은 점수의 판정 기준을 바꾸지 않는다.
+    var singingDifficulty: SingingJudge.Difficulty = .normal
     @ObservationIgnored private var heardClock: HeardClock?
     @ObservationIgnored private var singingGeneration = 0
     @ObservationIgnored private var scoringTrackID: String?
@@ -238,9 +237,8 @@ final class KaraokeEngine {
             guard generation == singingGeneration, wantsSinging, self.pipeline === pipeline else { return }
             let clock = HeardClock(pipeline: pipeline)
             clock.setExtraLatency(extraLatencySeconds)
-            let tracker = try SingingTracker(mic: mic, detector: detector, reference: timeline, clock: clock)
+            let tracker = try SingingTracker(mic: mic, detector: detector, reference: timeline, clock: clock, difficulty: singingDifficulty)
             tracker.keyShift = keyShift
-            tracker.difficulty = singingDifficulty
             try mic.start { [weak self] in
                 // 입력 장치가 바뀌면 새 장치로 다시 연다
                 MainActor.assumeIsolated { self?.restartSinging() }
@@ -283,7 +281,7 @@ final class KaraokeEngine {
             let concluded = concludeSong()
             scoringTrack = track
             scoringTrackID = track?.id
-            singing.resetScore()
+            singing.resetScore(difficulty: singingDifficulty)
             // 채점한 곡이 끝나 다음 곡이 들리기 시작하면 멈춘다 (노래방처럼 한 곡씩, 결과를 보라고).
             // 다음 곡 앞부분은 버퍼에 남아 있어 재생을 누르면 처음부터 이어진다. 광고로 바뀐 건 멈추지 않는다.
             let onAd = heardCaptureTime().flatMap { lyrics.advertisement(atCaptureTime: $0) } != nil
@@ -295,9 +293,10 @@ final class KaraokeEngine {
     @discardableResult
     private func concludeSong(minimumNotes: Int = minimumScoredNotes) -> Bool {
         guard let singing else { return false }
-        let score = singing.snapshot().score
+        let snapshot = singing.snapshot()
+        let score = snapshot.score
         guard score.notesTotal >= minimumNotes else { return false }
-        let result = SingingResult(trackID: scoringTrack?.id, title: scoringTrack?.title, artist: scoringTrack?.artist, score: score, keyShift: keyShift, difficulty: singingDifficulty == .hard ? "hard" : "normal")
+        let result = SingingResult(trackID: scoringTrack?.id, title: scoringTrack?.title, artist: scoringTrack?.artist, score: score, keyShift: keyShift, difficulty: snapshot.difficulty == .hard ? "hard" : "normal")
         scoreHistory.record(result.record)
         singingResult = result
         return true
@@ -940,11 +939,13 @@ final class KaraokeEngine {
             return
         }
         output?.stop()
+        pipeline.suspendPlayback()
         output = nil
         let playback = PlaybackOutput()
         do {
             guard playback.sampleRate > 0 else { throw CoreAudioError("사용할 수 있는 출력 장치가 없습니다") }
             playback.setKeyShift(keyShift)
+            pipeline.resumePlaybackOnNextRender()
             try playback.start(
                 render: { [pipeline] frames, buffers, timestamp in
                     pipeline.renderPlayback(frameCount: frames, output: buffers, timestamp: timestamp)
@@ -1011,7 +1012,15 @@ final class KaraokeEngine {
     func saveDiagnosticRecording() {
         guard let pipeline else { return }
         do {
-            let folder = try pipeline.recorder.save()
+            let context = DiagnosticContext(
+                mode: runningMode.map { String(describing: $0) } ?? "unknown",
+                inputSampleRate: pipeline.inputSampleRate, streamSampleRate: pipeline.outputSampleRate,
+                outputHardwareSampleRate: outputSampleRate, outputDeviceName: outputDeviceName,
+                delaySeconds: pipeline.delaySeconds, keyShift: keyShift,
+                displayLatencyMilliseconds: displayLatencyMilliseconds,
+                separationStreamOffsetSeconds: separationTiming?.streamOffset ?? 0
+            )
+            let folder = try pipeline.recorder.save(context: context)
             diagnosticSaveMessage = "저장됨: \(folder.path)"
         } catch {
             diagnosticSaveMessage = "저장 실패: \(error.localizedDescription)"
@@ -1046,6 +1055,8 @@ final class KaraokeEngine {
             while !Task.isCancelled {
                 guard let self, let pipeline = self.pipeline else { return }
                 self.stats = pipeline.takeStats()
+                pipeline.recorder.recordStats(self.stats, playbackPosition: pipeline.playbackPosition(),
+                                              outputHardwareSampleRate: self.outputSampleRate)
                 if let separationProcessor = self.separationProcessor {
                     self.inferenceStats = separationProcessor.inferenceStats
                 }

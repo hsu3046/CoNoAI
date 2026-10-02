@@ -1,5 +1,5 @@
 // CoNo — Copyright (C) 2026 AIB Inc. (https://www.aib.vote) — GPL-3.0-or-later
-import { parseRecord, scoreText, type ScoreRecord } from "./score-record";
+import { scoreText, serializeDocument, type ScoreRecord } from "./score-record";
 export type HistoryRecord = ScoreRecord & { published: boolean };
 export type HistoryResponse = { nickname: string; records: HistoryRecord[] };
 export type ChallengeResponse = { week: string; entries: { record: ScoreRecord; nickname: string }[] };
@@ -21,7 +21,7 @@ export function downloadBlob(blob: Blob, name: string) {
   window.setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 export function exportScores(records: ScoreRecord[]) {
-  downloadBlob(new Blob([JSON.stringify({ schemaVersion: 1, records: records.map(parseRecord) }, null, 2)], { type: "application/json" }), "cono-scores.json");
+  downloadBlob(new Blob([serializeDocument(records)], { type: "application/json" }), "cono-scores.json");
 }
 export async function shareRecord(record: ScoreRecord, url?: string): Promise<string> {
   const text = scoreText(record);
