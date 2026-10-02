@@ -80,7 +80,9 @@ final class LyricsController {
     @ObservationIgnored private var residualWindow: [Double] = []
     @ObservationIgnored private var lastResidualTrackID: String?
     /// 사용자가 맞추는 가사 싱크 (초). + 면 가사를 앞당긴다.
-    var offsetSeconds: Double = 0
+    var offsetSeconds: Double = 0 {
+        didSet { if oldValue != offsetSeconds { invalidateAlignment() } }
+    }
     /// 미세조정 범위 (±초)
     static let offsetLimit: Double = 10
 
@@ -103,6 +105,10 @@ final class LyricsController {
     private let client = LRCLIBClient()
     private let extraSources = ExtraLyricsSources()
     private let localLyricsStore = LocalLyricsStore()
+    let localAlignment: AlignmentCoordinator
+    @ObservationIgnored private var alignmentSource: (buffer: VocalAudioBuffer, streamOffset: Double)?
+    @ObservationIgnored private var alignmentEpoch: UInt64 = 0
+    @ObservationIgnored private var lastAlignmentPosition: (capture: Double, position: SongPosition)?
     @ObservationIgnored private var localInfoByTrack: [String: LocalLyricsInfo] = [:]
     /// 가져오기/해제 도중 끝난 예전 네트워크 요청이 사용자 가사를 덮어쓰지 않게 한다.
     @ObservationIgnored private var loadGenerations: [String: UUID] = [:]
@@ -116,6 +122,7 @@ final class LyricsController {
         /// candidates 와 같은 순서의 LRCLIB id (학습값은 순번이 아니라 id 로 기억한다 — 캐시를 다시 받으면 순서가 바뀔 수 있다)
         var candidateKeys: [String]
         var candidateSources: [LyricsSource] = []
+        var wordIdentities: [WordTimingIdentity] = []
         var chosen = 0
         /// 적용 중인 가사 지연 (초)
         var appliedDelay = 0.0
@@ -164,6 +171,13 @@ final class LyricsController {
     }
     @ObservationIgnored private var wipeCache: [String: WipeCacheEntry] = [:]
 
+    init() {
+        let model = LocalAlignmentModel()
+        localAlignment = AlignmentCoordinator(modelVersion: OmniASRCTC.modelVersion,
+                                              modelAvailable: OmniASRCTC.bundledModelDirectory() != nil,
+                                              releaseModel: { await model.unload() }, inference: { try await model.infer($0) })
+    }
+
     /// 음악 앱인지 (AppleScript 로 곡 정보·재생 제어)
     static func isAppleMusic(bundleID: String?) -> Bool {
         bundleID == AppleMusicNowPlaying.bundleID
@@ -195,6 +209,8 @@ final class LyricsController {
     }
 
     func stop() {
+        setAlignmentSource(nil, streamOffset: 0)
+        localAlignment.setContext("stopped", identity: nil)
         pollTask?.cancel()
         pollTask = nil
         provider?.stop()
@@ -337,21 +353,21 @@ final class LyricsController {
     }
 
     /// 완성한 초안을 로컬 가사로 저장한다. 실패하면 현재 가사와 편집 초안은 그대로 둔다.
-    func saveTappedLyrics(_ contents: String, for track: TrackInfo) async -> Bool {
+    func saveTappedLyrics(_ contents: String, for track: TrackInfo, fileName: String = "tap-sync.lrc", label: String = "직접 맞춘 가사") async -> Bool {
         guard !isChangingLocalLyrics else { return false }
         isChangingLocalLyrics = true
         defer { isChangingLocalLyrics = false }
         localLyricsError = nil
         localLyricsMessage = nil
         do {
-            let loaded = try await localLyricsStore.save(data: Data(contents.utf8), fileName: "tap-sync.lrc", for: track)
+            let loaded = try await localLyricsStore.save(data: Data(contents.utf8), fileName: fileName, for: track)
             loadGenerations[track.id] = UUID()
             loadingTrackIDs.remove(track.id)
             applyLocalLyrics(loaded, to: track)
             // 저장을 기다리는 동안 다른 곡으로 넘어가면 그 곡의 전역 미세조정을 바꾸지 않는다.
             let isCurrentTrack = currentTrackID == track.id
             if isCurrentTrack { offsetSeconds = 0 }
-            localLyricsMessage = "‘\(track.title)’의 직접 맞춘 가사를 저장했어요."
+            localLyricsMessage = "‘\(track.title)’에 \(label)를 저장했어요."
                 + (isCurrentTrack ? " 미세조정은 0초로 맞췄습니다." : " 다음에도 이 파일을 사용합니다.")
             return true
         } catch {
@@ -402,6 +418,8 @@ final class LyricsController {
 
     private func applyLocalLyrics(_ loaded: LoadedLocalLyrics, to track: TrackInfo) {
         var entry = TrackLyrics(candidates: [loaded.lyrics], candidateKeys: ["local:\(track.id)"])
+        entry.wordIdentities = [WordTimingIdentity(track: track, candidateKey: "local:\(track.id)", lyrics: loaded.lyrics,
+                                                  modelVersion: localAlignment.modelVersion)]
         entry.candidateSources = [.localFile]
         entry.isLocal = true
         lyricsByTrack[track.id] = .some(entry)
@@ -419,6 +437,7 @@ final class LyricsController {
     }
 
     private func clearDisplayCache(for trackID: String) {
+        invalidateAlignment()
         wipeCache = wipeCache.filter { !$0.key.hasPrefix("\(trackID)#") }
         displayCommits.removeValue(forKey: trackID)
         lastHighlight = nil
@@ -640,6 +659,9 @@ final class LyricsController {
 
             if !usable.isEmpty {
                 var trackLyrics = TrackLyrics(candidates: usable.map(\.1), candidateKeys: usable.map(\.0.key))
+                trackLyrics.wordIdentities = usable.map {
+                    WordTimingIdentity(track: track, candidateKey: $0.0.key, lyrics: $0.1, modelVersion: localAlignment.modelVersion)
+                }
                 trackLyrics.candidateSources = usable.map(\.0.origin)
                 if let learned = learnedDelays.load(for: track),
                    let index = learned.candidateIndex(in: trackLyrics.candidateKeys) {
@@ -707,6 +729,12 @@ final class LyricsController {
                 // 원본 시각에는 줄 싱크와 같은 오프셋을 적용한다. 보컬 추정과 달리 seek를 바로 따른다.
                 display.highlightedCharacters = characters
                 lastHighlight = nil
+            } else if trackLyrics.wordIdentities.indices.contains(trackLyrics.chosen),
+                      let learned = localAlignment.learnedLine(identity: trackLyrics.wordIdentities[trackLyrics.chosen], index: index,
+                                                               source: line, end: end, shift: -shift),
+                      let characters = learned.highlightedCharacters(at: t, lineEnd: end) {
+                display.highlightedCharacters = characters
+                lastHighlight = nil
             } else if let wipe = lineWipe(trackID: position.trackID, candidate: trackLyrics.chosen, lineIndex: index, text: line.text,
                                    songStart: line.start - shift, songEnd: end - shift, heardAt: c) {
                 // 음절 타이밍은 소리에서 잰 실제 곡 시각이라 사용자 오프셋 없이 비교한다
@@ -727,6 +755,73 @@ final class LyricsController {
             if remaining <= 5 { display.countdown = remaining }
         }
         return (track, display)
+    }
+
+    func setAlignmentSource(_ buffer: VocalAudioBuffer?, streamOffset: Double) {
+        invalidateAlignment()
+        alignmentSource = buffer.map { ($0, streamOffset) }
+        localAlignment.attach(buffer)
+    }
+
+    func invalidateAlignment() {
+        alignmentEpoch &+= 1
+        lastAlignmentPosition = nil
+        localAlignment.cancel()
+    }
+
+    /// 매초, 이미 들은 줄만 수집한다. 모델·파일 작업은 Coordinator의 utility 작업으로 넘긴다.
+    func updateLocalAlignment(atCaptureTime c: Double?, isPaused: Bool) {
+        guard localAlignment.isEnabled else { return }
+        guard !isPaused, let c, let snapshot = timingSnapshot(atCaptureTime: c), snapshot.isPlaying,
+              let position = clock.position(atCaptureTime: c), let source = alignmentSource,
+              let continuousStart = clock.continuousSegmentStart(heardAt: c) else {
+            if lastAlignmentPosition != nil { invalidateAlignment() }
+            return
+        }
+        if let previous = lastAlignmentPosition,
+           previous.position.trackID != position.trackID || abs((position.seconds - previous.position.seconds) - (c - previous.capture)) > 0.3 {
+            invalidateAlignment()
+        }
+        lastAlignmentPosition = (c, position)
+        let entry = lyricsByTrack[position.trackID] ?? nil
+        let identity = entry.flatMap { $0.wordIdentities.indices.contains($0.chosen) ? $0.wordIdentities[$0.chosen] : nil }
+        let shift = (displayCommits[position.trackID]?.delay ?? entry?.appliedDelay ?? 0) - offsetSeconds
+        guard shift.isFinite, abs(shift) <= 120 else { invalidateAlignment(); return }
+        let context = "\(position.trackID)#\(identity?.storageKey ?? "plain")#\(alignmentEpoch)#\(Int((shift * 1000).rounded()))"
+        localAlignment.setContext(context, identity: identity)
+        guard let entry, let identity, let lyrics = entry.lyrics, localAlignment.canAutomaticallyLearn,
+              let available = source.buffer.availableRange else { return }
+        for index in lyrics.lines.indices.reversed() {
+            let line = lyrics.lines[index]
+            let end = lyrics.end(of: index)
+            let songStart = line.start + shift
+            let songEnd = end + shift
+            guard songEnd <= position.seconds - 0.25 else { continue }
+            if songEnd < position.seconds - 60 { break }
+            guard songStart >= 0, songEnd > songStart, songEnd - songStart <= 20,
+                  localAlignment.needsLine(index, source: line, end: end, shift: shift),
+                  let captureStart = clock.captureTime(forSongPosition: songStart, heardAt: c),
+                  let captureEnd = clock.captureTime(forSongPosition: songEnd, heardAt: c),
+                  captureStart >= continuousStart else { continue }
+            let start = captureStart + source.streamOffset
+            let finish = captureEnd + source.streamOffset
+            guard start >= available.lowerBound, finish <= available.upperBound else { continue }
+            localAlignment.learn(identity: identity, index: index, line: line, end: end, shift: shift,
+                                 window: AlignmentAudioWindow(buffer: source.buffer, streamStart: start, streamEnd: finish, songStart: songStart))
+            break
+        }
+    }
+
+    /// 최근 연속 재생한 구간만 사용한다. 이전 곡/seek 전 음성을 초안에 섞지 않는다.
+    func recentAlignmentWindow(for track: TrackInfo, atCaptureTime c: Double) -> AlignmentAudioWindow? {
+        guard localAlignment.isEnabled, let position = clock.position(atCaptureTime: c), position.trackID == track.id,
+              position.isPlaying, timingSnapshot(atCaptureTime: c) != nil, let source = alignmentSource,
+              let continuousStart = clock.continuousSegmentStart(heardAt: c), let available = source.buffer.availableRange else { return nil }
+        let end = min(c + source.streamOffset, available.upperBound)
+        let songEnd = position.seconds - (c + source.streamOffset - end)
+        let start = max(end - 20, available.lowerBound, continuousStart + source.streamOffset, end - songEnd)
+        guard songEnd.isFinite, songEnd >= 0, end - start >= 0.5 else { return nil }
+        return AlignmentAudioWindow(buffer: source.buffer, streamStart: start, streamEnd: end, songStart: songEnd - (end - start))
     }
 
     /// 현재 줄의 음절 타이밍. 곡 구간 → 캡처 시각 → 출력 스트림 시각으로 바꿔 보컬 프레임을 가져와 정렬한다.

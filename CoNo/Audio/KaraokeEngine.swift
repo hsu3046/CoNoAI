@@ -322,6 +322,7 @@ final class KaraokeEngine {
     /// 누르는 순간 들리는 소리·가사·음정 바가 멈추고, 원곡 앱도 멈춘다.
     func pause() {
         guard canControlPlayback, let pipeline, !isPaused else { return }
+        lyrics.invalidateAlignment()
         pipeline.setPaused(true)
         isPaused = true
         pausedAt = .now
@@ -543,6 +544,7 @@ final class KaraokeEngine {
     /// 그 사이 옛 소리는 버리지 않고 흘려보내 스트림 시각·싱크를 유지한다.
     func seek(toSongPosition target: Double) {
         guard canControlPlayback, let pipeline else { return }
+        lyrics.invalidateAlignment()
         let target = max(0, target)
         seekTarget = target
         seekStartedAt = .now
@@ -895,6 +897,7 @@ final class KaraokeEngine {
             lyrics.start(sourceBundleID: source.bundleID) { [weak self] hostTime in
                 self?.captureTime(atHostTime: hostTime)
             }
+            lyrics.setAlignmentSource(separationProcessor?.vocalAudioBuffer, streamOffset: separationTiming?.streamOffset ?? 0)
             // 음절 단위 색칠용 보컬 음정 (AI 분리 모드만). start() 가 초기화하므로 그 뒤에 넣는다.
             if let pitchTimeline {
                 lyrics.vocalSource = VocalTimingSource(timeline: pitchTimeline, streamOffset: separationTiming?.streamOffset ?? 0)
@@ -1067,7 +1070,10 @@ final class KaraokeEngine {
                 self.updateAdvance()
                 self.updateSinging()
                 tick += 1
-                if tick % 20 == 0 { self.updateVocalRange() }
+                if tick % 20 == 0 {
+                    self.updateVocalRange()
+                    self.lyrics.updateLocalAlignment(atCaptureTime: self.heardCaptureTime(), isPaused: self.isPaused || self.seekTarget != nil)
+                }
                 try? await Task.sleep(for: .milliseconds(50))
             }
         }

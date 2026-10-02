@@ -5,21 +5,6 @@ import Synchronization
 
 // MARK: - AI 보컬 분리
 
-/// 분리 결과 중 무엇을 들려줄지 (실행 중에도 바꿀 수 있다 — 셋 다 같은 시점으로 정렬돼 있음)
-enum SeparationOutput: Int, CaseIterable, Sendable {
-    case accompaniment = 0
-    case vocals = 1
-    case original = 2
-
-    var label: String {
-        switch self {
-        case .accompaniment: "반주"
-        case .vocals: "보컬"
-        case .original: "원곡"
-        }
-    }
-}
-
 /// 추론 시간 통계 (워커가 쓰고 UI 가 읽는다)
 struct InferenceStats: Sendable {
     var count = 0
@@ -31,6 +16,7 @@ struct InferenceStats: Sendable {
 final class SeparationProcessor: StreamProcessor, @unchecked Sendable {
     let streamOffsetSeconds: Double
     let maxWaitSeconds: Double
+    let vocalAudioBuffer: VocalAudioBuffer
 
     private let compensate: Float
     private let streaming: StreamingSeparator
@@ -51,6 +37,8 @@ final class SeparationProcessor: StreamProcessor, @unchecked Sendable {
     private var vocalLeft: [Float] = []
     private var vocalRight: [Float] = []
     private var interleaved: [Float] = []
+    private var outputMix: SeparationMix
+    private var vocalFrameOffset = 0
 
     /// 분리된 보컬의 음정을 추적 (없으면 음정 바 없이 분리만)
     private let pitchTracker: PitchTracker?
@@ -63,6 +51,8 @@ final class SeparationProcessor: StreamProcessor, @unchecked Sendable {
         pitchDetector: SwiftF0Detector?
     ) throws {
         let modelRate = separator.config.sampleRate
+        vocalAudioBuffer = VocalAudioBuffer(sampleRate: modelRate)
+        outputMix = SeparationMix(sampleRate: modelRate)
         timedSeparator = TimedSeparator(separator)
         streaming = try StreamingSeparator(separator: timedSeparator, settings: settings)
         compensate = separator.config.compensate
@@ -140,6 +130,14 @@ final class SeparationProcessor: StreamProcessor, @unchecked Sendable {
                 vocalLeft[i] = out.mixLeft[i] - out.accompanimentLeft[i] * compensate
                 vocalRight[i] = out.mixRight[i] - out.accompanimentRight[i] * compensate
             }
+            // 분리 워커에서만 메모리 링을 채운다. IO 콜백과 추론 작업은 이 경로에 들어오지 않는다.
+            vocalLeft.withUnsafeBufferPointer { l in
+                vocalRight.withUnsafeBufferPointer { r in
+                    vocalAudioBuffer.append(left: UnsafeBufferPointer(rebasing: l[0..<n]),
+                                            right: UnsafeBufferPointer(rebasing: r[0..<n]), startFrame: vocalFrameOffset)
+                }
+            }
+            vocalFrameOffset += n
             if let pitchTracker {
                 vocalLeft.withUnsafeBufferPointer { l in
                     vocalRight.withUnsafeBufferPointer { r in
@@ -151,20 +149,13 @@ final class SeparationProcessor: StreamProcessor, @unchecked Sendable {
                 }
             }
 
-            let selection = output
-            let guide = guideVocalLevel
+            outputMix.select(output, guide: guideVocalLevel)
             for i in 0..<n {
-                switch selection {
-                case .accompaniment:
-                    selectedLeft[i] = out.accompanimentLeft[i] + vocalLeft[i] * guide
-                    selectedRight[i] = out.accompanimentRight[i] + vocalRight[i] * guide
-                case .vocals:
-                    selectedLeft[i] = vocalLeft[i]
-                    selectedRight[i] = vocalRight[i]
-                case .original:
-                    selectedLeft[i] = out.mixLeft[i]
-                    selectedRight[i] = out.mixRight[i]
-                }
+                let pair = outputMix.next(accompanimentLeft: out.accompanimentLeft[i], accompanimentRight: out.accompanimentRight[i],
+                                          vocalLeft: vocalLeft[i], vocalRight: vocalRight[i],
+                                          originalLeft: out.mixLeft[i], originalRight: out.mixRight[i])
+                selectedLeft[i] = pair.0
+                selectedRight[i] = pair.1
             }
             do {
                 try selectedLeft.withUnsafeBufferPointer { sl in

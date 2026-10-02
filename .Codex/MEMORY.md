@@ -1,5 +1,17 @@
 # CoNo 프로젝트 메모리
 
+## 2026-10-03 — 전체 머지 승인·선택형 가사 모델·웹 재생 복구
+
+- 사용자: 모든 PR 머지와 가능한 후속 수정·추가 모델 승인. DB는 마지막. 기존 PR #10은 main에 머지 완료(0a9ab04). 앞선 메모리의 모델 승인 미응답/미다운로드 상태는 이 요청으로 해소됐다.
+- 고정 revision `6abf1ece20cd2308bdb7d13cd78ec1c44fa4c094`의 omniASR-CTC-300M int8 365MB를 SHA/크기 검증 후 받았다. Git 제외, 기존 ORT1.24.2 사용, 추가 패키지 설치 없음. no-replace 설치로 경합 중 새 기존 파일/폴더/symlink도 덮지 않는다. 해시·출처·실측은 docs/FORCED_ALIGNMENT_PLAN.md.
+- 자동 가사 시각 학습 기본 OFF. 분리 워커의 메모리 60초 보컬 → 최대 20초/512문자 CTC → 되감기/다음 재생. 원본 단어 시각 우선. 최근 구간 일반 가사 싱크/빈 입력 받아쓰기 초안 → 검토/다시 듣기/탭 편집/LRC/명시 저장. 음성 외부 전송·파일 저장 없음.
+- AlignmentCoordinator는 utility 단일 작업/ORT CPU 1스레드, 자동 작업 사이 최소 5초 또는 추론 시간 3배. native run은 중도 종료 못하므로 취소 후 완료까지 busy를 유지하며 결과/저장 권한을 철회한다. OFF/엔진 정지에 모델을 unload한다.
+- LearnedWordTimingsStore는 곡·후보·원문/시각·모델 버전 키, 파일 2MiB/4,000줄, 원자 저장·손상 보존. 삭제 epoch+동기 write permit으로 늦은 이전 저장의 부활을 막는다. 창 floor/ceil로 20초+1프레임이 되던 경계는 샘플 수 상한으로 수정했다.
+- 실제 자체 음성: 한국어 3.955초 forced 0.770초/textMatch 0.8571; 최대 20초 greedy 5.316초/peak footprint 1.370GB. 내부 confidence는 보정된 정확도 확률이 아니며 가창 품질 검증은 별도. 합성 경로 672/Unicode 500 독립 검토의 추가 finding은 없었다.
+- 웹 점수는 서버 요청 전 `cono-pending-score-v1:<UUID>` localStorage, 성공 뒤 삭제. quota/차단은 메모리 대기+내보내기 안내, 손상/충돌 보존. 기록에서 가져오기 방식으로 재시도. StemPlayer 준비 취소·재시작·해제 세대, 숨김 탭/이탈 정지, 마이크 권한 대기/track ended 정리를 보강했다.
+- SeparationMix 20ms ramp로 반주/보컬/원곡/guide 순간 전환 단차를 수정했다. 무조작 간헐적 클릭의 원인 확정은 아님. find_clicks.py는 양 채널+diagnostics 프레임 원점/분리 offset을 정렬한다. 90초 가변 chunk 리샘플러와 60초 실제 MDX 합성 입력에는 문제 재현이 없었다.
+- 통합 Debug·Release 198 tests/47 suites, 웹 16 tests/API/lint/build, Python 진단 4 tests 통과. GitHub Codex review 한도는 계속 소진 상태여서 추가 원격 요청 없이 별도 로컬 리뷰로 검증했다. 실제 마이크/장치 청취와 외부 소스 권한/접근/DB는 남음.
+
 ## 2026-10-02 — 점수 공유·기록·챌린지 로컬 구현
 
 - 사용자: macOS + 웹 모두 구현하되 DB 연결은 완료 후. 현재 Supabase 클라이언트를 호출하는 API 없음.

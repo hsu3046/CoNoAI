@@ -45,6 +45,31 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 - Source: https://github.com/lars76/swift-f0 (commit 2ed0c83), MIT License, Copyright (c) 2025-2026 Lars Nieradzik
 - Used in: `CoNo/Resources/swift_f0.onnx` — 원본 `swift_f0/model.onnx` 의 pitch 출력에 Cast(float) 노드를 붙인 **수정본** (`scripts/convert_swiftf0.py`). 스트리밍 규칙(`CoNo/DSP/PitchFrameStream.swift`)은 원본 `PitchStream` 을 참고해 재구현.
 
+## omniASR-CTC-300M v1 (optional model)
+
+- Model: Meta omniASR-CTC-300M v1, Apache License 2.0, Copyright 2025 (c) Meta Platforms, Inc. and affiliates.
+- ONNX conversion: [csukuangfj/sherpa-onnx-omnilingual-asr-1600-languages-300M-ctc-int8-2025-11-12](https://huggingface.co/csukuangfj/sherpa-onnx-omnilingual-asr-1600-languages-300M-ctc-int8-2025-11-12/tree/6abf1ece20cd2308bdb7d13cd78ec1c44fa4c094), pinned revision `6abf1ece20cd2308bdb7d13cd78ec1c44fa4c094`. This ONNX conversion is distributed by the sherpa-onnx maintainer, not directly by Meta.
+- `scripts/fetch-alignment-model.sh` downloads the unchanged int8 model, vocabulary and upstream LICENSE into the Git-ignored `Models/OmniASR-CTC-300M` directory. When present, all three files are included in the app bundle. No recordings or external lyrics are bundled. File hashes and runtime limits: [FORCED_ALIGNMENT_PLAN.md](docs/FORCED_ALIGNMENT_PLAN.md).
+- The Swift CTC decoder and integration are original CoNo code. They reuse the existing ONNX Runtime dependency.
+
+The downloaded upstream license notice is preserved verbatim:
+
+```text
+Copyright 2025 (c) Meta Platforms, Inc. and affiliates.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+```
+
 ## mediaremote-adapter (bundled)
 
 - Source: https://github.com/ungive/mediaremote-adapter (commit 73f14ab), vendored unmodified in `ThirdParty/mediaremote-adapter`
