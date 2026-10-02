@@ -8,6 +8,7 @@ import AppKit
 import SwiftUI
 
 struct LyricsView: View {
+    @Environment(\.openWindow) private var openWindow
     let controller: LyricsController
     /// 지금 귀에 들리는 소리의 캡처 스트림 시각
     let heardCaptureTime: () -> Double?
@@ -30,7 +31,7 @@ struct LyricsView: View {
             if dropTargeted {
                 RoundedRectangle(cornerRadius: 16).strokeBorder(StageTheme.mint, style: StrokeStyle(lineWidth: 2, dash: [8]))
                     .overlay {
-                        Text("현재 곡에 LRC·TTML·SRT·KRC·QRC 가사 가져오기")
+                        Text("현재 곡에 TXT·LRC·TTML·SRT·KRC·QRC 가사 가져오기")
                             .font(.callout.bold()).padding(12).background(.ultraThinMaterial, in: Capsule())
                     }
                     .allowsHitTesting(false)
@@ -90,6 +91,8 @@ struct LyricsView: View {
                         .foregroundStyle(StageTheme.secondaryInk.opacity(0.75))
                         .lineLimit(1)
                         .minimumScaleFactor(0.5)
+                } else if let plain = controller.unsyncedLyrics(atCaptureTime: heard) {
+                    UnsyncedLyricsScroll(text: plain).equatable().id(state?.track?.id)
                 } else {
                     Text(statusMessage)
                         .font(StageTheme.rounded(17, .medium))
@@ -103,8 +106,11 @@ struct LyricsView: View {
             // 가사 싱크 미세조정: 다음 줄 바로 아래. 자주 쓰지 않으니 가사 위에 마우스를 올렸을 때만 (자리는 늘 비워 둔다, 단축키 [ ] 는 늘)
             VStack {
                 if hovering, controller.status != .unsupportedSource {
-                    LyricsSyncPill(controller: controller)
-                        .transition(.opacity)
+                    HStack {
+                        if controller.unsyncedLyrics(atCaptureTime: heard) == nil { LyricsSyncPill(controller: controller) }
+                        Button("내 가사 보관함") { openWindow(id: "personal-lyrics") }
+                            .font(.caption).buttonStyle(.plain).foregroundStyle(StageTheme.secondaryInk)
+                    }.transition(.opacity)
                 }
             }
             .frame(height: 34)
@@ -122,6 +128,19 @@ struct LyricsView: View {
         case .notFound: "이 곡의 가사를 찾지 못했습니다"
         case let .failed(message): message
         }
+    }
+}
+
+/// 프레임마다 바뀌는 노래방 타임라인과 긴 일반 가사의 스크롤 레이아웃을 분리한다.
+private struct UnsyncedLyricsScroll: View, Equatable {
+    let text: String
+    var body: some View {
+        ScrollView {
+            Text(text).font(StageTheme.rounded(20, .medium)).lineSpacing(8)
+                .foregroundStyle(StageTheme.ink).textSelection(.enabled)
+                .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 24)
+        }
+        .accessibilityLabel("시간 정보 없는 일반 가사, 직접 스크롤해 읽기")
     }
 }
 

@@ -41,7 +41,7 @@ async function reclaimTerminatedWriter(lock: string): Promise<void> {
   await releaseLock(lock, ownerFile);
 }
 
-async function acquireLock(directory: string): Promise<() => Promise<void>> {
+export async function acquireLock(directory: string): Promise<() => Promise<void>> {
   // 구버전의 빈 잠금에는 소유자 정보가 없다. 실행 중인 구버전 서버일 수도 있어 자동 삭제하지 않는다.
   try {
     await stat(path.join(directory, ".write-lock"));

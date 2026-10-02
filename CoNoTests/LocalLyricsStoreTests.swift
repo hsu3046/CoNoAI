@@ -42,9 +42,24 @@ struct LocalLyricsStoreTests {
             _ = try await store.save(data: Data(repeating: 0x61, count: 1_048_577), fileName: "large.lrc", for: track)
         }
         await #expect(throws: LocalLyricsError.self) {
-            _ = try await store.save(data: Data(original.utf8), fileName: "lyrics.txt", for: track)
+            _ = try await store.save(data: Data(original.utf8), fileName: "lyrics.csv", for: track)
         }
         #expect(try await store.load(for: track)?.document.contents == original)
+    }
+
+    @Test func plainFileIsStoredAsTextWithoutInventingLineTimesAndKeepsUserPriority() async throws {
+        let directory = temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = LocalLyricsStore(directoryURL: directory)
+        let text = "첫 줄\r\n\r\n둘째 줄"
+        let saved = try await store.save(data: Data(text.utf8), fileName: "직접 쓴 가사.txt", for: track)
+        #expect(!saved.isSynced)
+        #expect(saved.lyrics.lines.isEmpty)
+        #expect(saved.plainLyrics == text)
+        #expect(saved.lineCount == 2)
+        #expect(try await store.load(for: track)?.document.contents == text)
+        await #expect(throws: LocalLyricsError.self) { _ = try await store.save(data: Data(" ".utf8), fileName: "empty.txt", for: track) }
+        #expect(try await store.load(for: track)?.plainLyrics == text)
     }
 
     @Test func corruptOrFutureStoreIsPreservedAndCannotBeSilentlyReplaced() async throws {

@@ -18,9 +18,19 @@ struct LRCLIBPublishPayload: Codable, Equatable, Sendable {
               [trackName, artistName, albumName].allSatisfy({ $0.count <= 500 }),
               duration.isFinite, duration > 0, duration <= 86_400,
               plainLyrics.utf8.count <= 1_048_576, syncedLyrics.utf8.count <= 1_048_576 else { throw LRCLIBPublishError.invalidPayload }
-        let lines = LRCParser.parse(syncedLyrics).lines.filter { !$0.isInterlude }
-        guard !lines.isEmpty, lines.count <= 4_000, lines.allSatisfy({ $0.start < duration && $0.text.count <= 500 }),
-              lines.map(\.text).joined(separator: "\n") == plainLyrics else { throw LRCLIBPublishError.invalidPayload }
+        if syncedLyrics.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            // 공식 PublishRequest는 plain/synced를 각각 optional로 받고 빈 synced는 None으로 처리한다.
+            // https://github.com/tranxuanthang/lrclib/blob/main/server/src/lyricsfile.rs
+            do { try LocalLyricsStore.validatePlain(plainLyrics) }
+            catch { throw LRCLIBPublishError.invalidPayload }
+        } else {
+            let lines = LRCParser.parse(syncedLyrics).lines.filter { !$0.isInterlude }
+            guard !lines.isEmpty, lines.count <= 4_000, lines.allSatisfy({
+                $0.start >= 0 && $0.start < duration && $0.text.count <= 500
+                    && ($0.explicitEnd.map { $0 <= duration } ?? true)
+                    && $0.segments.allSatisfy { $0.start < duration && ($0.end.map { $0 <= duration } ?? true) }
+            }), lines.map(\.text).joined(separator: "\n") == plainLyrics else { throw LRCLIBPublishError.invalidPayload }
+        }
         let data = try JSONEncoder().encode(self)
         guard data.count <= 1_048_576 else { throw LRCLIBPublishError.invalidPayload }
         return data
@@ -32,7 +42,7 @@ enum LRCLIBPublishError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .invalidPayload: "곡 제목·가수·곡 길이와 모든 가사 시각을 확인해 주세요. 가사는 곡 길이 안에 있어야 합니다."
+        case .invalidPayload: "곡 제목·가수·곡 길이·가사 내용을 확인해 주세요. 시간 있는 가사는 모든 시각이 곡 길이 안에 있어야 합니다."
         case .invalidChallenge: "LRCLIB 게시 인증 응답을 읽지 못했어요. 나중에 다시 시도해 주세요."
         case .challengeTimeout: "LRCLIB 게시 인증 계산이 오래 걸려 멈췄어요. 잠시 뒤 다시 시도하거나 LRC로 내보내 주세요."
         case let .http(status): "LRCLIB 게시 요청이 거절됐어요 (HTTP \(status)). 로컬 가사는 그대로 있습니다."
@@ -94,14 +104,11 @@ actor LRCLIBPublisher {
     init(transport: Transport? = nil) {
         if let transport { self.transport = transport }
         else {
-            let configuration = URLSessionConfiguration.ephemeral
-            configuration.timeoutIntervalForRequest = 20
-            configuration.timeoutIntervalForResource = 30
-            let session = URLSession(configuration: configuration)
+            let client = LyricsHTTPClient.shared
             self.transport = { request in
-                let (data, response) = try await session.data(for: request)
-                guard let response = response as? HTTPURLResponse else { throw LRCLIBPublishError.invalidChallenge }
-                return (data, response)
+                try await client.data(for: request, service: .lrclib,
+                                      maximumBytes: request.url?.lastPathComponent == "request-challenge" ? 4_096 : 65_536,
+                                      acceptedStatus: Set(200...599))
             }
         }
     }
@@ -129,6 +136,14 @@ actor LRCLIBPublisher {
         // 공식 publish_lyrics.rs는 성공 시 201을 반환한다. 전송 뒤 타임아웃은 결과 미확정이다.
         let result: (Data, HTTPURLResponse)
         do { result = try await transport(request) }
+        catch let error as LyricsAccessError {
+            // acceptedStatus가 모든 HTTP 상태를 허용하므로 이 셋은 공용 전송 계층의 요청 전 거부다.
+            // 이미 전송했을 수 있는 연결/취소 오류와 구분해 재시도 대기 안내를 유지한다.
+            switch error {
+            case .rateLimited, .unavailable, .unsafeAddress: throw error
+            default: throw LRCLIBPublishError.uncertainOutcome
+            }
+        }
         catch { throw LRCLIBPublishError.uncertainOutcome }
         guard result.1.statusCode == 201 else { throw LRCLIBPublishError.http(result.1.statusCode) }
     }

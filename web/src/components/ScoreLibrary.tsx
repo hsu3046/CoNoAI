@@ -53,6 +53,7 @@ export function ScoreLibrary() {
     <SectionTitle kicker="MY STAGE" title="한 곡 한 곡, 나의 기록">브라우저 체험을 마치면 자동 저장됩니다. Mac 앱의 ‘노래 기록’에서 내보낸 JSON도 가져올 수 있어요.</SectionTitle>
     <div className="mx-auto mt-8 max-w-4xl space-y-5">
       <p className="text-center text-sm text-ink2">로컬 테스트 · 기록은 이 서버의 JSON에 저장돼요. 쿠키를 지우기 전 JSON으로 백업하세요.</p>
+      <p className="text-center text-sm"><a href="/lyrics" className="text-mint underline underline-offset-4">내 가사 보관함 · TXT/LRC 등록과 편집</a></p>
       {pending.warning && <p role="alert" className="text-center text-stop">{pending.warning}</p>}
       {pending.records.length > 0 && <section aria-label="저장 대기 중인 기록" className="space-y-4 rounded-3xl border border-gold/30 p-5">
         <h3 className="font-cute text-2xl text-gold">저장 대기 {pending.records.length}곡</h3>

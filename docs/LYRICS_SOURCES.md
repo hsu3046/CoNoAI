@@ -1,6 +1,31 @@
-# 추가 가사 소스와 로컬 KRC·QRC
+# 외부 가사 서비스 접근과 로컬 가사
 
-TL;DR: **KRC·QRC 로컬 파일의 단어 싱크를 지원한다. QQ·Kugou·Musixmatch 온라인 검색은 연결하지 않았다.** 이번 확인에서 QQ 공개 검색은 HTTP 500, Kugou HTTPS 곡 검색은 인증서 검증 실패였으며, Musixmatch는 공식 이용 권한이 필요하다. 기존 LRCLIB·NetEase·AMLL·Apple Music 설정은 그대로다.
+TL;DR: **개인 가사는 Mac·웹 보관함에 비공개로 저장하고, 검토 후 선택한 가사만 LRCLIB에 공개한다.** 기존 온라인 조회는 HTTPS·응답 크기·인증 세대·오류별 대기 조건을 검사한다. QQ·Kugou·Musixmatch 온라인 검색은 아직 연결하지 않았다.
+
+## 공통 접근 정책
+
+`LyricsHTTPClient.shared`는 조회와 명시적 게시가 함께 쓰는 세션이다. 서비스별 고정 HTTPS 호스트, 표준 TLS 검증, 같은 호스트로의 HTTPS 리다이렉트만 허용한다. 다른 호스트로 인증 헤더를 넘기지 않는다. 쿠키 자동 저장과 URL 캐시는 사용하지 않으며 클라이언트 이름은 CoNo로 표시한다.
+
+- 요청/전체 리소스 시간 제한은 10초/25초다. 일반 응답은 1 MiB, AMLL 색인·Apple 공개 웹 스크립트는 최대 8 MiB로 제한한다. 선언된 크기와 실제 스트림 크기를 모두 검사하고 취소 시 읽기를 중단한다.
+- HTTP 401/403은 인증·이용 권한, 429는 요청 제한, 5xx는 일시 장애로 구분한다. `Retry-After` 초/HTTP 날짜를 존중하며, 없으면 각각 30초/15초 동안 같은 서비스에 재요청하지 않는다. 게시 POST는 자동 재시도하지 않는다.
+- 잘못된 HTTP 200 본문, 인증 오류, TLS 오류, 취소는 “가사 없음”으로 캐시하지 않는다. NetEase·AMLL은 서로 독립된 캐시를 사용한다. AMLL 색인은 검증 후 교체하며 실패 시 이전 유효 파일을 보존한다.
+- LRCLIB의 앞선 유효 후보는 후속 검색이 실패해도 사용할 수 있지만 불완전한 결과를 디스크에 캐시하지 않는다. 이전 오류 캐시와 분리하기 위해 `lyrics-v4`/`lyrics-extra-v4`를 사용한다.
+- 설정 › 가사에서 실제 최근 요청/캐시/오류 상태를 확인하고 **현재 곡 다시 검색**할 수 있다. 직접 적용한 내 가사는 온라인 재조회가 덮지 않는다.
+
+## 서비스별 조건
+
+| 서비스 | 조건과 처리 |
+| --- | --- |
+| LRCLIB | 공개 조회에 API 키가 필요 없다. 정확 조회는 제목·가수가 있을 때만 시도하고, 길이는 1…3,600초일 때만 보낸다. 검색은 별도로 진행한다. 공개에는 제목·가수·실제 길이와 명시 확인이 필요하며 일반 가사만으로도 게시할 수 있다. |
+| NetEase | 비공식 조회 경로다. 서비스 코드와 JSON 구조를 확인하며 접근 실패를 유효한 빈 결과와 구분한다. |
+| AMLL | 공개 커뮤니티 TTML 자료다. 색인과 가사 본문을 검증하고 출처별 후보를 합친다. |
+| Apple Music | 본인 계정과 이용 가능한 구독·지역이 필요하다. 기존 웹 호환 연결은 공식 MusicKit 가사 API가 아니며 모든 곡을 보장하지 않는다. 사용자 토큰은 Keychain, 가사는 메모리에서만 사용한다. |
+
+Apple Music 사용자 토큰에 고정 6개월 만료일을 표시하지 않는다. 6개월 상한은 개발자 토큰 규칙이며, 사용자 토큰은 실제 인증 응답으로 재연결 필요 상태를 판단한다. Keychain 저장·삭제 실패 시 성공한 것처럼 처리하지 않고 이전 상태를 보존한다. 재연결·연결 해제마다 세대를 바꾸어 오래된 401/403, 지역 조회, 가사 결과가 새 연결을 덮지 못하게 한다. 로그인 쿠키는 정확한 Apple 도메인 경계와 HTTPS 조건을 검사한다.
+
+계정 교체·해제 시 Controller의 이전 Apple 후보와 진행 중 조회도 무효화한다. 구독 가사는 자동 단어 학습 파일에 쓰거나 그 파일에서 읽지 않는다. 앱 시작 시 구형 혼합 캐시 `lyrics-extra-v1/v2/v3`와 출처·스키마·파일 키가 검증된 Apple 학습 JSON을 정리한다. 새 v4 캐시·개인 보관함·직접 적용한 가사·다른 출처의 학습은 유지한다. 손상 파일·심볼릭 링크·삭제 실패는 보존하고 확인이 필요한 건수를 안내한다.
+
+근거: [LRCLIB 정확 조회](https://github.com/tranxuanthang/lrclib/blob/05ad8590f6fc4d47a2d74e70f4915273df20f63c/server/src/routes/get_lyrics_by_metadata.rs), [게시 서버](https://github.com/tranxuanthang/lrclib/blob/05ad8590f6fc4d47a2d74e70f4915273df20f63c/server/src/routes/publish_lyrics.rs), [Apple 사용자 인증](https://developer.apple.com/documentation/applemusicapi/user-authentication-for-musickit), [Apple 개발자 토큰](https://developer.apple.com/documentation/applemusicapi/generating-developer-tokens), [WWDC 사용자 토큰 수명 설명](https://developer.apple.com/videos/play/wwdc2022/10148/). 실제 구독 계정으로의 서비스별 성공 여부와 합성 응답 테스트는 구분한다.
 
 ## 로컬 KRC 구현
 

@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "eslint",
     "test": "node --experimental-strip-types --test tests/*.test.ts",
-    "test:api": "node tests/local-api.mjs"
+    "test:api": "node tests/local-api.mjs",
+    "test:lyrics-api": "node tests/lyrics-api.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.117.2",

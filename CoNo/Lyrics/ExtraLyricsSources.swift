@@ -1,66 +1,90 @@
 // CoNo — Copyright (C) 2026 AIB Inc. (https://www.aib.vote) — GPL-3.0-or-later
-//
-// LRCLIB 외의 가사 소스 (#2): NetEase 云音乐 · AMLL TTML DB. 후보를 모아 LyricsController 가 LRCLIB 후보와 함께
-// 제목·가수·길이로 거르고, 분리된 보컬과 대 보아 가장 잘 맞는 것을 고른다.
-// NetEase 는 비공식 API(인증 없음, 2026-09-26 확인) — 실패는 조용히 빈 결과 (LRCLIB 만으로 동작).
-// AMLL 은 GitHub 공개 저장소(CC0) — 색인(1.6MB)을 하루 단위로 캐시하고 제목·가수·NetEase 번호로 찾는다.
 
 import CryptoKit
 import Foundation
 
+/// Every provider has its own cache. A failed request must not become an empty search result,
+/// and one successful provider must not hide another provider's failure for 30 days.
 actor ExtraLyricsSources {
-    private let session: URLSession
+    private let http: LyricsHTTPClient
     private let cacheDirectory: URL?
     private var amllEntries: [AMLLEntry]?
     private var amllLoadedAt: Date?
-
-    private static let neteaseSearch = URL(string: "https://music.163.com/api/cloudsearch/pc")!
-    private static let neteaseLyric = URL(string: "https://music.163.com/api/song/lyric/v1")!
     private static let amllRaw = "https://raw.githubusercontent.com/amll-dev/amll-ttml-db/main/"
-    /// 찾은 결과는 오래, 못 찾은 결과는 하루 (새로 올라올 수 있다)
     private static let foundTTL: TimeInterval = 30 * 24 * 60 * 60
     private static let emptyTTL: TimeInterval = 24 * 60 * 60
 
-    init() {
-        let configuration = URLSessionConfiguration.ephemeral
-        configuration.timeoutIntervalForRequest = 8
-        configuration.httpAdditionalHeaders = ["User-Agent": "Mozilla/5.0 (Macintosh) CoNo/0.1"]
-        session = URLSession(configuration: configuration)
-        cacheDirectory = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first?
-            // v1은 단어 시각, v2는 마지막 단어보다 늦은 문장 종료를 잃은 사본일 수 있다.
-            .appendingPathComponent("space.knowai.cono/lyrics-extra-v3", isDirectory: true)
-        if let cacheDirectory {
-            try? FileManager.default.createDirectory(at: cacheDirectory, withIntermediateDirectories: true)
-        }
+    init(http: LyricsHTTPClient = .shared, cacheDirectory: URL? = nil) {
+        self.http = http
+        self.cacheDirectory = cacheDirectory ?? FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first?
+            .appendingPathComponent("space.knowai.cono/lyrics-extra-v4", isDirectory: true)
     }
 
-    /// 켜 둔 소스들의 싱크 가사 후보
-    func candidates(for track: TrackInfo, sources: Set<LyricsSource>) async -> [LyricsCandidate] {
-        let wanted = sources.subtracting([.lrclib, .localFile])
-        guard !wanted.isEmpty, !track.title.isEmpty else { return [] }
-        // Apple Music 은 연결 여부에 따라 결과가 달라진다 (연결 전 "못 찾음" 을 연결 뒤에 쓰지 않게)
-        let appleMusicState = wanted.contains(.appleMusic) ? (AppleMusicCredentials.userToken == nil ? "am-off" : "am-on") : ""
-        let cacheKey = "\(track.title)|\(track.artist)|\(Int(track.duration.rounded()))|\(wanted.map(\.rawValue).sorted().joined(separator: ","))|\(appleMusicState)"
-        if let cached = readCache(cacheKey) { return cached }
-
+    func candidates(for track: TrackInfo, sources: Set<LyricsSource>, bypassCache: Bool = false) async throws -> [LyricsCandidate] {
+        try Task.checkCancellation()
+        guard !track.title.isEmpty else { return [] }
+        let duration = track.duration.isFinite && (0...86_400).contains(track.duration) ? Int(track.duration.rounded()) : 0
+        let trackKey = [track.title, track.artist, String(duration)].map { "\($0.utf8.count):\($0)" }.joined()
         var found: [LyricsCandidate] = []
         var neteaseIDs: [String] = []
-        if wanted.contains(.netease) {
-            let result = await neteaseCandidates(for: track)
+        var failure: LyricsAccessError?
+        for (source, service) in [(LyricsSource.netease, LyricsServiceID.netease), (.amll, .amll), (.appleMusic, .appleMusic)] where sources.contains(source) {
+            try Task.checkCancellation()
+            let key = "\(service.rawValue):\(trackKey)"
+            let operation = LyricsServiceOperation.Context(service: service, id: await LyricsServiceMonitor.shared.begin(service))
+            let result = try await LyricsServiceOperation.$current.withValue(operation) {
+                try await sourceResult(for: track, service: service, key: key, neteaseIDs: neteaseIDs, bypassCache: bypassCache)
+            }
             found += result.candidates
-            neteaseIDs = result.songIDs
+            if service == .netease { neteaseIDs = result.songIDs }
+            failure = failure ?? result.failure
         }
-        if wanted.contains(.amll) {
-            found += await amllCandidates(for: track, neteaseIDs: neteaseIDs)
-        }
-        if wanted.contains(.appleMusic) {
-            found += await AppleMusicCatalog.shared.candidates(for: track)
-        }
-        store(found, key: cacheKey)
+        try Task.checkCancellation()
+        if found.isEmpty, let failure { throw failure }
         return found
     }
 
-    // MARK: - NetEase
+    private func sourceResult(for track: TrackInfo, service: LyricsServiceID, key: String,
+                              neteaseIDs: [String], bypassCache: Bool) async throws -> SourceResult {
+        do {
+            try Task.checkCancellation()
+            // Subscriber lyrics remain in memory only; reconnecting cannot reuse another account's disk cache.
+            if !bypassCache, service != .appleMusic, let cached = readCache(key) {
+                await LyricsServiceMonitor.shared.record(service, .cached)
+                try Task.checkCancellation()
+                return SourceResult(candidates: cached.candidates, songIDs: cached.songIDs)
+            }
+            let result: SourceResult
+            switch service {
+            case .netease: result = try await neteaseCandidates(for: track)
+            case .amll: result = try await amllCandidates(for: track, neteaseIDs: neteaseIDs, refreshIndex: bypassCache)
+            case .appleMusic: result = SourceResult(candidates: try await AppleMusicCatalog.shared.candidates(for: track))
+            case .lrclib: return SourceResult(candidates: [])
+            }
+            try Task.checkCancellation()
+            if let problem = result.failure {
+                await LyricsServiceMonitor.shared.record(service, .failed(problem))
+            } else if service != .appleMusic, result.cacheable {
+                store(result, key: key)
+            }
+            return result
+        } catch {
+            if Task.isCancelled || error is CancellationError {
+                await LyricsServiceMonitor.shared.record(service, .idle)
+                throw CancellationError()
+            }
+            let problem = (error as? LyricsAccessError) ?? .invalidBody
+            await LyricsServiceMonitor.shared.record(service, .failed(problem))
+            return SourceResult(candidates: [], cacheable: false, failure: problem)
+        }
+    }
+
+    private struct SourceResult {
+        var candidates: [LyricsCandidate]
+        var songIDs: [String] = []
+        var cacheable = true
+        var failure: LyricsAccessError?
+    }
 
     private struct NetEaseSearch: Decodable {
         struct Result: Decodable { let songs: [Song]? }
@@ -71,150 +95,149 @@ actor ExtraLyricsSources {
             let name: String
             let ar: [Artist]?
             let al: Album?
-            /// 밀리초
             let dt: Double?
         }
+        let code: Int
         let result: Result?
     }
-
     private struct NetEaseLyric: Decodable {
         struct Body: Decodable { let lyric: String? }
+        let code: Int
         let lrc: Body?
+        let nolyric: Bool?
+        let uncollected: Bool?
     }
 
-    /// 제목·가수가 맞는 상위 3곡의 가사. 그 곡 번호들도 돌려준다 (AMLL 을 번호로 찾는 데 쓴다 —
-    /// 검색 결과 전체를 넘기면 같은 가수의 다른 곡 AMLL 가사가 붙는다).
-    private func neteaseCandidates(for track: TrackInfo) async -> (candidates: [LyricsCandidate], songIDs: [String]) {
-        var components = URLComponents(url: Self.neteaseSearch, resolvingAgainstBaseURL: false)!
-        components.queryItems = [
-            URLQueryItem(name: "s", value: "\(track.title) \(track.artist)"),
-            URLQueryItem(name: "type", value: "1"),
-            URLQueryItem(name: "limit", value: "10"),
-        ]
-        guard let data = await fetch(components.urlEncodingPlus),
-              let songs = (try? JSONDecoder().decode(NetEaseSearch.self, from: data))?.result?.songs
-        else { return ([], []) }
-
-        let matching = songs.filter { song in
-            guard LyricsSelector.titlesMatch(song.name, track.title) else { return false }
-            // 커버·합창·sped up 판이 많다 → 가수가 맞아야 (표기가 달라 놓치는 건 LRCLIB 이 맡는다)
-            guard (song.ar ?? []).contains(where: { LyricsSelector.artistsMatch($0.name, track.artist) }) else { return false }
-            // 음원 길이를 믿을 수 있으면 길이도 맞아야 (다른 버전 방지)
+    private func neteaseCandidates(for track: TrackInfo) async throws -> SourceResult {
+        var components = URLComponents(string: "https://music.163.com/api/cloudsearch/pc")!
+        components.queryItems = [.init(name: "s", value: "\(track.title) \(track.artist)"), .init(name: "type", value: "1"), .init(name: "limit", value: "10")]
+        let data = try await fetch(components.urlEncodingPlus, service: .netease)
+        guard let decoded = try? JSONDecoder().decode(NetEaseSearch.self, from: data), decoded.code == 200,
+              let result = decoded.result else { throw LyricsAccessError.invalidBody }
+        let matching = (result.songs ?? []).filter { song in
+            guard LyricsSelector.titlesMatch(song.name, track.title),
+                  (song.ar ?? []).contains(where: { LyricsSelector.artistsMatch($0.name, track.artist) }) else { return false }
             guard track.durationIsReliable, track.duration > 0, let ms = song.dt else { return true }
             return abs(ms / 1000 - track.duration) <= LyricsSelector.maxDurationDifference
         }
-        let picked = Array(matching.prefix(3))
-        let candidates = await withTaskGroup(of: LyricsCandidate?.self) { group in
-            for song in picked {
-                group.addTask { await self.neteaseLyric(for: song) }
+        var output = SourceResult(candidates: [], songIDs: matching.map { String($0.id) })
+        for song in matching.prefix(3) {
+            do { if let candidate = try await neteaseLyric(for: song) { output.candidates.append(candidate) } }
+            catch {
+                if Task.isCancelled || error is CancellationError { throw CancellationError() }
+                output.failure = (error as? LyricsAccessError) ?? .invalidBody
+                output.cacheable = false
+                break
             }
-            var result: [LyricsCandidate] = []
-            for await candidate in group { if let candidate { result.append(candidate) } }
-            return result
         }
-        return (candidates, matching.map { String($0.id) })
+        return output
     }
 
-    private func neteaseLyric(for song: NetEaseSearch.Song) async -> LyricsCandidate? {
-        var components = URLComponents(url: Self.neteaseLyric, resolvingAgainstBaseURL: false)!
-        components.queryItems = [
-            URLQueryItem(name: "id", value: String(song.id)),
-            URLQueryItem(name: "lv", value: "1"),
-            URLQueryItem(name: "tv", value: "-1"),
-        ]
-        guard let data = await fetch(components.urlEncodingPlus),
-              let raw = (try? JSONDecoder().decode(NetEaseLyric.self, from: data))?.lrc?.lyric,
-              let synced = NetEaseLyrics.cleaned(raw)
-        else { return nil }
-        return LyricsCandidate(
-            id: song.id,
-            trackName: song.name,
-            artistName: (song.ar ?? []).map(\.name).joined(separator: ", "),
-            albumName: song.al?.name,
-            duration: song.dt.map { $0 / 1000 },
-            instrumental: false,
-            plainLyrics: nil,
-            syncedLyrics: synced,
-            source: .netease
-        )
+    private func neteaseLyric(for song: NetEaseSearch.Song) async throws -> LyricsCandidate? {
+        var components = URLComponents(string: "https://music.163.com/api/song/lyric/v1")!
+        components.queryItems = [.init(name: "id", value: String(song.id)), .init(name: "lv", value: "1"), .init(name: "tv", value: "-1")]
+        let data = try await fetch(components.urlEncodingPlus, service: .netease)
+        guard let decoded = try? JSONDecoder().decode(NetEaseLyric.self, from: data), decoded.code == 200,
+              decoded.lrc?.lyric != nil || decoded.nolyric == true || decoded.uncollected == true else { throw LyricsAccessError.invalidBody }
+        if decoded.nolyric == true || decoded.uncollected == true { return nil }
+        guard let raw = decoded.lrc?.lyric, !raw.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+        do { _ = try LocalLyricsStore.parse(raw, format: "lrc") }
+        catch { throw LyricsAccessError.invalidBody }
+        guard let synced = NetEaseLyrics.cleaned(raw) else { return nil }
+        return LyricsCandidate(id: song.id, trackName: song.name, artistName: (song.ar ?? []).map(\.name).joined(separator: ", "),
+                               albumName: song.al?.name, duration: song.dt.map { $0 / 1000 }, instrumental: false,
+                               plainLyrics: nil, syncedLyrics: synced, source: .netease)
     }
 
-    // MARK: - AMLL
-
-    private func amllCandidates(for track: TrackInfo, neteaseIDs: [String]) async -> [LyricsCandidate] {
-        guard let entries = await loadAMLLIndex() else { return [] }
-        let matches = AMLLIndex.matches(entries, title: track.title, artist: track.artist, neteaseIDs: neteaseIDs).prefix(2)
-        var result: [LyricsCandidate] = []
-        for entry in matches {
-            let path = "raw-lyrics/" + (entry.file.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? entry.file)
-            guard let url = URL(string: Self.amllRaw + path), let data = await fetch(url),
-                  let ttml = String(data: data, encoding: .utf8), let lrc = TTMLLyrics.lrc(from: ttml)
-            else { continue }
-            result.append(LyricsCandidate(
-                id: entry.candidateID,
-                trackName: entry.titles.first ?? track.title,
-                artistName: entry.artists.joined(separator: ", "),
-                albumName: nil,
-                duration: nil,
-                instrumental: false,
-                plainLyrics: nil,
-                syncedLyrics: lrc,
-                source: .amll
-            ))
+    private func amllCandidates(for track: TrackInfo, neteaseIDs: [String], refreshIndex: Bool) async throws -> SourceResult {
+        let index = try await loadAMLLIndex(refresh: refreshIndex)
+        var result = SourceResult(candidates: [], cacheable: index.fresh, failure: index.failure)
+        for entry in AMLLIndex.matches(index.entries, title: track.title, artist: track.artist, neteaseIDs: neteaseIDs).prefix(2) {
+            do {
+                guard !entry.file.contains("/"), !entry.file.contains("\\"), entry.file.utf8.count <= 255,
+                      entry.file.hasSuffix(".ttml") else { throw LyricsAccessError.invalidBody }
+                let url = URL(string: Self.amllRaw + "raw-lyrics/")!.appendingPathComponent(entry.file)
+                let data = try await fetch(url, service: .amll)
+                guard let text = String(data: data, encoding: .utf8),
+                      text.range(of: "<!DOCTYPE", options: .caseInsensitive) == nil,
+                      let lrc = TTMLLyrics.lrc(from: text) else { throw LyricsAccessError.invalidBody }
+                result.candidates.append(LyricsCandidate(id: entry.candidateID, trackName: entry.titles.first ?? track.title,
+                    artistName: entry.artists.joined(separator: ", "), albumName: nil, duration: nil,
+                    instrumental: false, plainLyrics: nil, syncedLyrics: lrc, source: .amll))
+            } catch {
+                if Task.isCancelled || error is CancellationError { throw CancellationError() }
+                result.failure = (error as? LyricsAccessError) ?? .invalidBody
+                result.cacheable = false
+                break
+            }
         }
+        if !index.fresh, result.candidates.isEmpty { throw index.failure ?? LyricsAccessError.network }
         return result
     }
 
-    /// 색인: 메모리 → 디스크(하루) → 네트워크
-    private func loadAMLLIndex() async -> [AMLLEntry]? {
-        if let amllEntries, let amllLoadedAt, Date().timeIntervalSince(amllLoadedAt) < Self.emptyTTL { return amllEntries }
+    private func loadAMLLIndex(refresh: Bool) async throws -> (entries: [AMLLEntry], fresh: Bool, failure: LyricsAccessError?) {
+        if !refresh, let amllEntries, let amllLoadedAt, Date().timeIntervalSince(amllLoadedAt) < Self.emptyTTL { return (amllEntries, true, nil) }
         let file = cacheDirectory?.appendingPathComponent("amll-index.jsonl")
-        var text: String?
-        if let file, let attributes = try? FileManager.default.attributesOfItem(atPath: file.path),
-           let modified = attributes[.modificationDate] as? Date, Date().timeIntervalSince(modified) < Self.emptyTTL {
-            text = try? String(contentsOf: file, encoding: .utf8)
+        let saved = file.flatMap { boundedRead($0, maximum: 8_388_608) }.flatMap(Self.validIndex)
+        if !refresh, let saved, let file, let date = try? file.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate,
+           Date().timeIntervalSince(date) < Self.emptyTTL {
+            amllEntries = saved; amllLoadedAt = date
+            return (saved, true, nil)
         }
-        if text == nil, let url = URL(string: Self.amllRaw + "metadata/raw-lyrics-index.jsonl"), let data = await fetch(url) {
-            text = String(data: data, encoding: .utf8)
-            if let file { try? data.write(to: file, options: .atomic) }
+        do {
+            let data = try await fetch(URL(string: Self.amllRaw + "metadata/raw-lyrics-index.jsonl")!, service: .amll, maximumBytes: 8_388_608)
+            guard let entries = Self.validIndex(data) else { throw LyricsAccessError.invalidBody }
+            try Task.checkCancellation()
+            // Parse first: a captive portal or changed response must not overwrite the last usable index.
+            if let file {
+                try? FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
+                try? data.write(to: file, options: .atomic)
+            }
+            amllEntries = entries; amllLoadedAt = Date()
+            return (entries, true, nil)
+        } catch {
+            if Task.isCancelled || error is CancellationError { throw CancellationError() }
+            let problem = (error as? LyricsAccessError) ?? .invalidBody
+            await LyricsServiceMonitor.shared.record(.amll, .failed(problem))
+            if let saved { return (saved, false, problem) }
+            throw problem
         }
-        // 네트워크가 안 되면 오래된 디스크 사본이라도
-        if text == nil, let file { text = try? String(contentsOf: file, encoding: .utf8) }
-        guard let text else { return nil }
-        amllEntries = AMLLIndex.parse(text)
-        amllLoadedAt = Date()
-        return amllEntries
     }
 
-    // MARK: - 공통
+    private static func validIndex(_ data: Data) -> [AMLLEntry]? {
+        guard let text = String(data: data, encoding: .utf8) else { return nil }
+        let entries = AMLLIndex.parse(text)
+        return entries.isEmpty ? nil : entries
+    }
 
-    private func fetch(_ url: URL) async -> Data? {
-        guard let (data, response) = try? await session.data(from: url),
-              (response as? HTTPURLResponse)?.statusCode == 200
-        else { return nil }
-        return data
+    private func fetch(_ url: URL, service: LyricsServiceID, maximumBytes: Int = 1_048_576) async throws -> Data {
+        try await http.data(for: URLRequest(url: url), service: service, maximumBytes: maximumBytes).0
     }
 
     private struct CacheEntry: Codable {
         let candidates: [LyricsCandidate]
+        let songIDs: [String]
         let fetchedAt: Date
     }
-
     private func cacheURL(_ key: String) -> URL? {
-        let digest = SHA256.hash(data: Data(key.utf8)).prefix(16).map { String(format: "%02x", $0) }.joined()
+        let digest = SHA256.hash(data: Data(key.utf8)).map { String(format: "%02x", $0) }.joined()
         return cacheDirectory?.appendingPathComponent("\(digest).json")
     }
-
-    private func readCache(_ key: String) -> [LyricsCandidate]? {
-        guard let url = cacheURL(key), let data = try? Data(contentsOf: url),
-              let entry = try? JSONDecoder().decode(CacheEntry.self, from: data)
-        else { return nil }
-        let ttl = entry.candidates.isEmpty ? Self.emptyTTL : Self.foundTTL
-        return Date().timeIntervalSince(entry.fetchedAt) < ttl ? entry.candidates : nil
+    private func boundedRead(_ url: URL, maximum: Int) -> Data? {
+        guard let size = try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize, size <= maximum else { return nil }
+        return try? Data(contentsOf: url)
     }
-
-    private func store(_ candidates: [LyricsCandidate], key: String) {
-        guard let url = cacheURL(key), let data = try? JSONEncoder().encode(CacheEntry(candidates: candidates, fetchedAt: Date())) else { return }
+    private func readCache(_ key: String) -> CacheEntry? {
+        guard let url = cacheURL(key), let data = boundedRead(url, maximum: 2_097_152),
+              let entry = try? JSONDecoder().decode(CacheEntry.self, from: data) else { return nil }
+        let ttl = entry.candidates.isEmpty ? Self.emptyTTL : Self.foundTTL
+        return Date().timeIntervalSince(entry.fetchedAt) < ttl ? entry : nil
+    }
+    private func store(_ result: SourceResult, key: String) {
+        guard !Task.isCancelled, let url = cacheURL(key),
+              let data = try? JSONEncoder().encode(CacheEntry(candidates: result.candidates, songIDs: result.songIDs, fetchedAt: Date())),
+              data.count <= 2_097_152 else { return }
+        try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
         try? data.write(to: url, options: .atomic)
     }
 }
