@@ -64,6 +64,69 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 - Used in: `CoNo/Lyrics/Core/KRCLyrics.swift` — KRC header, fixed XOR mask, compression, and relative word timestamp format were referenced for a new Swift implementation. No upstream source files or packages are bundled. Decompression uses macOS system zlib.
 - Tests contain synthetic text only; Kugou lyrics and access keys are not bundled. This supports user-selected local KRC files, not an online Kugou service connection.
 
+## QRC decoder — QQMusicDecoder
+
+- Source: [QQMusicDecoder](https://github.com/WXRIW/QQMusicDecoder/tree/0e1494194523dd885405812a91ee9b9702bfb30c), commit `0e1494194523dd885405812a91ee9b9702bfb30c` (`QQMusicDecoder/DESHelper.cs`, `Decrypter.cs`).
+- Used in: `CoNo/Lyrics/Core/QRCLyrics.swift` — Swift adaptation of the QRC-specific DES variant, including its nonstandard S-box entries, key schedule, and byte ordering. No .NET or SharpZipLib dependency is bundled; bounded decompression uses macOS system zlib.
+
+```text
+MIT License
+
+Copyright (c) 2023 WXRIW
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
+## QRC local-file XOR — qmc-decode
+
+- Source: [qmc-decode](https://github.com/jixunmoe/qmc-decode/tree/0266189adfa135b7471fb3452f7e777f0ff210e9), commit `0266189adfa135b7471fb3452f7e777f0ff210e9` (`src/qmc_crypto.c`).
+- Used in: `CoNo/Lyrics/Core/QRCLyrics.swift` — adapted fixed lookup table and byte-offset transform for user-selected local QRC files. These format constants are not service authentication credentials.
+
+```text
+MIT License
+
+Copyright (c) 2019 Jixun Wu
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
+## QRC independent verification reference
+
+- Source: [LDDC](https://github.com/chenmozhijin/LDDC/tree/84631e8cd011fcc3f71ca0ae017e2c9758958ffc), commit `84631e8cd011fcc3f71ca0ae017e2c9758958ffc` (`LDDC/core/decryptor/tripledes.py`, `LDDC/core/parser/qrc.py`), GPL-3.0-only, Copyright (C) 2024-2025 沉默の金 <cmzj@cmzj.org>.
+- Its original Python cipher functions were executed separately to generate synthetic known-answer test vectors for `CoNoTests/QRCLyricsTests.swift`; LDDC code and dependencies are not bundled. No real service lyrics, responses, or account tokens are test fixtures.
+
 
 ## Drum roll with cymbal crash (sound effect)
 - Source: "Long Snare Drum Roll with Cymbal Crash.mp3" by MissloonerVoiceOver255 — https://freesound.org/people/MissloonerVoiceOver255/sounds/569113/

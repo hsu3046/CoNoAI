@@ -30,7 +30,7 @@ struct LyricsView: View {
             if dropTargeted {
                 RoundedRectangle(cornerRadius: 16).strokeBorder(StageTheme.mint, style: StrokeStyle(lineWidth: 2, dash: [8]))
                     .overlay {
-                        Text("현재 곡에 LRC·TTML·SRT·KRC 가사 가져오기")
+                        Text("현재 곡에 LRC·TTML·SRT·KRC·QRC 가사 가져오기")
                             .font(.callout.bold()).padding(12).background(.ultraThinMaterial, in: Capsule())
                     }
                     .allowsHitTesting(false)

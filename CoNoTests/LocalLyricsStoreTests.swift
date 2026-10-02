@@ -96,4 +96,55 @@ struct LocalLyricsStoreTests {
         #expect(reloaded.preciseLineCount == 1)
         #expect(reloaded.lyrics.end(of: 0) == 4)
     }
+
+    @Test func binaryQRCImportPreservesOriginalBytesAndWordTimingAfterReload() async throws {
+        let directory = temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let storage = directory.appendingPathComponent("saved", isDirectory: true)
+        let store = LocalLyricsStore(directoryURL: storage)
+        // QRCLyricsTests의 독립 oracle로 만든 고정 합성 바이너리를 그대로 사용한다.
+        let hex = Array(QRCVectors.localHex.filter { !$0.isWhitespace })
+        let bytes = try stride(from: 0, to: hex.count, by: 2).map { index in
+            try #require(UInt8(String(hex[index...index + 1]), radix: 16))
+        }
+        let binary = Data(bytes)
+        let source = directory.appendingPathComponent("합성.QRC")
+        try binary.write(to: source)
+        let imported = try await store.importFile(at: source, for: track)
+        let reloaded = try #require(try await LocalLyricsStore(directoryURL: storage).load(for: track))
+        #expect(reloaded.document.format == "qrc")
+        #expect(reloaded.document.fileName == "합성.QRC")
+        #expect(Data(base64Encoded: reloaded.document.contents) == binary)
+        #expect(reloaded.lyrics == imported.lyrics)
+        #expect(reloaded.lyrics.lines.first?.text == "하늘 👩🏽‍🚀 が & café (둘) <3")
+        #expect(reloaded.lyrics.lines.first?.start == 0.75)
+        #expect(reloaded.lyrics.end(of: 0) == 3.25)
+        #expect(reloaded.lyrics.lines.first?.segments.count == 3)
+        try await store.remove(for: track)
+        #expect(try Data(contentsOf: source) == binary, "해제는 보관 사본만 지우고 원본 파일을 보존한다")
+    }
+
+    @Test func invalidOrOversizedQRCCannotReplaceExistingLyrics() async throws {
+        let directory = temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = LocalLyricsStore(directoryURL: directory)
+        let original = Data("[1000,3000]한글(1000,1000) 가사(2500,1000)".utf8)
+        _ = try await store.save(data: original, fileName: "original.qrc", for: track)
+        let file = try #require(FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil).first)
+        let savedJSON = try Data(contentsOf: file)
+        await #expect(throws: QRCLyrics.DecodeError.self) {
+            _ = try await store.save(data: Data("00zz".utf8), fileName: "broken.qrc", for: track)
+        }
+        let tooManyLines = (0...4_000).map { "[\($0 * 1_000),500]가(\($0 * 1_000),500)" }.joined(separator: "\n")
+        for data in [Data(repeating: 0, count: 1_048_577),
+                     Data(("[0,1000]" + String(repeating: "가", count: 501) + "(0,1000)").utf8),
+                     Data(tooManyLines.utf8)] {
+            await #expect(throws: LocalLyricsError.self) {
+                _ = try await store.save(data: data, fileName: "oversized.qrc", for: track)
+            }
+        }
+        #expect(try Data(contentsOf: file) == savedJSON)
+        #expect(try await store.load(for: track)?.document.contents == original.base64EncodedString())
+    }
 }

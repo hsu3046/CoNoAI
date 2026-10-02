@@ -111,6 +111,6 @@
 
 ## 2026-10-03 — 가사 작성과 저장 잠금 복구
 
-`SRTParser`와 `KRCLyrics`가 로컬 파일을 공통 `TimedLyrics`로 연결한다. `LyricsTapSync`는 텍스트/기록 시각/재생 상태를 검증하는 순수 로직이며 `LyricsTapSyncView`가 실제 들리는 곡의 시각을 전달한다. `LyricsPublishView`는 검토한 문서만 `LRCLIBPublisher` actor에 넘긴다. 네트워크 전송과 PoW는 UI/오디오 IO에서 분리하며 테스트에는 transport를 주입한다.
+`SRTParser`, `KRCLyrics`, `QRCLyrics`가 로컬 파일을 공통 `TimedLyrics`로 연결한다. KRC·QRC 원본은 JSON의 base64 문자열로 보존하고, 입력·압축 해제·최종 가사에 각각 상한을 적용한다. `LyricsTapSync`는 텍스트/기록 시각/재생 상태를 검증하는 순수 로직이며 `LyricsTapSyncView`가 실제 들리는 곡의 시각을 전달한다. `LyricsPublishView`는 검토한 문서만 `LRCLIBPublisher` actor에 넘긴다. 네트워크 전송과 PoW는 UI/오디오 IO에서 분리하며 테스트에는 transport를 주입한다.
 
 `JsonRepository`의 `.write-lock-v2`는 호스트·PID·고유 토큰을 가진 완성된 폴더를 원자 설치한다. 프로세스 종료를 확인한 경우만 해당 토큰 파일을 제거하고 빈 폴더를 정리한다. 다른 작성자의 새 폴더는 비어 있지 않아 이전 작성자가 지울 수 없다. 구버전 규약과는 혼용하지 않으며 갱신 시 기존 서버를 종료한다.

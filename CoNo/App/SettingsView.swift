@@ -404,7 +404,7 @@ private struct LocalLyricsSection: View {
                     Text(info.fileName).font(.callout)
                     Caption("\(info.lineCount)줄 · 단어 시각이 있는 줄 \(info.preciseLineCount)개")
                 } else {
-                    Caption("LRC·TTML·SRT·KRC 파일을 이곳이나 노래방 가사 영역에 놓아 주세요.")
+                    Caption("LRC·TTML·SRT·KRC·QRC 파일을 이곳이나 노래방 가사 영역에 놓아 주세요.")
                 }
                 HStack {
                     Button(controller.localLyricsInfo == nil ? "가사 파일 가져오기…" : "가사 파일 바꾸기…") {
@@ -456,7 +456,8 @@ private struct LocalLyricsSection: View {
         panel.allowedContentTypes = [UTType(filenameExtension: "lrc") ?? .plainText,
                                      UTType(filenameExtension: "ttml") ?? .xml,
                                      UTType(filenameExtension: "srt") ?? .plainText,
-                                     UTType(filenameExtension: "krc") ?? .data]
+                                     UTType(filenameExtension: "krc") ?? .data,
+                                     UTType(filenameExtension: "qrc") ?? .data]
         panel.allowsMultipleSelection = false
         panel.canChooseDirectories = false
         guard panel.runModal() == .OK, let url = panel.url else { return }

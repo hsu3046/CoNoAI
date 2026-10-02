@@ -324,7 +324,7 @@ final class LyricsController {
             return false
         }
         guard urls.count == 1, let url = urls.first, url.isFileURL,
-              ["lrc", "ttml", "srt", "krc"].contains(url.pathExtension.lowercased()) else {
+              ["lrc", "ttml", "srt", "krc", "qrc"].contains(url.pathExtension.lowercased()) else {
             localLyricsError = LocalLyricsError.unsupportedFile.localizedDescription
             return false
         }

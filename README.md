@@ -41,7 +41,7 @@ You finally find the song you want to sing — but the karaoke version doesn't e
 - **Lets you mix a guide vocal** — blend a little of the original voice back in, or switch between karaoke, vocals only and the original at any moment.
 - **Sets the stage** — album art colors light the background and breathe with the music; full screen hides the controls for TV or projector.
 - **Keeps everything on your Mac** — audio is never uploaded; only lyrics are looked up online.
-- **Uses precise lyrics you already have** — keeps word and syllable timing, imports or drops LRC/TTML/SRT/KRC files, and lets you tap Space to time plain lyrics. Save locally, export LRC, or review and publish to LRCLIB ([guide](docs/LYRICS_EDITING.md)).
+- **Uses precise lyrics you already have** — keeps word and syllable timing, imports or drops LRC/TTML/SRT/KRC/QRC files, and lets you tap Space to time plain lyrics. Save locally, export LRC, or review and publish to LRCLIB ([guide](docs/LYRICS_EDITING.md)).
 - **Saves and shares each result** — local score history, PNG/text sharing and JSON backups work on Mac and the web without connecting a database.
 
 ---

@@ -8,7 +8,7 @@ enum LocalLyricsError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .unsupportedFile: "LRC·TTML·SRT·KRC 가사 파일 하나를 선택해 주세요."
+        case .unsupportedFile: "LRC·TTML·SRT·KRC·QRC 가사 파일 하나를 선택해 주세요."
         case .invalidEncoding: "가사 파일을 읽지 못했어요. UTF-8 또는 UTF-16 형식으로 저장해 주세요."
         case .tooLarge: "가사는 1 MB, 4,000줄 이하이고 한 줄은 500글자 이하여야 해요."
         case .noTimedLyrics: "시간 정보가 있는 가사를 찾지 못했어요. 파일의 가사 형식을 확인해 주세요."
@@ -75,9 +75,9 @@ actor LocalLyricsStore {
     func save(data: Data, fileName: String, for track: TrackInfo) throws -> LoadedLocalLyrics {
         guard data.count <= Self.maximumInputBytes else { throw LocalLyricsError.tooLarge }
         let format = URL(fileURLWithPath: fileName).pathExtension.lowercased()
-        guard ["lrc", "ttml", "srt", "krc"].contains(format) else { throw LocalLyricsError.unsupportedFile }
+        guard ["lrc", "ttml", "srt", "krc", "qrc"].contains(format) else { throw LocalLyricsError.unsupportedFile }
         let decoded: String?
-        if format == "krc" {
+        if format == "krc" || format == "qrc" {
             // 바이너리 원본도 손실 없이 JSON 사본에 보존한다.
             decoded = data.base64EncodedString()
         } else if data.starts(with: [0xff, 0xfe]) || data.starts(with: [0xfe, 0xff]) {
@@ -116,7 +116,8 @@ actor LocalLyricsStore {
     }
 
     private static func parse(_ contents: String, format: String) throws -> TimedLyrics {
-        guard contents.utf8.count <= (format == "krc" ? 1_398_104 : maximumInputBytes) else { throw LocalLyricsError.tooLarge }
+        let isBinaryFormat = format == "krc" || format == "qrc"
+        guard contents.utf8.count <= (isBinaryFormat ? 1_398_104 : maximumInputBytes) else { throw LocalLyricsError.tooLarge }
         let lrc: String
         let lyrics: TimedLyrics
         switch format {
@@ -128,9 +129,10 @@ actor LocalLyricsStore {
             lrc = converted
         case "srt":
             return try validated(SRTParser.parse(contents))
-        case "krc":
+        case "krc", "qrc":
             guard let data = Data(base64Encoded: contents), data.count <= maximumInputBytes else { throw LocalLyricsError.noTimedLyrics }
-            lrc = try KRCLyrics.enhancedLRC(from: data)
+            if format == "krc" { lrc = try KRCLyrics.enhancedLRC(from: data) }
+            else { lrc = try QRCLyrics.enhancedLRC(from: data) }
         default: throw LocalLyricsError.unsupportedFile
         }
         lyrics = LRCParser.parse(lrc)
